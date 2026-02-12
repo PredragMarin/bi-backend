@@ -1,0 +1,21 @@
+{
+  "name": "bi-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/index.js",
+  "dependencies": {
+    "express": "^5.2.1",
+    "fetch-cookie": "^3.2.0",
+    "node-fetch": "^2.7.0",
+    "odbc": "^2.4.9",
+    "tough-cookie": "^6.0.0"
+  },
+  "description": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

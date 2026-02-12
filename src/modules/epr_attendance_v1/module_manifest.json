@@ -1,0 +1,97 @@
+{
+  "identity": {
+    "use_case": "epr_attendance_v1",
+    "contract_version": "1.1.0",
+    "module_version": "1.1.0",
+    "owner": "Marn Expert d.o.o."
+  },
+  "runtime": {
+    "core_contract_ref": "core_contract_v1.0.x",
+    "output_envelope_version": "1.0.0",
+    "timezone": "Europe/Zagreb"
+  },
+  "inputs": {
+    "datasets": [
+      {
+        "name": "epr_data",
+        "role": "raw_fact",
+        "provenance": "ERP_GOSOFT",
+        "format": "csv",
+        "required": true,
+        "columns": {
+          "osebid": { "type": "int", "required": true },
+          "timevhod": { "type": "datetime", "required": true, "format": "DD/MM/YYYY HH:mm" },
+          "timeizhod": { "type": "datetime", "required": false, "format": "DD/MM/YYYY HH:mm" },
+          "tipizhod": { "type": "int", "required": true },
+          "opomba": { "type": "string", "required": false }
+        },
+        "primary_key_strategy": "event_key_hash",
+        "primary_key_fields": ["osebid", "timevhod", "timeizhod", "tipizhod", "opomba"]
+      },
+      {
+        "name": "calendar",
+        "role": "reference_dim",
+        "provenance": "ERP_GOSOFT",
+        "format": "csv",
+        "required": true,
+        "backend_only": true,
+        "columns": {
+          "datum": { "type": "date", "required": true, "format": "DD/MM/YYYY" },
+          "dandelovni": { "type": "int", "required": true, "enum": [0, 1] },
+          "tekst": { "type": "string", "required": false },
+          "praznik": { "type": "int", "required": true, "enum": [0, 1] }
+        },
+        "primary_key": ["datum"]
+      },
+      {
+        "name": "osebe_raw",
+        "role": "reference_dim",
+        "provenance": "ERP_GOSOFT",
+        "format": "table",
+        "required": true,
+        "backend_only": true,
+        "keys": ["osebid"],
+        "purpose": "Enrichment (ime) + FK validacija osebid"
+      }
+    ]
+  },
+  "rules_ref": {
+    "document": "use_case_EPR — RULES v1.0.0-draft (in repo/docs)",
+    "key_policies": {
+      "event_ts_semantics": "local_time_no_offset",
+      "no_silent_fix": true,
+      "allow_cross_midnight_intervals": true,
+      "assignment_day": "date(timevhod)"
+    }
+  },
+  "task_spec_ref": {
+    "document": "use_case_EPR — TASK SPEC v1.1.0 (in repo/docs)",
+    "outputs": ["interval_results", "daily_summary", "period_summary", "run_metadata", "run_facts", "recap_lines"]
+  },
+  "llm_usage": {
+    "enabled": true,
+    "purpose": [
+      "dq_findings enrichment (opis i preporuka)",
+      "recap_lines: optional dodatne linije (ne mijenja determinističke činjenice)"
+    ],
+    "constraints": {
+      "must_follow_output_schema": true,
+      "must_not_modify_input_facts": true
+    }
+  },
+  "storage": {
+    "bi_store_root": "BI_STORE/use_case_EPR",
+    "lifecycle": {
+      "staging_status": "DRAFT",
+      "published_status": "FINAL",
+      "published_only_if_status_final": true
+    },
+    "artifacts_minimum": ["manifest.json", "output/output.json"]
+  },
+  "module_adapter": {
+    "adapter_file": "adapter.js",
+    "hooks_allowed": ["transform", "postprocess"],
+    "present": false
+  }
+}
+

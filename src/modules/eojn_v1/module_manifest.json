@@ -1,0 +1,57 @@
+﻿{
+  "identity": {
+    "use_case": "eojn_v1",
+    "contract_version": "1.0.0",
+    "module_version": "0.1.0",
+    "owner": "Marn Expert d.o.o."
+  },
+  "runtime": {
+    "core_contract_ref": "core_contract_v1.0.x",
+    "output_envelope_version": "1.0.0",
+    "timezone": "Europe/Zagreb"
+  },
+  "inputs": {
+    "datasets": [
+      {
+        "name": "eojn_searchgrid",
+        "role": "raw_fact",
+        "provenance": "EOJN",
+        "format": "json",
+        "required": true,
+        "notes": "Search grid export (Layer 1 metadata)."
+      },
+      {
+        "name": "eojn_budget",
+        "role": "raw_fact",
+        "provenance": "EOJN",
+        "format": "xlsx",
+        "required": false,
+        "notes": "Tender budget (Layer 2 evidence scan)."
+      }
+    ]
+  },
+  "outputs": {
+    "artifacts_minimum": [
+      "raw.json",
+      "scored.json",
+      "shortlist.json",
+      "layer2_queue.json",
+      "manifest.json",
+      "events.log"
+    ],
+    "artifacts_optional": [
+      "layer2_evidence.json",
+      "alerts_queue.csv"
+    ]
+  },
+  "policies": {
+    "store_full_docs": false,
+    "layer2_max_per_day": 50,
+    "layer2_parallelism": 1
+  },
+  "module_adapter": {
+    "adapter_file": "adapter.js",
+    "hooks_allowed": ["transform", "postprocess"],
+    "present": false
+  }
+}

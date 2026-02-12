@@ -1,0 +1,13 @@
+{
+  "type": "employee_tags",
+  "version": "1.0.0",
+  "source_field": "skype_name",
+  "keys": {
+    "GRP": { "allowed": ["INOX", "MXD", "ADM", "WHL"], "required": true, "multi": false },
+    "MODE": { "allowed": ["FULL", "SLIM"], "required": false, "multi": false, "default": "FULL" }
+  },
+  "legacy_group_values": ["INOX", "MXD", "ADM", "WHL"],
+  "unknown_key_policy": "WARN",
+  "unknown_value_policy": "WARN",
+  "missing_required_policy": "WARN"
+}

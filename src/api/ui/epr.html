@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>EPR Report UI</title>
+  <style>
+body { font-family: Arial, sans-serif; margin: 8px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+.card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-top: 8px }
+label { font-size: 12px; color: #333; display: block; margin-bottom: 4px; }
+input, textarea, select, button { font-size: 14px; padding: 8px; }
+input[type="text"] { width: 240px; }
+
+/* kraći date inputi (from/to) */
+input.date { width: 140px; }
+
+/* select uredno */
+select { min-width: 120px; }
+
+/* (1) Request JSON: pola visine */
+textarea { width: 760px; height: 70px; font-family: Consolas, monospace; }
+
+button { cursor: pointer; }
+.muted { color: #666; font-size: 12px; }
+.error { color: #b00020; white-space: pre-wrap; }
+.ok { color: #0b6; }
+h2 { margin: 0 0 8px 0; }
+
+/* (2) TABLE: fixed column width + horizontal scroll */
+.table-wrap {
+  /* gotovo do dna ekrana, s malom marginom */
+  height: calc(100vh - 420px);
+  overflow-x: auto;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+/* Minimalno 15 kolona vidljivo: 15 * 120px = 1800px (ako je ekran manji, dobijete scroll) */
+table { border-collapse: collapse; table-layout: fixed; min-width: 1500px; width: max-content; }
+
+/* fiksna širina kolone */
+th, td { border: 1px solid #ddd; padding: 4px 6px; vertical-align: top; width: 100px; min-width: 100px; max-width: 100px; }
+
+/* sticky header */
+th { background: #f6f6f6; position: sticky; top: 0; z-index: 2; }
+
+/* header layout + klikabilan sort */
+th .th-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; min-width: 0; }
+th .sort { font-size: 12px; color: #444; user-select: none; cursor: pointer; flex: 0 0 auto; }
+th .th-row span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+th input { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 3px 4px; font-size: 9px; }
+th { overflow: hidden; }
+
+/* (3) Dva retka po ćeliji + wrap, bez “rastezanja” beskonačno */
+td .cell {
+  display: -webkit-box;
+  line-clamp: 2;               /* standard property (lint) */
+  -webkit-line-clamp: 2;       /* actual support in Chromium/WebKit */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.2;
+  max-height: calc(1.2em * 2);
+}
+
+/* hover: pokaži cijeli tekst u tooltipu (title je u JS-u) */
+td { position: relative; }
+
+/* pill */
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #eee; }
+.pill.ACTION { background: #fff1c7; }
+.pill.WARN { background: #ffe1e1; }
+.pill.INFO { background: #e8f0ff; }
+
+.radio-wrap { display:flex; gap:14px; align-items:center; padding: 6px 0 0 0; }
+.radio-wrap label { display:flex; gap:6px; align-items:center; margin:0; font-size: 12px; color:#111; }
+   </style>
+</head>
+<body>
+  <h2>EPR Report UI (minimal)</h2>
+  <div class="muted">
+    Sort: klik na naziv kolone. Filter: input ispod headera. Global search: iznad tablice.
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Period from (YYYY-MM-DD)</label>
+        <input id="from" class="date" type="text" value="2026-01-01" />
+      </div>
+      <div>
+        <label>Period to (YYYY-MM-DD)</label>
+        <input id="to" class="date" type="text" value="2026-01-31" />
+      </div>
+
+      <!-- NEW: Group view filter -->
+      <div>
+        <label>Group (view filter)</label>
+        <select id="viewGroupSelect">
+          <!-- populated from /api/config in JS -->
+          <option value="INOX">INOX</option>
+          <option value="MXD">MXD</option>
+          <option value="ADM">ADM</option>
+          <option value="ALL">ALL</option>
+        </select>
+      </div>
+
+      <!-- NEW: Dataset label -->
+      <div>
+        <label>Dataset</label>
+        <div id="datasetLabel" class="muted" style="padding: 8px 0 0 0;">
+          Dataset: ALL (company-wide)
+        </div>
+      </div>
+
+      <div>
+        <label>Mode</label>
+        <div class="radio-wrap">
+          <label><input type="radio" name="mode" id="modeDb" checked /> DB (run-db)</label>
+          <label><input type="radio" name="mode" id="modeJson" /> JSON (run)</label>
+        </div>
+      </div>
+
+      <div>
+        <label>&nbsp;</label>
+        <button id="runBtn">Run</button>
+      </div>
+
+      <button onclick="exportAndPublish()">Export & Publish</button>
+      <button id="openSmsBtn" type="button">SMS approvals</button>
+
+
+      <div style="flex: 1;">
+        <label>Global search (filters current table)</label>
+        <input id="globalSearch" type="text" placeholder="npr. osebid=3 ili 05/12 ili ACTION ili bolovanje..." style="width: 100%;" />
+      </div>
+    </div>
+
+    <div style="margin-top: 10px;">
+      <label>Request JSON (koristi se samo u JSON (run) modu)</label>
+      <textarea id="reqJson"></textarea>
+      <div class="muted">
+        DB (run-db): textarea se ignorira; šalje se samo {"from","to"}.<br/>
+        JSON (run): period from/to iz input polja prepisuje period u JSON-u.
+      </div>
+    </div>
+
+    <div style="margin-top: 10px;">
+      <div id="status" class="muted">Status: idle</div>
+      <div id="error" class="error"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Dataset / Table</label>
+        <select id="tableSelect">
+          <option value="recap_lines">recap_lines</option>
+          <option value="actions_queue">actions_queue</option>
+          <option value="period_summary">period_summary</option>
+          <option value="daily_summary">daily_summary</option>
+          <option value="interval_results">interval_results</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Rows</label>
+        <span id="rowsCount" class="pill">0</span>
+      </div>
+
+      <div style="flex: 1;"></div>
+
+      <div>
+        <label>Run metadata</label>
+        <span id="meta" class="muted"></span>
+      </div>
+    </div>
+
+    <div style="margin-top: 10px;" class="table-wrap">
+      <table id="table"></table>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const elFrom = document.getElementById("from");
+  const elTo = document.getElementById("to");
+  const elRun = document.getElementById("runBtn");
+  const elReq = document.getElementById("reqJson");
+  const elStatus = document.getElementById("status");
+  const elError = document.getElementById("error");
+  const elSelect = document.getElementById("tableSelect");
+  const elTable = document.getElementById("table");
+  const elRowsCount = document.getElementById("rowsCount");
+  const elMeta = document.getElementById("meta");
+  const elGlobal = document.getElementById("globalSearch");
+  const elModeDb = document.getElementById("modeDb");
+  const elModeJson = document.getElementById("modeJson");
+
+  // NEW: view filter + dataset label elements
+  const elViewGroup = document.getElementById("viewGroupSelect");
+  const elDatasetLabel = document.getElementById("datasetLabel");
+
+  const LS_KEY_VIEW_GROUP = "epr_view_group";
+  const BASE_GROUPS = ["INOX", "MXD", "ADM", "ALL"];
+
+  let lastResultAll = null;     // full ALL-company dataset (as returned by backend)
+  let lastResultView = null;    // view-filtered dataset (used for rendering)
+  let selectedViewGroup = "ALL";
+
+  // per-table state
+  const stateByTable = new Map(); // name -> { sortKey, sortDir, colFilters: Map }
+  function getState(name) {
+    if (!stateByTable.has(name)) {
+      stateByTable.set(name, { sortKey: null, sortDir: "asc", colFilters: new Map() });
+    }
+    return stateByTable.get(name);
+  }
+
+  function defaultReq() {
+    return {
+      use_case: "epr_attendance_v1",
+      period: { date_from: elFrom.value.trim(), date_to: elTo.value.trim() },
+      debug: { dry_run: true },
+      datasets: { epr_data: [], calendar: [], osebe_raw: [] }
+    };
+  }
+
+  function safeParseJson(s) {
+    try { return { ok: true, value: JSON.parse(s) }; }
+    catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  function isISODate(s) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(s || "").trim());
+  }
+
+  function setStatus(msg, ok = true) {
+    elStatus.textContent = "Status: " + msg;
+    elStatus.className = ok ? "muted ok" : "muted";
+  }
+
+  function setError(msg) {
+    elError.textContent = msg || "";
+  }
+
+  // ---- NEW: instance config + view group ordering ----
+  function uniq(arr) {
+    const out = [];
+    const seen = new Set();
+    for (const x of arr) {
+      if (!seen.has(x)) { seen.add(x); out.push(x); }
+    }
+    return out;
+  }
+
+  function normalizeGroup(v) {
+    const s = String(v || "").trim().toUpperCase();
+    return BASE_GROUPS.includes(s) ? s : null;
+  }
+
+  function buildGroupOrder(defaultGroup) {
+    const d = normalizeGroup(defaultGroup) || "ALL";
+    // default first, then the other production/admin groups, and ALL always present
+    const ordered = [];
+    ordered.push(d);
+
+    for (const g of ["INOX", "MXD", "ADM"]) {
+      if (g !== d) ordered.push(g);
+    }
+    if (d !== "ALL") ordered.push("ALL");
+    else ordered.push("ALL"); // keep ALL anyway
+    return uniq(ordered);
+  }
+
+  async function initInstanceConfig() {
+    // Fallback defaults
+    let cfg = {
+      dataset_label: "Dataset: ALL (company-wide)",
+      default_view_group: "ALL",
+      allowed_groups: ["INOX", "MXD", "ADM", "ALL"],
+      can_publish_final: false
+    };
+
+    try {
+      const r = await fetch("/api/config", { cache: "no-store" });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && typeof j === "object") cfg = { ...cfg, ...j };
+      }
+    } catch (e) {
+      // ignore, keep fallback
+    }
+
+    if (elDatasetLabel) {
+      elDatasetLabel.textContent = cfg.dataset_label || "Dataset: ALL (company-wide)";
+    }
+
+    if (!elViewGroup) return;
+
+    const defaultGroup = normalizeGroup(cfg.default_view_group) || "ALL";
+
+    // Order options so default is first, but keep all available
+    const ordered = buildGroupOrder(defaultGroup);
+
+    elViewGroup.innerHTML = "";
+    for (const g of ordered) {
+      const opt = document.createElement("option");
+      opt.value = g;
+      opt.textContent = g;
+      elViewGroup.appendChild(opt);
+    }
+
+    // localStorage overrides default
+    const saved = normalizeGroup(localStorage.getItem(LS_KEY_VIEW_GROUP));
+    selectedViewGroup = saved || defaultGroup;
+
+    // Ensure option exists
+    if (!ordered.includes(selectedViewGroup)) selectedViewGroup = "ALL";
+    elViewGroup.value = selectedViewGroup;
+
+    elViewGroup.addEventListener("change", () => {
+      selectedViewGroup = normalizeGroup(elViewGroup.value) || "ALL";
+      localStorage.setItem(LS_KEY_VIEW_GROUP, selectedViewGroup);
+      rebuildViewAndRepaint();
+    });
+  }
+
+  // ----- Header union with preferred order -----
+  function buildHeaderUnion(rows, preferredOrder = []) {
+    const set = new Set();
+    for (const r of rows) {
+      if (r && typeof r === "object") Object.keys(r).forEach(k => set.add(k));
+    }
+
+    const all = Array.from(set);
+    const pref = preferredOrder.filter(k => set.has(k));
+    const rest = all.filter(k => !pref.includes(k));
+    return [...pref, ...rest];
+  }
+
+  function coerceValue(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  }
+
+  function isNumericString(s) {
+    if (typeof s !== "string") return false;
+    const t = s.trim();
+    if (t === "") return false;
+    return /^-?\d+(\.\d+)?$/.test(t);
+  }
+
+  // Heuristics for sorting
+  function cmp(a, b) {
+    const sa = coerceValue(a);
+    const sb = coerceValue(b);
+
+    if (isNumericString(sa) && isNumericString(sb)) return Number(sa) - Number(sb);
+
+    if (/^\d{4}-\d{2}-\d{2}/.test(sa) && /^\d{4}-\d{2}-\d{2}/.test(sb)) {
+      return sa.localeCompare(sb);
+    }
+
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(sa) && /^\d{2}\/\d{2}\/\d{4}/.test(sb)) {
+      const norm = (s) => {
+        const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+        if (!m) return s;
+        const dd = m[1], mm = m[2], yyyy = m[3];
+        const HH = m[4] || "00", MM = m[5] || "00";
+        return `${yyyy}-${mm}-${dd} ${HH}:${MM}`;
+      };
+      return norm(sa).localeCompare(norm(sb));
+    }
+
+    return sa.localeCompare(sb, undefined, { sensitivity: "base" });
+  }
+
+  // ---- NEW: apply view filter (ergonomics only) ----
+  function applyViewFilterToRows(rows, group) {
+    if (!Array.isArray(rows)) return [];
+    const g = normalizeGroup(group) || "ALL";
+    if (g === "ALL") return rows;
+
+    return rows.filter(r => {
+      const gc = String(r?.group_code || "").trim().toUpperCase();
+      return gc === g;
+    });
+  }
+
+  function applyViewFilterToResult(resultAll) {
+    if (!resultAll || typeof resultAll !== "object") return resultAll;
+
+    // Keep recap_lines company-wide (unfiltered) by default
+    const out = { ...resultAll };
+
+    // Filter tables that are "people rows"
+    out.interval_results = applyViewFilterToRows(resultAll.interval_results, selectedViewGroup);
+    out.daily_summary = applyViewFilterToRows(resultAll.daily_summary, selectedViewGroup);
+    out.period_summary = applyViewFilterToRows(resultAll.period_summary, selectedViewGroup);
+    out.actions_queue = applyViewFilterToRows(resultAll.actions_queue, selectedViewGroup);
+
+    // Leave recap_lines as is (ALL)
+    out.recap_lines = Array.isArray(resultAll.recap_lines) ? resultAll.recap_lines : [];
+
+    // run_metadata unchanged
+    out.run_metadata = resultAll.run_metadata || {};
+
+    return out;
+  }
+
+  function applyFiltersAndSort(rows, tableName) {
+    const st = getState(tableName);
+    const global = (elGlobal.value || "").trim().toLowerCase();
+
+    let out = rows;
+
+    for (const [col, filterVal] of st.colFilters.entries()) {
+      const f = String(filterVal || "").trim().toLowerCase();
+      if (!f) continue;
+      out = out.filter(r => coerceValue(r?.[col]).toLowerCase().includes(f));
+    }
+
+    if (global) {
+      out = out.filter(r => {
+        const values = Object.values(r || {}).map(coerceValue).join(" | ").toLowerCase();
+        return values.includes(global);
+      });
+    }
+
+    if (st.sortKey) {
+      const k = st.sortKey;
+      const dir = st.sortDir;
+      out = [...out].sort((ra, rb) => {
+        const res = cmp(ra?.[k], rb?.[k]);
+        return dir === "asc" ? res : -res;
+      });
+    }
+
+    return out;
+  }
+
+  function renderTable(rows, tableName) {
+    const st = getState(tableName);
+    const preferred = ["osebid", "group_code", "priimek", "ime", "work_date"];
+    const headers = buildHeaderUnion(rows, preferred);
+
+    elRowsCount.textContent = String(rows.length);
+
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+
+    for (const h of headers) {
+      const th = document.createElement("th");
+
+      const wrap = document.createElement("div");
+      wrap.className = "th-row";
+
+      const title = document.createElement("span");
+      title.textContent = h;
+      title.title = h;
+
+      const sort = document.createElement("span");
+      sort.className = "sort";
+      const isActive = st.sortKey === h;
+      sort.textContent = isActive ? (st.sortDir === "asc" ? "▲" : "▼") : "↕";
+      sort.title = "Klik za sort";
+      sort.onclick = () => {
+        if (st.sortKey !== h) {
+          st.sortKey = h;
+          st.sortDir = "asc";
+        } else {
+          st.sortDir = (st.sortDir === "asc") ? "desc" : "asc";
+        }
+        repaint();
+      };
+
+      wrap.appendChild(title);
+      wrap.appendChild(sort);
+      th.appendChild(wrap);
+
+      const filter = document.createElement("input");
+      filter.type = "text";
+      filter.placeholder = "filter...";
+      filter.value = st.colFilters.get(h) || "";
+      filter.oninput = (e) => {
+        st.colFilters.set(h, e.target.value);
+        repaint();
+      };
+
+      th.appendChild(filter);
+      trh.appendChild(th);
+    }
+
+    thead.appendChild(trh);
+
+    const tbody = document.createElement("tbody");
+    for (const r of rows) {
+      const tr = document.createElement("tr");
+      for (const h of headers) {
+        const td = document.createElement("td");
+
+        const v = r?.[h];
+        if (h === "severity") {
+          const sev = coerceValue(v);
+          const pill = document.createElement("span");
+          pill.className = "pill " + sev;
+          pill.textContent = sev || "";
+          td.appendChild(pill);
+        } else {
+          const text = coerceValue(v);
+
+          const div = document.createElement("div");
+          div.className = "cell";
+          div.textContent = text;
+
+          td.title = text;
+
+          td.onclick = () => {
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(div);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          };
+
+          td.appendChild(div);
+        }
+
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+
+    elTable.innerHTML = "";
+    elTable.appendChild(thead);
+    elTable.appendChild(tbody);
+  }
+
+  function getTableRows(result, tableName) {
+    if (!result) return [];
+    const v = result[tableName];
+    if (Array.isArray(v)) return v;
+    return [];
+  }
+
+  function repaint() {
+    const tableName = elSelect.value;
+    const baseRows = getTableRows(lastResultView, tableName);
+    const rows = applyFiltersAndSort(baseRows, tableName);
+    renderTable(rows, tableName);
+  }
+
+  function setMeta(resultAll) {
+    const md = resultAll?.run_metadata || {};
+    const parts = [
+      md.run_status ? `status=${md.run_status}` : "",
+      md.contract_version ? `contract=${md.contract_version}` : "",
+      md.rejects_count !== undefined ? `rejects=${md.rejects_count}` : "",
+      md.needs_review_count !== undefined ? `needs_review=${md.needs_review_count}` : "",
+      md.needs_action_count !== undefined ? `needs_action=${md.needs_action_count}` : ""
+    ].filter(Boolean);
+
+    // Add view filter indicator
+    parts.push(`view=${selectedViewGroup}`);
+
+    elMeta.textContent = parts.join(" | ");
+  }
+
+  function rebuildViewAndRepaint() {
+    // rebuild view dataset
+    lastResultView = applyViewFilterToResult(lastResultAll);
+    setMeta(lastResultAll);
+    repaint();
+  }
+
+  async function run() {
+    setError("");
+    const from = elFrom.value.trim();
+    const to = elTo.value.trim();
+    if (!isISODate(from) || !isISODate(to)) {
+      setError("from/to moraju biti YYYY-MM-DD");
+      return;
+    }
+
+    const useDb = !!elModeDb.checked;
+    const url = useDb ? "/api/epr/run-db" : "/api/epr/run";
+    let bodyObj;
+
+    if (useDb) {
+      bodyObj = { from, to };
+    } else {
+      const raw = elReq.value.trim();
+      if (!raw) {
+        bodyObj = defaultReq();
+      } else {
+        const parsed = safeParseJson(raw);
+        if (!parsed.ok) {
+          setError("Neispravan JSON: " + parsed.error);
+          return;
+        }
+        bodyObj = parsed.value;
+        bodyObj.use_case = bodyObj.use_case || "epr_attendance_v1";
+        bodyObj.period = bodyObj.period || {};
+        bodyObj.period.date_from = from;
+        bodyObj.period.date_to = to;
+        bodyObj.debug = bodyObj.debug || {};
+        if (bodyObj.debug.dry_run === undefined) bodyObj.debug.dry_run = true;
+      }
+    }
+
+    setStatus("running...");
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyObj)
+      });
+
+      const text = await resp.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch (e) { throw new Error("Server did not return JSON. Raw:\n" + text); }
+
+      if (!resp.ok) {
+        throw new Error((data && (data.message || data.error)) ? JSON.stringify(data, null, 2) : text);
+      }
+
+      // Store ALL-company result and build view
+      lastResultAll = data;
+      window.lastResultAll = lastResultAll;
+
+      // ALIAS for console/debug (recommended)
+      window.lastResult = lastResultAll;          // << dodaj
+      window.lastResultAt = new Date().toISOString(); // << opcionalno
+
+      rebuildViewAndRepaint();
+
+      setStatus("OK");
+    } catch (e) {
+      setStatus("FAILED", false);
+      setError(String(e && e.message ? e.message : e));
+    }
+  }
+
+  elRun.onclick = run;
+  elSelect.onchange = () => repaint();
+  elGlobal.oninput = () => repaint();
+    // OPEN SMS APPROVALS (new tab) — uses current from/to to derive YYYY_MM
+  function toYYYY_MM_fromISO(iso) {
+    const m = String(iso || "").trim().match(/^(\d{4})-(\d{2})-/);
+    return m ? `${m[1]}_${m[2]}` : "";
+  }
+
+  const elOpenSms = document.getElementById("openSmsBtn");
+  if (elOpenSms) {
+    elOpenSms.onclick = () => {
+      const from = elFrom.value.trim();
+      const to = elTo.value.trim();
+
+      // Prefer "to" month; fallback to "from"
+      const period = toYYYY_MM_fromISO(to) || toYYYY_MM_fromISO(from);
+      if (!period) {
+        alert("Ne mogu odrediti period. Provjerite from/to (YYYY-MM-DD).");
+        return;
+      }
+
+      const namespace = "epr_attendance_v1";
+      const url = `/ui/sms.html?period=${encodeURIComponent(period)}&namespace=${encodeURIComponent(namespace)}`;
+      window.open(url, "_blank", "noopener");
+    };
+  }
+
+
+  // EXPORT & PUBLISH — GLOBALNO IZLOŽENO (exports ALL-company dataset, not filtered view)
+  window.exportAndPublish = async function () {
+    if (!lastResultAll) {
+      alert("Nema podataka za export.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("/api/export-and-publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lastResultAll)
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data?.message || "Export failed");
+
+      console.log("Export OK", data);
+      setStatus("Export OK", true);
+      if (data && data.export_dir) {
+        alert("Export OK. Sačuvano u: " + data.export_dir);
+      }
+    } catch (err) {
+      console.error("Export failed", err);
+      setStatus("Export failed", false);
+      alert("Greška u exportu: " + (err?.message || "Export failed"));
+    }
+  };
+
+  // Prefill textarea for JSON mode
+  elReq.value = JSON.stringify({
+    use_case: "epr_attendance_v1",
+    period: { date_from: "2025-12-01", date_to: "2025-12-31" },
+    debug: { dry_run: true },
+    datasets: { epr_data: [], calendar: [], osebe_raw: [] }
+  }, null, 2);
+
+  // Initial empty state
+  lastResultAll = {
+    recap_lines: [],
+    actions_queue: [],
+    daily_summary: [],
+    period_summary: [],
+    interval_results: [],
+    run_metadata: {}
+  };
+  window.lastResultAll = lastResultAll;
+
+  // Init config + default view filter, then initial repaint
+  (async () => {
+    await initInstanceConfig();
+
+    // Ensure dropdown value is reflected in selectedViewGroup even if config load failed
+    if (elViewGroup) {
+      const v = normalizeGroup(elViewGroup.value) || selectedViewGroup || "ALL";
+      selectedViewGroup = v;
+    }
+
+    rebuildViewAndRepaint();
+  })();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SMS Approvals</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; margin: 10px 0; }
+    .muted { color: #666; font-size: 12px; }
+    .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #ccc; font-size: 12px; margin-right: 6px; }
+    .btn { padding: 6px 10px; border-radius: 8px; border: 1px solid #bbb; background:#fff; cursor:pointer; }
+    .btn:hover { background:#f6f6f6; }
+    .btn-approve { border-color: #2a7; }
+    .btn-reject { border-color: #c55; }
+    .btn:disabled { opacity: .5; cursor: default; }
+    select, input { padding: 6px 8px; border-radius: 8px; border: 1px solid #bbb; }
+    textarea { width: 100%; min-height: 54px; padding: 8px; border-radius: 8px; border: 1px solid #bbb; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .right { margin-left: auto; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h2>SMS approvals</h2>
+
+  <div class="row" style="margin-bottom:10px;">
+    <div class="muted">Period:</div>
+    <select id="periodSel"></select>
+
+    <div class="muted">Namespace:</div>
+    <input id="nsInp" placeholder="epr_attendance_v1" style="width:220px;" />
+
+    <button class="btn" id="reloadBtn">Reload</button>
+
+    <div class="right muted" id="counts"></div>
+  </div>
+
+  <div class="row" style="margin-bottom:10px;">
+    <div class="muted">bundle_type</div>
+    <select id="bundleSel"><option value="">(all)</option></select>
+
+    <div class="muted">group_code</div>
+    <select id="groupSel"><option value="">(all)</option></select>
+
+    <div class="muted">severity</div>
+    <select id="sevSel"><option value="">(all)</option></select>
+
+    <div class="muted">status</div>
+    <select id="statSel">
+      <option value="">(all)</option>
+      <option value="pending">pending</option>
+      <option value="approved">approved</option>
+      <option value="rejected">rejected</option>
+    </select>
+
+    <input id="qInp" placeholder="search (ime, osebid, tel, text...)" style="min-width:280px; flex:1;" />
+  </div>
+
+  <div class="row" style="margin-bottom:10px;">
+    <div class="muted">Approved by:</div>
+    <input id="userInp" placeholder="npr. ADM.supervisor" style="width:240px;" />
+    <button class="btn" id="saveUserBtn">Save</button>
+    <div class="muted" id="userHint"></div>
+  </div>
+
+  <div id="list"></div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+
+  const periodSel = $("periodSel");
+  const nsInp = $("nsInp");
+  const reloadBtn = $("reloadBtn");
+
+  const bundleSel = $("bundleSel");
+  const groupSel  = $("groupSel");
+  const sevSel    = $("sevSel");
+  const statSel   = $("statSel");
+  const qInp      = $("qInp");
+
+  const userInp = $("userInp");
+  const saveUserBtn = $("saveUserBtn");
+  const userHint = $("userHint");
+
+  const counts = $("counts");
+  const list = $("list");
+
+  let allRows = [];       // merged rows
+  let previewRows = [];   // raw preview
+  let approvalsMap = new Map();
+
+  function getParam(name){
+    const url = new URL(window.location.href);
+    return url.searchParams.get(name);
+  }
+
+  function setParam(name, value){
+    const url = new URL(window.location.href);
+    if (value === null || value === undefined || value === "") url.searchParams.delete(name);
+    else url.searchParams.set(name, value);
+    history.replaceState({}, "", url.toString());
+  }
+
+  function uniqSorted(arr){
+    return Array.from(new Set(arr.filter(v => v !== null && v !== undefined && String(v).trim() !== "")))
+      .map(v => String(v))
+      .sort((a,b)=>a.localeCompare(b));
+  }
+
+  function textContains(hay, needle){
+    if (!needle) return true;
+    return String(hay || "").toLowerCase().includes(String(needle).toLowerCase());
+  }
+
+  function effectiveStatus(smsKey){
+    const a = approvalsMap.get(smsKey);
+    if (!a) return "pending";
+    if (String(a.approved).toLowerCase() === "approved") return "approved";
+    if (String(a.approved).toLowerCase() === "rejected") return "rejected";
+    return "pending";
+  }
+
+  async function apiGet(url){
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async function apiPost(url, body){
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async function loadPeriods(ns){
+    const j = await apiGet(`/api/approvals/v1/sms/periods?namespace=${encodeURIComponent(ns||"")}`);
+    return j.periods || [];
+  }
+
+  async function loadPreview(period, ns){
+    const j = await apiGet(`/api/approvals/v1/sms/preview?period=${encodeURIComponent(period)}&namespace=${encodeURIComponent(ns||"")}`);
+    return j.rows || [];
+  }
+
+  async function loadApprovals(period){
+    const j = await apiGet(`/api/approvals/v1/sms/approvals?period=${encodeURIComponent(period)}`);
+    return j.rows || [];
+  }
+
+  function mergeRows(preview, approvals){
+    approvalsMap = new Map();
+    for (const a of approvals) approvalsMap.set(String(a.sms_key||"").trim(), a);
+
+    const merged = preview.map(r => {
+      const sms_key = String(r.sms_key||"").trim();
+      const eff = effectiveStatus(sms_key);
+      const a = approvalsMap.get(sms_key) || null;
+      return {
+        ...r,
+        effective_status: eff,
+        approval: a
+      };
+    });
+
+    // deterministic order: urgent before warn? keep it simple: sort by effective_status then severity then name
+    const statRank = { pending: 0, rejected: 1, approved: 2 };
+    const sevRank = { urgent: 0, warn: 1, info: 2 };
+    merged.sort((a,b)=>{
+      const sr = (statRank[a.effective_status] ?? 9) - (statRank[b.effective_status] ?? 9);
+      if (sr) return sr;
+      const sv = (sevRank[String(a.sms_severity||"").toLowerCase()] ?? 9) - (sevRank[String(b.sms_severity||"").toLowerCase()] ?? 9);
+      if (sv) return sv;
+      const n1 = `${a.priimek||""} ${a.ime||""}`.trim();
+      const n2 = `${b.priimek||""} ${b.ime||""}`.trim();
+      return n1.localeCompare(n2);
+    });
+
+    return merged;
+  }
+
+  function fillFilterOptions(){
+    // bundle
+    bundleSel.innerHTML = `<option value="">(all)</option>` + uniqSorted(allRows.map(r=>r.bundle_type)).map(v=>`<option>${v}</option>`).join("");
+    groupSel.innerHTML  = `<option value="">(all)</option>` + uniqSorted(allRows.map(r=>r.group_code)).map(v=>`<option>${v}</option>`).join("");
+    sevSel.innerHTML    = `<option value="">(all)</option>` + uniqSorted(allRows.map(r=>r.sms_severity)).map(v=>`<option>${v}</option>`).join("");
+  }
+
+  function applyFilters(){
+    const b = bundleSel.value;
+    const g = groupSel.value;
+    const s = sevSel.value;
+    const st = statSel.value;
+    const q = qInp.value.trim();
+
+    const filtered = allRows.filter(r => {
+      if (b && String(r.bundle_type) !== b) return false;
+      if (g && String(r.group_code) !== g) return false;
+      if (s && String(r.sms_severity) !== s) return false;
+      if (st && String(r.effective_status) !== st) return false;
+
+      if (q) {
+        const hay = [
+          r.osebid, r.priimek, r.ime, r.tel_gsm, r.sms_text, r.sms_key, r.issue_keys, r.week_key, r.work_date, r.work_dates
+        ].join(" | ");
+        if (!textContains(hay, q)) return false;
+      }
+      return true;
+    });
+
+    renderList(filtered);
+    counts.textContent = `rows: ${filtered.length} / ${allRows.length}`;
+  }
+
+  function escapeHtml(s){
+    return String(s ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  function renderList(rows){
+    list.innerHTML = "";
+    for (const r of rows){
+      const name = `${r.priimek||""} ${r.ime||""}`.trim();
+      const smsKey = String(r.sms_key||"").trim();
+      const eff = r.effective_status;
+
+      const a = r.approval;
+      const approvalLine = a
+        ? `<div class="muted">Decision: <b>${escapeHtml(a.approved)}</b> by <b>${escapeHtml(a.approved_by||"")}</b> at <span class="mono">${escapeHtml(a.approved_at||"")}</span></div>
+           ${a.note ? `<div class="muted">Note: ${escapeHtml(a.note)}</div>` : ""}`
+        : `<div class="muted">Decision: <b>pending</b></div>`;
+
+      const card = document.createElement("div");
+      card.className = "card";
+
+      card.innerHTML = `
+        <div class="row">
+          <div><b>${escapeHtml(name || ("osebid " + (r.osebid||"")))}</b></div>
+          <span class="pill">${escapeHtml(r.group_code||"")}</span>
+          <span class="pill">${escapeHtml(r.bundle_type||"")}</span>
+          <span class="pill">${escapeHtml(r.sms_severity||"")}</span>
+          <span class="pill">status: ${escapeHtml(eff)}</span>
+          <span class="right muted">tel: ${escapeHtml(r.tel_gsm||"")}</span>
+        </div>
+
+        <div style="margin:8px 0;">${escapeHtml(r.sms_text||"")}</div>
+
+        <div class="grid2">
+          <div class="muted">
+            <div>period: <span class="mono">${escapeHtml(r.period_yyyy_mm||"")}</span></div>
+            <div>week_key: <span class="mono">${escapeHtml(r.week_key||"")}</span></div>
+            <div>work_date: <span class="mono">${escapeHtml(r.work_date||"")}</span></div>
+            <div>work_dates: <span class="mono">${escapeHtml(r.work_dates||"")}</span></div>
+          </div>
+          <div class="muted">
+            <div>sms_key:</div>
+            <div class="mono">${escapeHtml(smsKey)}</div>
+          </div>
+        </div>
+
+        <div style="margin-top:10px;">
+          ${approvalLine}
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <textarea placeholder="note (optional)" data-note></textarea>
+          <button class="btn btn-approve" data-act="approve">Approve</button>
+          <button class="btn btn-reject" data-act="reject">Reject</button>
+        </div>
+      `;
+
+      const noteTa = card.querySelector("[data-note]");
+      const approveBtn = card.querySelector('[data-act="approve"]');
+      const rejectBtn = card.querySelector('[data-act="reject"]');
+
+      // prefill note if already exists
+      if (a && a.note) noteTa.value = a.note;
+
+      async function doDecision(kind){
+        const user = userInp.value.trim();
+        if (!user) {
+          alert("Please set Approved by (user) first.");
+          userInp.focus();
+          return;
+        }
+
+        approveBtn.disabled = true;
+        rejectBtn.disabled = true;
+
+        try {
+          const decision = kind === "approve" ? "approved" : "rejected";
+          const period = periodSel.value;
+
+          await apiPost("/api/approvals/v1/sms/approvals", {
+            period,
+            sms_key: smsKey,
+            approved: decision,
+            approved_by: user,
+            note: noteTa.value.trim()
+          });
+
+          // reload approvals only (fast)
+          const approvals = await loadApprovals(period);
+          allRows = mergeRows(previewRows, approvals);
+          applyFilters();
+        } catch (e) {
+          console.error(e);
+          alert("Failed: " + e.message);
+        } finally {
+          approveBtn.disabled = false;
+          rejectBtn.disabled = false;
+        }
+      }
+
+      approveBtn.addEventListener("click", ()=>doDecision("approve"));
+      rejectBtn.addEventListener("click", ()=>doDecision("reject"));
+
+      list.appendChild(card);
+    }
+  }
+
+  async function reloadAll(){
+    const ns = nsInp.value.trim();
+    const periods = await loadPeriods(ns);
+
+    // if current period not set, take latest
+    const current = periodSel.value || getParam("period") || "";
+    let period = current;
+
+    // fill periods dropdown
+    periodSel.innerHTML = periods.map(p => `<option value="${p}">${p}</option>`).join("");
+
+    if (!period || !periods.includes(period)) {
+      period = periods.length ? periods[periods.length - 1] : (getParam("period") || "");
+    }
+    if (period) periodSel.value = period;
+
+    setParam("period", periodSel.value);
+    setParam("namespace", ns);
+
+    // load data
+    previewRows = await loadPreview(periodSel.value, ns);
+    const approvals = await loadApprovals(periodSel.value);
+
+    allRows = mergeRows(previewRows, approvals);
+
+    fillFilterOptions();
+    applyFilters();
+  }
+
+  function initUser(){
+    const saved = localStorage.getItem("sms_approvals_user") || "";
+    const u = getParam("user") || saved;
+    if (u) userInp.value = u;
+    userHint.textContent = saved ? `(saved: ${saved})` : "";
+  }
+
+  saveUserBtn.addEventListener("click", ()=>{
+    const u = userInp.value.trim();
+    if (!u) {
+      alert("Enter user (approved_by).");
+      return;
+    }
+    localStorage.setItem("sms_approvals_user", u);
+    userHint.textContent = `(saved: ${u})`;
+  });
+
+  reloadBtn.addEventListener("click", ()=>{
+    reloadAll().catch(e => { console.error(e); alert(e.message); });
+  });
+
+  [bundleSel, groupSel, sevSel, statSel, qInp].forEach(el => {
+    el.addEventListener("input", applyFilters);
+    el.addEventListener("change", applyFilters);
+  });
+
+  periodSel.addEventListener("change", ()=>{
+    setParam("period", periodSel.value);
+    reloadAll().catch(e => { console.error(e); alert(e.message); });
+  });
+
+  // init params
+  const qPeriod = getParam("period");
+  const qNs = getParam("namespace") || "epr_attendance_v1";
+  if (qPeriod) {
+    // will be selected after periods load
+  }
+  nsInp.value = qNs;
+
+  initUser();
+  reloadAll().catch(e => { console.error(e); alert(e.message); });
+})();
+</script>
+</body>
+</html>
