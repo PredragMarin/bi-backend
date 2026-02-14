@@ -585,6 +585,29 @@ if (Number(rec.tipizhod) === 9) {
   continue;
 }
  // kraj dodano 07/02-----
+   // -----------------------------
+  // WORK ON HOLIDAY / SUNDAY: tipizhod=7 (05 Blagdan Rad)
+  // Policy:
+  //  - puni 150% bucket: work_on_holiday_150_minutes + pay_005_work_on_holiday_minutes
+  //  - NE ulazi u disciplinu (lateness/early leave debt)
+  //  - NE ulazi u workday overtime signal (after/early overtime)
+  //  - i dalje ostaje vidljiv kao presence (kroz on-site bucket ispod)
+  // -----------------------------
+  const isHolidayWork150 = (Number(rec.tipizhod) === 7);
+
+  if (isHolidayWork150) {
+    const raw = Number(rec.duration_minutes_raw);
+    const paidMin = (Number.isFinite(raw) && raw > 0) ? raw : 0;
+
+    d.work_on_holiday_150_minutes = (d.work_on_holiday_150_minutes || 0) + paidMin;
+    d.pay_005_work_on_holiday_minutes = (d.pay_005_work_on_holiday_minutes || 0) + paidMin;
+
+    // audit/meta
+    d.is_paid_non_work_attendance = true;
+    d.attendance_origin = d.attendance_origin || "auto";
+    d.attendance_reason = "WORK_ON_HOLIDAY_150";
+  }
+
   // WFH / ON-SITE minute buckets (with simple overlap guard)
   // -----------------------------
   const tvLocal = parseDateTimeDMYHM(rec.timevhod_raw);
@@ -619,17 +642,23 @@ if (Number(rec.tipizhod) === 9) {
       startMsForPay = Math.max(effStartMs, tv.getTime() + BIG_LATE_PLUS_MIN * 60000);
     }
   }
+// izmjena 14/02 
+ if (startMsForPay < endMs) {
+  const addMin = Math.floor((endMs - startMsForPay) / 60000);
+  d.presence_on_site_minutes_raw = (d.presence_on_site_minutes_raw || 0) + addMin;
 
-  if (startMsForPay < endMs) {
-    const addMin = Math.floor((endMs - startMsForPay) / 60000);
-    d.presence_on_site_minutes_raw = (d.presence_on_site_minutes_raw || 0) + addMin;
-  } else {
-    d.needs_review = true;
+  // tipizhod=7 => Rad na blagdan/nedjelju (premium 150%) ide u 005 bez obzira na kalendar
+  if (Number(rec.tipizhod) === 7) {
+    d.work_on_holiday_150_minutes = (d.work_on_holiday_150_minutes || 0) + addMin;
   }
+
 } else {
   d.needs_review = true;
 }
-
+} else {
+  d.needs_review = true;
+}
+//kraj izmjena 14/02
       d._last_end_wfh = Math.max(lastEnd || 0, endMs);
 
       // WFH nije prisutnost na lokaciji (PT) i nema lateness/overtime policy
@@ -678,8 +707,8 @@ if (Number(rec.tipizhod) === 9) {
   }
   // ---- totals from non-duplicate only ----
   d.total_presence_minutes_raw += (rec.duration_minutes_raw || 0);
-
-if (!rec.is_wfh && !rec.is_split_shift) {
+// zamjenjeno 14/02
+if (!rec.is_wfh && !rec.is_split_shift && Number(rec.tipizhod) !== 7) {
   d.total_late_minutes_raw += (rec.late_minutes_raw || 0);
   d.total_late_minutes_normalized += (rec.late_minutes_normalized || 0);
 
@@ -690,8 +719,11 @@ if (!rec.is_wfh && !rec.is_split_shift) {
     ((rec.late_minutes_normalized || 0) + (rec.early_leave_minutes_raw || 0)) * LATE_DEBT_MULTIPLIER;
 }
 
+ // kraj zamjenjeno 14/02
+
   // ---- overtime components (non-duplicate only, workday only) ----
-  if (d.is_workday && rec.timeizhod_raw && !rec.is_wfh && !rec.is_split_shift) {
+   if (d.is_workday && rec.timeizhod_raw && !rec.is_wfh && !rec.is_split_shift && Number(rec.tipizhod) !== 7) {
+
 
     const tvLocal = parseDateTimeDMYHM(rec.timevhod_raw);
     const tiLocal = parseDateTimeDMYHM(rec.timeizhod_raw);
@@ -1129,7 +1161,7 @@ if (d.day_type === "WORKDAY") {
   // ===== FIX TDZ: period_summary must exist BEFORE monthly reconcile & recap =====
 const period_summary = Array.from(periodMap.values())
   .sort((a, b) => a.osebid - b.osebid);
-// --- MONTHLY RECONCILE 08/02 (v3: allow reclass 150% -> 100% to fill fund; buckets remain disjoint) ---
+// --- MONTHLY RECONCILE 14/02(v4: 005 always stays 150%; no reclass into 001; debt hits only 002) ---
 for (const p of period_summary) {
   // 1) FUND = payable days * 480
   const payableDays = Math.max(0, Number(p.payable_days_count || 0));
@@ -1140,7 +1172,7 @@ for (const p of period_summary) {
   const rawWfh    = Math.max(0, Number(p.raw_wfh_minutes_sum || 0));
   const rawWorkday = rawOnSite + rawWfh;
 
-  // 3) Non-work paid buckets that fill the fund (100% or other tariff, but they occupy time fund)
+  // 3) Non-work paid buckets that fill the fund
   const nonworkPaid =
     Number(p.pay_003_holiday_minutes || 0) +
     Number(p.pay_006_collective_leave_minutes || 0) +
@@ -1154,79 +1186,45 @@ for (const p of period_summary) {
   const regularCapWorkday = Math.max(0, fund - nonworkPaid);
 
   // 5) pay_001 from RAW WORKDAY minutes (split: on-site then WFH)
-  const regTotal0 = Math.min(rawWorkday, regularCapWorkday);
-  const regOnSite0 = Math.min(rawOnSite, regTotal0);
-  const regWfh0    = Math.min(rawWfh, Math.max(0, regTotal0 - regOnSite0));
+  const regTotal = Math.min(rawWorkday, regularCapWorkday);
+  const regOnSite = Math.min(rawOnSite, regTotal);
+  const regWfh    = Math.min(rawWfh, Math.max(0, regTotal - regOnSite));
 
-  p.pay_001_regular_on_site_minutes = regOnSite0;
-  p.pay_001_wfh_minutes = regWfh0;
+  p.pay_001_regular_on_site_minutes = regOnSite;
+  p.pay_001_wfh_minutes = regWfh;
 
-  // 6) Shortage to fill the fund after base 100% buckets
-  const base100BeforeMove =
+  // 6) WORKDAY excess beyond regularCapWorkday is 150% candidate (pay_002), then debt coverage
+  const workdayExcess = Math.max(0, rawWorkday - regularCapWorkday);
+  const debt = Math.max(0, Number(p.total_late_debt_minutes || 0));
+
+  // Debt reduces ONLY pay_002. 005 stays intact.
+  p.pay_002_overtime_minutes = Math.max(0, workdayExcess - debt);
+  p.uncovered_debt_minutes = Math.max(0, debt - workdayExcess);
+
+  // 7) Totals / audit
+  const pay005 = Math.max(0, Number(p.pay_005_work_on_holiday_minutes || 0));
+  const pay002 = Math.max(0, Number(p.pay_002_overtime_minutes || 0));
+
+  p.overtime_payable_150_minutes = pay005 + pay002;
+
+  p.expected_paid_minutes = fund;
+
+  // "Base" paid minutes that fill fund (does NOT include 005)
+  p.total_paid_minutes_base =
     Number(p.pay_001_regular_on_site_minutes || 0) +
     Number(p.pay_001_wfh_minutes || 0) +
     nonworkPaid;
 
-  let shortage = Math.max(0, fund - base100BeforeMove);
-
-  // 7) Holiday/Non-work work (150%) — allow reclass part of it into 100% to fill shortage
-  const holidayWorkRaw = Math.max(0, Number(p.pay_005_work_on_holiday_minutes || 0));
-  const move150to100 = Math.min(shortage, holidayWorkRaw);
-
-  // We add moved minutes into pay_001 (treat as on-site regular by default)
-  // (If you want to split moved into WFH sometimes, you'll need a new raw bucket for holiday-wfh)
-  if (move150to100 > 0) {
-    p.pay_001_regular_on_site_minutes = Number(p.pay_001_regular_on_site_minutes || 0) + move150to100;
-    shortage = Math.max(0, shortage - move150to100);
-  }
-
-  // Remaining holiday work stays in pay_005 (150%)
-  p.pay_005_work_on_holiday_minutes = Math.max(0, holidayWorkRaw - move150to100);
-
-   // 8) WORKDAY excess beyond regularCapWorkday is 150% candidate (pay_002), then debt coverage
-  const workdayExcess = Math.max(0, rawWorkday - regularCapWorkday);
-  const debt = Math.max(0, Number(p.total_late_debt_minutes || 0));
-
-  // v3 FIX: debt reduces 150% buckets in order: 002 then 005
-  // - pay_002 starts from WORKDAY excess
-  // - pay_005 is remaining holiday work after possible move150to100
-  let pay002 = Math.max(0, workdayExcess);
-  let pay005 = Math.max(0, Number(p.pay_005_work_on_holiday_minutes || 0));
-
-  // First, debt eats pay002
-  const debtTo002 = Math.min(debt, pay002);
-  pay002 -= debtTo002;
-
-  // Then remaining debt eats pay005
-  const remDebt = Math.max(0, debt - debtTo002);
-  const debtTo005 = Math.min(remDebt, pay005);
-  pay005 -= debtTo005;
-
-  // Write back
-  p.pay_002_overtime_minutes = pay002;
-  p.pay_005_work_on_holiday_minutes = pay005;
-
-  // 9) Informative totals / audit fields (debug)
-  p.overtime_payable_150_minutes = pay002 + pay005;
-  p.uncovered_debt_minutes = Math.max(0, remDebt - debtTo005);
-
-  p.expected_paid_minutes = fund;
-  p.total_paid_minutes_base =
-    Number(p.pay_001_regular_on_site_minutes || 0) +
-    Number(p.pay_001_wfh_minutes || 0) +
-    nonworkPaid +
-    Number(p.pay_005_work_on_holiday_minutes || 0); // still "hours counted", tariff differs
-
   p.paid_excess_minutes = Math.max(0, p.total_paid_minutes_base - fund);
   p.paid_shortage_minutes = Math.max(0, fund - p.total_paid_minutes_base);
 
-  // NEW: audit how much was reclassified
-  p.reclass_150_to_100_minutes = move150to100;
+  // No reclass in v4
+  p.reclass_150_to_100_minutes = 0;
 
-   p.overtime_policy =
-    "MONTHLY v3: fund=payable*480; pay001<=fund-nonwork; allow move(min(shortage,pay005raw)) 005->001; debt reduces 150% in order: 002 then 005";
+  p.overtime_policy =
+    "MONTHLY v4: fund=payable*480; pay001<=fund-nonwork; pay005 always premium 150%; pay002=max(workdayExcess-debt,0); debt hits only 002";
 }
-// kraj 08/02
+// kraj 14/02
 // run_facts + recap_lines (v1.0.1)  — AFTER period_summary exists
 const recap_lines = buildRecapLines({
   run_facts,
@@ -1239,9 +1237,7 @@ const recap_lines = buildRecapLines({
 });
 // ===== END FIX TDZ =====
   // zamjena 08/02 kraj  bloka 
- 
-  
-  const needs_action_count = daily_summary_out.filter(d => d.needs_action).length;
+   const needs_action_count = daily_summary_out.filter(d => d.needs_action).length;
 
 // helper: stable add + stable join
 function addReason(set, code) {
