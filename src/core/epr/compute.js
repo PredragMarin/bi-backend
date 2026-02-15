@@ -415,6 +415,9 @@ function makeDailyRow({ osebid, isoDate, cal, origin = "auto" }) {
     attendance_origin: origin,
     attendance_reason: "NONE",
     is_paid_non_work_attendance: false,
+    // NEW 14/02 dva reda: suppress calendar auto-pay (holiday/collective leave) when an excused absence exists (e.g., tipizhod=8)
+    suppress_calendar_paid: false,
+    suppress_premium_150: false,
 
     // payroll buckets
     day_type: "UNKNOWN",
@@ -584,8 +587,54 @@ if (Number(rec.tipizhod) === 9) {
   // NE računati u on-site/WFH minute, NE računati lateness/early leave/overtime:
   continue;
 }
- // kraj dodano 07/02-----
+// -----------------------------
+// APPROVED LEAVE 14/02: tipizhod=4 (Godišnji odmor)
+// Konvencija: voditelj upisuje 07:30–15:30; tretira se kao 8h plaćeno (006_Godisnji_Odmor),
+// ne ulazi u pay_001 i ne ulazi u disciplinu/overtime.
+// -----------------------------
+if (Number(rec.tipizhod) === 4) {
+  const raw = Number(rec.duration_minutes_raw);
+  const paidMin = (Number.isFinite(raw) && raw > 0)
+    ? Math.min(MINUTES_PER_WORKDAY, raw)
+    : MINUTES_PER_WORKDAY;
+
+  d.paid_collective_leave_100_minutes = (d.paid_collective_leave_100_minutes || 0) + paidMin;
+  d.pay_006_collective_leave_minutes  = (d.pay_006_collective_leave_minutes  || 0) + paidMin;
+
+  d.is_paid_non_work_attendance = true;
+  d.attendance_origin = "manual_standardized";
+  d.attendance_reason = "APPROVED_LEAVE";
+
+  // NE računati u on-site/WFH minute, NE računati lateness/early leave/overtime:
+  continue;
+}
+ // kraj dodano 14/02-----
    // -----------------------------
+  // EXCUSED ABSENCE 14/02: tipizhod=8 (Porodiljni/Očinski) -> tretirati kao 050_BO_HZZO_100
+  // Policy: suspendira holiday/CL auto-pay i ne ulazi u disciplinu/overtime/premium.
+  // -----------------------------
+  if (Number(rec.tipizhod) === 8) {
+    const raw = Number(rec.duration_minutes_raw);
+    const paidMin = (Number.isFinite(raw) && raw > 0)
+      ? Math.min(MINUTES_PER_WORKDAY, raw)
+      : MINUTES_PER_WORKDAY;
+
+    // Mapiramo u 050 (po vašoj odluci)
+    d.paid_sick_hzzo_100_minutes = (d.paid_sick_hzzo_100_minutes || 0) + paidMin;
+    d.pay_050_bo_hzzo_100_minutes = (d.pay_050_bo_hzzo_100_minutes || 0) + paidMin;
+
+    d.is_paid_non_work_attendance = true;
+    d.attendance_origin = d.attendance_origin || "manual_standardized";
+    d.attendance_reason = "PARENTAL_LEAVE_HZZO_100";
+
+    // KLJUČNO: blokiraj calendar auto-480 (003/006) i blokiraj premium 150% na neradne dane
+    d.suppress_calendar_paid = true;
+    d.suppress_premium_150 = true;
+
+    // NE računati u on-site/WFH minute, NE računati lateness/early leave/overtime:
+    continue;
+  }
+  // kraj EXCUSED ABSENCE 14/02
   // WORK ON HOLIDAY / SUNDAY: tipizhod=7 (05 Blagdan Rad)
   // Policy:
   //  - puni 150% bucket: work_on_holiday_150_minutes + pay_005_work_on_holiday_minutes
@@ -749,34 +798,44 @@ if (!rec.is_wfh && !rec.is_split_shift && Number(rec.tipizhod) !== 7) {
   }
 }
 
-// Derived per day - 07/02/2026 RAW buckets only (NO payroll allocation here)
+// zamjenjeno 14/02 Derived per day - RAW buckets (NO payroll allocation here)
 for (const d of dailyMap.values()) {
-  // ON-SITE: imamo dva izvora:
+  // ON-SITE:
   // - RAW (audit): stvarni interval tv->ti
-  // - EFFECTIVE (payroll basis za WORKDAY): normalized start -> ti
+  // - EFFECTIVE: normalized start -> ti  (ALI još uvijek uključuje after-shift)
   const onSiteRaw = Math.max(0, Number(d.presence_on_site_minutes_raw || 0));
   const onSiteEff = Math.max(0, Number(d.presence_on_site_minutes_effective || 0));
 
-  // WFH trenutno je RAW (nema normalizacije dolaska u vašim pravilima)
-  const wfh = Math.max(0, Number(d.work_from_home_minutes || 0));
+  // WFH je RAW (nema normalizacije dolaska u vašim pravilima)
+  const wfhRaw = Math.max(0, Number(d.work_from_home_minutes || 0));
+
+  // Outside signal (za mjesečni settlement / audit)
+  const after = Math.max(0, Number(d.after_shift_minutes || 0));
+  const early = Math.max(0, Number(d.early_overtime_minutes || 0));
+  const outside = after + early;
+
+  // CRITICAL FIX:
+  // onSiteEff uključuje after-shift jer ide do stvarnog timeizhod.
+  // Za "fund fill" (001) želimo INSIDE shift minute => oduzmi AFTER.
+  const onSiteInsideWorkday = Math.max(0, onSiteEff - after);
 
   // MONTHLY reconcile input:
-  // - WORKDAY: koristimo EFFECTIVE da minute prije 07:30 ne ulaze u višak
-  // - NON_WORKDAY: koristimo RAW (svaki rad je 150%)
-  d.raw_on_site_minutes = d.is_workday ? onSiteEff : onSiteRaw;
-  d.raw_wfh_minutes = wfh;
+  // - WORKDAY: koristimo INSIDE (normalized start -> min(ti, 15:30)) => onSiteEff - after
+  // - NON_WORKDAY: koristimo RAW (svaki rad je 150% / pay_005)
+  d.raw_on_site_minutes = d.is_workday ? onSiteInsideWorkday : onSiteRaw;
+  d.raw_wfh_minutes = wfhRaw;
 
-  // Informativno (nije payroll istina): daily KPI cap 480
-  const workdayEff = Math.min(MINUTES_PER_WORKDAY, (d.raw_on_site_minutes || 0) + (d.raw_wfh_minutes || 0));
-  d.total_work_minutes = workdayEff;
+  // (preporučeno) audit polje da u konzoli vidiš koliko je outside
+  d.raw_outside_minutes = outside;
 
-  // Informativno: overtime signal (after shift + early eligible) — payroll overtime se računa mjesečno
-  d.overtime_work_minutes = Math.max(
-    0,
-    Number(d.after_shift_minutes || 0) + Number(d.early_overtime_minutes || 0)
-  );
+  // Informativno (nije payroll istina): daily KPI cap 480 iz INSIDE minuta
+  const insideTotal = (d.raw_on_site_minutes || 0) + (d.raw_wfh_minutes || 0);
+  d.total_work_minutes = Math.min(MINUTES_PER_WORKDAY, insideTotal);
+
+  // Informativno: overtime signal (outside only)
+  d.overtime_work_minutes = Math.max(0, outside);
 }
-
+// kraj zamjenjeno 14/02
 // sanity
 for (const d of dailyMap.values()) {
   if (!Number.isFinite(d.total_presence_minutes_raw)) throw new Error("NaN presence");
@@ -884,7 +943,7 @@ d.needs_action                      = Boolean(d.needs_action ?? false);
   //  const isWeekday = isWeekdayISO(d.work_date);
 
   // HOLIDAY: plaća se 8h samo ako je pon–pet (bez obzira na dandelovni)
-  if (mode !== "SLIM" && isHoliday && isWeekday) {
+  if (mode !== "SLIM" && isHoliday && isWeekday && !d.suppress_calendar_paid) {
     d.paid_holiday_100_minutes = 480;
     d.pay_003_holiday_minutes = 480;
     d.is_paid_non_work_attendance = true;
@@ -896,18 +955,23 @@ d.needs_action                      = Boolean(d.needs_action ?? false);
   }
 
   // COLLECTIVE LEAVE: u praksi je samo pon–pet, ali guard je isti
- if (mode !== "SLIM" && isCollectiveLeave && isWeekday) {
+   if (mode !== "SLIM" && isCollectiveLeave && isWeekday && !d.suppress_calendar_paid) {
+
     d.paid_collective_leave_100_minutes = 480;
     d.pay_006_collective_leave_minutes = 480;
     d.is_paid_non_work_attendance = true;
     d.attendance_origin = d.attendance_origin || "calendar_auto";
     d.attendance_reason = "COLLECTIVE_LEAVE_100";
   } else {
+    // FIX 14/02: ne smijemo pregaziti ručno upisani GO (tipizhod=4) koji koristi payroll kod 006.
+  // Nulu postavljamo samo ako ovaj dan NIJE već “paid non-work attendance” iz interval-loopa.
+  if (!d.is_paid_non_work_attendance) {
     d.paid_collective_leave_100_minutes = 0;
     d.pay_006_collective_leave_minutes = 0;
   }
+}
   // 07/02/2026 Sprijeci da NON_WORKDAY/WFH ulazi u regular fond
-  if (!isWorkday && hasIntervals) {
+  if (!isWorkday && hasIntervals && !d.suppress_premium_150) {
   const workRaw = Math.max(0, (d.raw_on_site_minutes || 0) + (d.raw_wfh_minutes || 0));
 
   d.overtime_150_minutes += workRaw;
@@ -927,7 +991,6 @@ d.pay_005_work_on_holiday_minutes = Math.max(0, d.work_on_holiday_150_minutes ||
     d.daily_notes = d.daily_notes || "Radni dan bez evidencije – potrebna odluka voditelja";
   }
 }
-/////////////////////////////********++++++++/
 // --- PATCH: drop NON_WORKDAY rows with no activity (keep exceptions) ---
 const daily_summary_out = daily_summary.filter(d => {
  
@@ -1044,6 +1107,10 @@ for (const d of daily_summary_out) {
       payable_days_count: 0,
       raw_on_site_minutes_sum: 0,
       raw_wfh_minutes_sum: 0,
+      // --- WORKDAY overtime signal dodane ove dvije linije 14/02 (early+after) for monthly settlement ---
+      workday_overtime_signal_minutes_sum: 0,
+      debt_covered_by_overtime_minutes: 0,
+
             // if debt > credit (računa se kasnije)
       // ---- PAYROLL TOTALS (minute) ----
       pay_001_regular_on_site_minutes: 0,
@@ -1094,18 +1161,34 @@ for (const d of daily_summary_out) {
 // billable day = WORKDAY (nije HOLIDAY niti COLLECTIVE_LEAVE)
 if (d.day_type === "WORKDAY") p.billable_days_count += 1;
 
-// NEW: payable day = WORKDAY + HOLIDAY_100 + COLLECTIVE_LEAVE_100 (svaki vrijedi 1 dan)
-if (d.day_type === "WORKDAY") p.payable_days_count += 1;
-if ((d.pay_003_holiday_minutes || 0) > 0) p.payable_days_count += 1;
-if ((d.pay_006_collective_leave_minutes || 0) > 0) p.payable_days_count += 1;
+// PAYABLE DAYS (FIX) 14/02: 1 datum = 1 payable day ako postoji bilo koji plaćeni bucket.
+// Time se sprječava double-count WORKDAY + GO(006) na istom danu, i pokriva tipizhod=8 (pay050)
+// kad se kalendar suspendira.
+const isPayableDay =
+  (d.day_type === "WORKDAY") ||
+  ((d.pay_003_holiday_minutes || 0) > 0) ||
+  ((d.pay_006_collective_leave_minutes || 0) > 0) ||
+  ((d.pay_040_bo_70_minutes || 0) > 0) ||
+  ((d.pay_040_bo_hzzo_70_minutes || 0) > 0) ||
+  ((d.pay_050_bo_hzzo_100_minutes || 0) > 0) ||
+  ((d.pay_050_ozljeda_hzzo_100_minutes || 0) > 0) ||
+  ((d.pay_056_komp_trudnoca_minutes || 0) > 0);
 
+if (isPayableDay) p.payable_days_count += 1;
+// kraj PAYABLE DAYS (FIX) 14/02
 // 07/02 monthly raw facts (WORKDAY only) — critical: prevent pay_005 work from leaking into WORKDAY excess
 if (d.day_type === "WORKDAY") {
   p.raw_on_site_minutes_sum += Math.max(0, d.raw_on_site_minutes || 0);
   p.raw_wfh_minutes_sum     += Math.max(0, d.raw_wfh_minutes || 0);
 }
-
   // kraj 07/02 monthly raw facts  
+  // NEW 14/02: monthly settlement signal = work outside 07:30–15:30 on WORKDAY (make-up minutes)
+  if (d.day_type === "WORKDAY") {
+   const sig = Math.max(0, Number(d.early_overtime_minutes || 0)) +
+              Math.max(0, Number(d.after_shift_minutes || 0));
+   p.workday_overtime_signal_minutes_sum += sig;
+  }
+  // kraj NEW 14/02
   p.total_presence_minutes_raw += (d.total_presence_minutes_raw || 0);
 
   p.total_work_minutes += d.total_work_minutes;
@@ -1161,18 +1244,18 @@ if (d.day_type === "WORKDAY") {
   // ===== FIX TDZ: period_summary must exist BEFORE monthly reconcile & recap =====
 const period_summary = Array.from(periodMap.values())
   .sort((a, b) => a.osebid - b.osebid);
-// --- MONTHLY RECONCILE 14/02(v4: 005 always stays 150%; no reclass into 001; debt hits only 002) ---
-for (const p of period_summary) {
+  //zamjenjeno 14/02 MONTHLY RECONCILE blok (v5 settlement)
+ for (const p of period_summary) {
   // 1) FUND = payable days * 480
   const payableDays = Math.max(0, Number(p.payable_days_count || 0));
   const fund = payableDays * MINUTES_PER_WORKDAY;
 
-  // 2) RAW WORKDAY minutes (only work performed on WORKDAY)
+  // 2) WORKDAY inside-shift minutes (effective) — WORKDAY only
   const rawOnSite = Math.max(0, Number(p.raw_on_site_minutes_sum || 0));
   const rawWfh    = Math.max(0, Number(p.raw_wfh_minutes_sum || 0));
-  const rawWorkday = rawOnSite + rawWfh;
+  const insideWorkday = rawOnSite + rawWfh; // <-- NE dirati s outside signalom
 
-  // 3) Non-work paid buckets that fill the fund
+  // 3) Non-work paid buckets (occupy fund time)
   const nonworkPaid =
     Number(p.pay_003_holiday_minutes || 0) +
     Number(p.pay_006_collective_leave_minutes || 0) +
@@ -1182,49 +1265,59 @@ for (const p of period_summary) {
     Number(p.pay_050_ozljeda_hzzo_100_minutes || 0) +
     Number(p.pay_056_komp_trudnoca_minutes || 0);
 
-  // 4) Regular cap for WORKDAY work (pay_001) = fund - nonworkPaid
+  // 4) Regular cap for WORKDAY pay_001
   const regularCapWorkday = Math.max(0, fund - nonworkPaid);
 
-  // 5) pay_001 from RAW WORKDAY minutes (split: on-site then WFH)
-  const regTotal = Math.min(rawWorkday, regularCapWorkday);
-  const regOnSite = Math.min(rawOnSite, regTotal);
-  const regWfh    = Math.min(rawWfh, Math.max(0, regTotal - regOnSite));
+  // 5) Outside work signal (early+after) on WORKDAY — used for make-up minute-for-minute
+  const outsideWorkday = Math.max(0, Number(p.total_overtime_work_minutes || 0));
 
-  p.pay_001_regular_on_site_minutes = regOnSite;
-  p.pay_001_wfh_minutes = regWfh;
+  // 6) Total WORKDAY minutes that can fill the cap (inside + outside)
+  const totalWorkday = insideWorkday + outsideWorkday;
 
-  // 6) WORKDAY excess beyond regularCapWorkday is 150% candidate (pay_002), then debt coverage
-  const workdayExcess = Math.max(0, rawWorkday - regularCapWorkday);
+  // 7) pay_001 total = min(totalWorkday, regularCapWorkday)
+  const regTotal = Math.min(totalWorkday, regularCapWorkday);
+
+  // Split pay_001: prvo inside (on-site pa WFH), ostatak (ako fali) iz outside ide u on-site
+  const regOnSiteInside = Math.min(rawOnSite, Math.min(insideWorkday, regTotal));
+  const regWfhInside    = Math.min(rawWfh, Math.max(0, Math.min(insideWorkday, regTotal) - regOnSiteInside));
+  const regRemainder    = Math.max(0, regTotal - regOnSiteInside - regWfhInside); // make-up from outside
+
+  p.pay_001_regular_on_site_minutes = regOnSiteInside + regRemainder;
+  p.pay_001_wfh_minutes = regWfhInside;
+
+  // 8) pay_005 always premium 150% (never reclass, never reduced by debt)
+  p.pay_005_work_on_holiday_minutes = Math.max(0, Number(p.pay_005_work_on_holiday_minutes || 0));
+
+  // 9) True overtime on WORKDAY = excess beyond regular cap (after fund fill)
+  const workdayExcessGross = Math.max(0, totalWorkday - regularCapWorkday);
+
+  // 10) Debt reduces ONLY pay_002 (not pay_005)
   const debt = Math.max(0, Number(p.total_late_debt_minutes || 0));
+  p.pay_002_overtime_minutes = Math.max(0, workdayExcessGross - debt);
 
-  // Debt reduces ONLY pay_002. 005 stays intact.
-  p.pay_002_overtime_minutes = Math.max(0, workdayExcess - debt);
-  p.uncovered_debt_minutes = Math.max(0, debt - workdayExcess);
+  // Audit
+  p.debt_covered_by_overtime_minutes = Math.min(debt, workdayExcessGross);
+  p.uncovered_debt_minutes = Math.max(0, debt - workdayExcessGross);
 
-  // 7) Totals / audit
-  const pay005 = Math.max(0, Number(p.pay_005_work_on_holiday_minutes || 0));
-  const pay002 = Math.max(0, Number(p.pay_002_overtime_minutes || 0));
-
-  p.overtime_payable_150_minutes = pay005 + pay002;
+  // Totals / audit fields
+  p.overtime_payable_150_minutes =
+    Number(p.pay_002_overtime_minutes || 0) + Number(p.pay_005_work_on_holiday_minutes || 0);
 
   p.expected_paid_minutes = fund;
-
-  // "Base" paid minutes that fill fund (does NOT include 005)
   p.total_paid_minutes_base =
     Number(p.pay_001_regular_on_site_minutes || 0) +
     Number(p.pay_001_wfh_minutes || 0) +
-    nonworkPaid;
+    nonworkPaid +
+    Number(p.pay_005_work_on_holiday_minutes || 0);
 
   p.paid_excess_minutes = Math.max(0, p.total_paid_minutes_base - fund);
   p.paid_shortage_minutes = Math.max(0, fund - p.total_paid_minutes_base);
 
-  // No reclass in v4
-  p.reclass_150_to_100_minutes = 0;
-
   p.overtime_policy =
-    "MONTHLY v4: fund=payable*480; pay001<=fund-nonwork; pay005 always premium 150%; pay002=max(workdayExcess-debt,0); debt hits only 002";
+    "MONTHLY v5.1: fund=payable*480; pay001=min(inside+outside, fund-nonwork); pay002=max((inside+outside)-(fund-nonwork)-debt,0); pay005 always premium";
 }
-// kraj 14/02
+
+//  kraj zamjenjeno 14/02
 // run_facts + recap_lines (v1.0.1)  — AFTER period_summary exists
 const recap_lines = buildRecapLines({
   run_facts,
