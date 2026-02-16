@@ -19,8 +19,8 @@ const EARLY_OVERTIME_DEDUCT_MIN = 5;     // oduzimanje (friction) kad early prel
 const RFID_IPS = new Set(["192.168.100.77", "192.168.100.41"]);
 
 // tipizhod katalog (ERP): UVEDENO 03/02/2026
-// 0=01 Redovan rad, 3=40 Bolovanje, 4=06 Godisnji odmor, 5=03 Blagdan, 6=01 Rad od kuce, 7=05 Blagdan Rad, 8=56 Porodiljni, 9=50 Bolovanje HZZO ,90=90 Pogresno skeniranje
-const ALLOWED_TIPIZHOD = new Set([0, 3, 4, 5, 6, 7, 8, 9, 90]);
+// 0=01 Redovan rad, 3=40 Bolovanje, 4=06 Godisnji odmor, 5=03 Blagdan, 6=01 Rad od kuce,66=01 Teren/Sluzbeni izlaz, 7=05 Blagdan Rad, 8=56 Porodiljni, 9=50 Bolovanje HZZO ,90=90 Pogresno skeniranje
+const ALLOWED_TIPIZHOD = new Set([0, 3, 4, 5, 6, 7, 8, 9, 66, 90]);
 
 const ALLOWED_TIPVHOD  = new Set([0, 1]); // 0=default, 1=split shift
 
@@ -406,6 +406,11 @@ function makeDailyRow({ osebid, isoDate, cal, origin = "auto" }) {
     overtime_work_minutes: 0,
 
     interval_count: 0,
+    // --- FIELD WORK (tipizhod=66) 15/02 flags (vC) ---
+    has_field_work_day: false,          // postoji tipizhod=66 u danu
+    non_field_interval_count: 0,        // broj drugih intervala (osim 66, 90, open)
+    discipline_override_day: false,     // computed kasnije
+
     has_kasnjenje_raniji_izlaz: false,
     needs_review: false,
 
@@ -533,18 +538,41 @@ for (const rec of interval_results) {
   }
 
   if (rec.flags?.kasnjenje_raniji_izlaz) d.has_kasnjenje_raniji_izlaz = true;
-
-  const isDup = rec.flags?.duplicate === true;
+  //zamjena bloka 15/02 
+    const isDup = rec.flags?.duplicate === true;
 
   // Payroll rule: duplicates do NOT count into totals
   if (isDup) continue;
-    // tipizhod=90 (pogrešno skeniranje): ignorirati u svim obračunima (minute, debt, overtime, PT)
+
+  // tipizhod=90 (pogrešno skeniranje): ignorirati u svim obračunima (minute, debt, overtime, PT)
   if (rec.is_ignored === true) {
-    // po želji: ako hoćete da se ipak vidi u UI da postoji "ignored scan",
-    // možete u daily_notes nešto upisati, ali bez needs_review.
+    // po želji: audit note bez needs_review
     // d.daily_notes = (d.daily_notes ? d.daily_notes + " | " : "") + "Ignored scan (tipizhod=90)";
     continue;
   }
+
+  // vC: "non-field" interval = bilo koji zatvoreni interval koji NIJE 66 i NIJE 90
+  // i nije open (open ionako ne ulazi u minute, ali ovdje ga eksplicitno preskačemo)
+  if (Number(rec.tipizhod) !== 66 && Number(rec.tipizhod) !== 90 && !(rec.flags && rec.flags.open_interval)) {
+    d.non_field_interval_count = (d.non_field_interval_count || 0) + 1;
+  }
+
+  // -----------------------------
+  // -----------------------------
+// zamjene bloka 15/02 FIELD WORK / TEREN (tipizhod=66 OR tipvhod=66) — Option C
+// Policy:
+// - služi kao TAG za "discipline override" na razini dana (ako postoji i drugi normalni interval)
+// - NE smije presjeći minute-buckete (ne smije "continue"), jer on-site intervali moraju ući u payroll
+// -----------------------------
+const isFieldWork = (Number(rec.tipizhod) === 66 || Number(rec.tipvhod) === 66);
+
+if (isFieldWork) {
+  d.has_field_work_day = true;
+  // audit tag (opcionalno, ali korisno)
+  d.daily_notes = (d.daily_notes ? d.daily_notes + " | " : "") + "FIELD_WORK_TAG";
+  // NEMA continue;  -> mora proći dalje u on-site/WFH buckete
+}
+  // kraj zamjene bloka 15/02 
     // -----------------------------
   // EXCUSED ABSENCE: tipizhod=3 (Bolovanje)
   // Konvencija: voditelj upisuje 07:30–15:30; tretira se kao 8h plaćeno (040_BO_70),
@@ -757,7 +785,8 @@ if (Number(rec.tipizhod) === 4) {
   // ---- totals from non-duplicate only ----
   d.total_presence_minutes_raw += (rec.duration_minutes_raw || 0);
 // zamjenjeno 14/02
-if (!rec.is_wfh && !rec.is_split_shift && Number(rec.tipizhod) !== 7) {
+if (!rec.is_wfh && !rec.is_split_shift && Number(rec.tipizhod) !== 7 && !isFieldWork) {
+
   d.total_late_minutes_raw += (rec.late_minutes_raw || 0);
   d.total_late_minutes_normalized += (rec.late_minutes_normalized || 0);
 
@@ -771,8 +800,7 @@ if (!rec.is_wfh && !rec.is_split_shift && Number(rec.tipizhod) !== 7) {
  // kraj zamjenjeno 14/02
 
   // ---- overtime components (non-duplicate only, workday only) ----
-   if (d.is_workday && rec.timeizhod_raw && !rec.is_wfh && !rec.is_split_shift && Number(rec.tipizhod) !== 7) {
-
+  if (d.is_workday && rec.timeizhod_raw && !rec.is_wfh && !rec.is_split_shift && Number(rec.tipizhod) !== 7 && !isFieldWork) {
 
     const tvLocal = parseDateTimeDMYHM(rec.timevhod_raw);
     const tiLocal = parseDateTimeDMYHM(rec.timeizhod_raw);
@@ -834,6 +862,25 @@ for (const d of dailyMap.values()) {
 
   // Informativno: overtime signal (outside only)
   d.overtime_work_minutes = Math.max(0, outside);
+  // --- dodano 15/02 Option C: disciplinary override for FIELD WORK day (tipizhod=66) ---
+// Condition: day has field-work marker AND has at least one other interval that day.
+d.discipline_override_day = !!d.has_field_work_day && Number(d.non_field_interval_count || 0) > 0;
+
+if (d.discipline_override_day) {
+  // wipe disciplinary for the whole day (lateness/early/debt), but keep payroll minutes as computed
+  d.total_late_minutes_raw = 0;
+  d.total_late_minutes_normalized = 0;
+  d.total_early_leave_minutes_raw = 0;
+  d.total_early_leave_minutes_normalized = 0;
+
+  d.late_debt_minutes = 0;
+  d.has_kasnjenje_raniji_izlaz = false;
+  d.lateness_day = false;
+
+  // (optional) audit note
+  d.daily_notes = (d.daily_notes ? (d.daily_notes + " | ") : "") + "DISCIPLINE_OVERRIDE_FIELD_WORK";
+}
+// --- kraj dodano 15/02
 }
 // kraj zamjenjeno 14/02
 // sanity
@@ -935,8 +982,16 @@ d.needs_action                      = Boolean(d.needs_action ?? false);
 //////////////////////+
   // 1) is_present_on_site: ako ima intervale -> true
   // (kasnije možete razlikovati "RadOdKuce" kroz opomba/attendance_origin)
-  d.is_present_on_site = (d.presence_on_site_minutes_raw || 0) > 0;
+ // zamjenjeno 15/02 Canonical PT presence (per day, after all intervals processed):
+// Presence day is TRUE only if there are actual on-site minutes recorded.
+// Paid non-work (GO/bolovanje) and field work (66) do NOT count as presence by themselves.
+d.is_present_on_site = (Number(d.presence_on_site_minutes_raw || 0) > 0);
 
+// Defensive: excused paid non-work days must never be presence unless there are actual on-site minutes
+if (d.is_paid_non_work_attendance === true && Number(d.presence_on_site_minutes_raw || 0) <= 0) {
+  d.is_present_on_site = false;
+}
+// kraj zamjenjeno 15/02
   // 2) lateness_day: brojimo dane s kašnjenjem/ranijim izlazom (workday only)
   d.lateness_day = Boolean(isWorkday && d.has_kasnjenje_raniji_izlaz);
 
