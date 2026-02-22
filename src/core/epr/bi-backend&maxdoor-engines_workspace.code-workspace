@@ -7,5 +7,7 @@
 			"path": "../../../../projects/maxdoor-engines"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"liveServer.settings.multiRootWorkspaceName": "bi-backend"
+	}
 }
