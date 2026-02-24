@@ -3,6 +3,11 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const fsp = fs.promises;
+const { publishApprovedSmsOutbox } = require("../../core/sms_outbox_publisher");
+
+const DEFAULT_GATEWAY_OUTBOX_DIR =
+  process.env.BI_SMS_GATEWAY_OUTBOX || "C:\\Users\\Marin\\bi-backend\\out\\_comm\\gateway_outbox_fake";
+// Production path: "\\\\192.168.100.95\\SMS_Gateway\\outbox"
 
 // --- validation helpers ---
 function ensureSafePeriodFolder(period) {
@@ -254,6 +259,31 @@ module.exports = function createSmsApprovalsRouterV1({ outRoot }) {
     } catch (err) {
       console.error(err);
       res.status(400).json({ error: "SMS_APPROVAL_UPSERT_FAILED", message: err.message });
+    }
+  });
+
+  // POST /api/approvals/v1/sms/publish-outbox
+  router.post("/sms/publish-outbox", async (req, res) => {
+    try {
+      const periodFolder = ensureSafePeriodFolder(req.body?.period);
+      const namespace = ensureSafeNamespace(req.body?.namespace);
+
+      const result = publishApprovedSmsOutbox({
+        outRoot,
+        period: periodFolder,
+        namespace,
+        gatewayOutboxDir: DEFAULT_GATEWAY_OUTBOX_DIR,
+        contractOptions: {
+          source_system: process.env.BI_SMS_SOURCE_SYSTEM || "bi_core_shell",
+          source_env: process.env.BI_ENV || "prod",
+          schema_version: process.env.BI_SMS_SCHEMA_VERSION || "sms_outbox.v1"
+        }
+      });
+
+      res.json(result);
+    } catch (err) {
+      console.error(err);
+      res.status(400).json({ error: "SMS_OUTBOX_PUBLISH_FAILED", message: err.message });
     }
   });
 

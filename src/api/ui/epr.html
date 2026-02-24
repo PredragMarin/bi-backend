@@ -134,8 +134,14 @@ td { position: relative; }
         <button id="runBtn">Run</button>
       </div>
 
-      <button onclick="exportAndPublish()">Export & Publish</button>
-      <button id="openSmsBtn" type="button">SMS approvals</button>
+      <div>
+        <label>&nbsp;</label>
+        <button onclick="exportAndPublish()">Export & Publish</button>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button id="openSmsBtn" type="button">SMS approvals</button>
+      </div>
 
 
       <div style="flex: 1;">
@@ -677,7 +683,11 @@ td { position: relative; }
 
       const namespace = "epr_attendance_v1";
       const url = `/ui/sms.html?period=${encodeURIComponent(period)}&namespace=${encodeURIComponent(namespace)}`;
-      window.open(url, "_blank", "noopener");
+      const w = window.open(url, "_blank", "noopener");
+      if (!w) {
+        // Popup blocked: fallback to same tab navigation.
+        window.location.href = url;
+      }
     };
   }
 

@@ -96,7 +96,8 @@ function readNdjsonFileSafe(filePath) {
   return out;
 }
 
-// Returns last known event_type for given sms_key, searching rolling window.
+// Returns last known event_type for given logical key, searching rolling window.
+// Backward compatible: accepts sms_key and also checks tx_key in stored events.
 function getLastEventType({ use_case, sms_key, now_ts = new Date().toISOString(), monthsBack = 2 }) {
   if (!use_case || !sms_key) return null;
 
@@ -107,7 +108,7 @@ function getLastEventType({ use_case, sms_key, now_ts = new Date().toISOString()
     const file = path.join(DEFAULT_LEDGER_ROOT, use_case, m.yyyy, m.yyyymm, "events.ndjson");
     const events = readNdjsonFileSafe(file);
     for (const ev of events) {
-      if (ev && ev.sms_key === sms_key) last = ev.event_type || last;
+      if (ev && (ev.sms_key === sms_key || ev.tx_key === sms_key)) last = ev.event_type || last;
     }
   }
   return last;

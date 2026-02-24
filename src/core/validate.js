@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { parseDateDMY, parseDateTimeDMYHM } = require("./time");
+const E164_RE = /^\+[1-9]\d{7,14}$/;
 
 // -------------------- existing helpers --------------------
 function isInt(v) {
@@ -180,4 +181,28 @@ function transformDataset(type, rows) {
   };
 }
 
-module.exports = { validateDatasets, transformDataset };
+function normalizePhoneE164(input, { defaultCountry = "385" } = {}) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return null;
+
+  let s = raw.replace(/[\s\-()]/g, "");
+
+  if (s.startsWith("00")) s = `+${s.slice(2)}`;
+  if (s.startsWith("0")) s = `+${defaultCountry}${s.slice(1)}`;
+  if (!s.startsWith("+") && /^\d+$/.test(s)) s = `+${defaultCountry}${s}`;
+
+  if (!E164_RE.test(s)) return null;
+  return s;
+}
+
+function isPhoneE164(input) {
+  return E164_RE.test(String(input ?? "").trim());
+}
+
+module.exports = {
+  validateDatasets,
+  transformDataset,
+  normalizePhoneE164,
+  isPhoneE164,
+  E164_RE
+};

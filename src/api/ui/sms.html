@@ -33,6 +33,7 @@
     <input id="nsInp" placeholder="epr_attendance_v1" style="width:220px;" />
 
     <button class="btn" id="reloadBtn">Reload</button>
+    <button class="btn" id="publishBtn">Publish approved to Gateway</button>
 
     <div class="right muted" id="counts"></div>
   </div>
@@ -74,6 +75,7 @@
   const periodSel = $("periodSel");
   const nsInp = $("nsInp");
   const reloadBtn = $("reloadBtn");
+  const publishBtn = $("publishBtn");
 
   const bundleSel = $("bundleSel");
   const groupSel  = $("groupSel");
@@ -216,6 +218,9 @@
 
     renderList(filtered);
     counts.textContent = `rows: ${filtered.length} / ${allRows.length}`;
+    if (allRows.length === 0) {
+      counts.textContent += " (no sms_preview rows for selected period/namespace)";
+    }
   }
 
   function escapeHtml(s){
@@ -350,12 +355,56 @@
 
     // load data
     previewRows = await loadPreview(periodSel.value, ns);
+    // If selected period is empty, fall back to latest period with preview rows.
+    if ((!previewRows || previewRows.length === 0) && periods.length > 1) {
+      for (let i = periods.length - 1; i >= 0; i--) {
+        const p = periods[i];
+        if (p === periodSel.value) continue;
+        const testRows = await loadPreview(p, ns);
+        if (Array.isArray(testRows) && testRows.length > 0) {
+          periodSel.value = p;
+          previewRows = testRows;
+          setParam("period", periodSel.value);
+          break;
+        }
+      }
+    }
+
     const approvals = await loadApprovals(periodSel.value);
 
     allRows = mergeRows(previewRows, approvals);
 
     fillFilterOptions();
     applyFilters();
+  }
+
+  async function publishOutbox(){
+    const period = periodSel.value;
+    const ns = nsInp.value.trim();
+    if (!period) {
+      alert("Missing period.");
+      return;
+    }
+
+    publishBtn.disabled = true;
+    try {
+      const result = await apiPost("/api/approvals/v1/sms/publish-outbox", {
+        period,
+        namespace: ns || null
+      });
+
+      const dropped = Number(result?.dropped || 0);
+      const skipped = Number(result?.skipped || 0);
+      const already = Number(result?.already_published || 0);
+      const fileName = result?.file?.name || "(no file)";
+
+      alert(`Publish done. Dropped: ${dropped}, skipped: ${skipped}, already_published: ${already}, file: ${fileName}`);
+    } catch (e) {
+      console.error(e);
+      alert("Publish failed: " + e.message);
+    } finally {
+      publishBtn.disabled = false;
+    }
   }
 
   function initUser(){
@@ -377,6 +426,10 @@
 
   reloadBtn.addEventListener("click", ()=>{
     reloadAll().catch(e => { console.error(e); alert(e.message); });
+  });
+
+  publishBtn.addEventListener("click", ()=>{
+    publishOutbox().catch(e => { console.error(e); alert(e.message); });
   });
 
   [bundleSel, groupSel, sevSel, statSel, qInp].forEach(el => {
