@@ -14,6 +14,12 @@ function isIsoDateTime(v) {
   return Number.isFinite(d.getTime()) && /^\d{4}-\d{2}-\d{2}T/.test(s);
 }
 
+function toIsoNoMs(v) {
+  const d = v ? new Date(v) : new Date();
+  if (!Number.isFinite(d.getTime())) return "";
+  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 function inferUseCase(previewRow, fallbackUseCase = "") {
   const explicit = str(previewRow?.use_case);
   if (explicit) return explicit;
@@ -43,7 +49,7 @@ function validateOutboxRecord(record) {
   const required = [
     "tx_id",
     "tx_key",
-    "source_system",
+    "origin_id",
     "source_module",
     "source_env",
     "use_case",
@@ -85,7 +91,7 @@ function validateOutboxRecord(record) {
 }
 
 function buildOutboxRecord({ previewRow, approvalRow, options = {} }) {
-  const sourceSystem = str(options.source_system || "bi_core_shell");
+  const originId = str(options.origin_id || "bi_core_shell");
   const sourceEnv = str(options.source_env || process.env.BI_ENV || "prod");
   const schemaVersion = str(options.schema_version || "sms_outbox.v1");
   const recipientKind = str(options.recipient_kind || "employee");
@@ -94,7 +100,8 @@ function buildOutboxRecord({ previewRow, approvalRow, options = {} }) {
   const txKey = str(previewRow?.sms_key);
   const useCase = inferUseCase(previewRow, fallbackUseCase);
   const sourceModule = str(options.source_module || useCase);
-  const createdTs = str(approvalRow?.approved_at || new Date().toISOString());
+  const createdTs = toIsoNoMs(approvalRow?.approved_at || new Date());
+  const approvedAt = toIsoNoMs(approvalRow?.approved_at || createdTs);
 
   const normalizedPhone =
     typeof options.normalize_phone === "function"
@@ -104,7 +111,7 @@ function buildOutboxRecord({ previewRow, approvalRow, options = {} }) {
   const record = {
     tx_id: buildTxId(txKey, createdTs, str(options.tx_id_prefix || "TX-BI")),
     tx_key: txKey,
-    source_system: sourceSystem,
+    origin_id: originId,
     source_module: sourceModule,
     source_env: sourceEnv,
     use_case: useCase,
@@ -118,7 +125,7 @@ function buildOutboxRecord({ previewRow, approvalRow, options = {} }) {
       id: str(previewRow?.osebid || previewRow?.recipient_id || txKey)
     },
     approved_by: str(approvalRow?.approved_by),
-    approved_at: str(approvalRow?.approved_at),
+    approved_at: approvedAt,
     issue_keys: str(previewRow?.issue_keys),
     correlation_id: str(previewRow?.sms_key)
   };
@@ -135,6 +142,7 @@ module.exports = {
   E164_RE,
   buildTxId,
   inferUseCase,
+  toIsoNoMs,
   validateOutboxRecord,
   buildOutboxRecord,
   toNdjsonLine

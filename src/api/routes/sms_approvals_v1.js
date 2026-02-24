@@ -274,7 +274,7 @@ module.exports = function createSmsApprovalsRouterV1({ outRoot }) {
         namespace,
         gatewayOutboxDir: DEFAULT_GATEWAY_OUTBOX_DIR,
         contractOptions: {
-          source_system: process.env.BI_SMS_SOURCE_SYSTEM || "bi_core_shell",
+          origin_id: process.env.BI_SMS_ORIGIN_ID || process.env.BI_SMS_SOURCE_SYSTEM || "bi_core_shell",
           source_env: process.env.BI_ENV || "prod",
           schema_version: process.env.BI_SMS_SCHEMA_VERSION || "sms_outbox.v1"
         }
