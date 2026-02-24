@@ -11,9 +11,15 @@ body { font-family: Arial, sans-serif; margin: 8px; }
 label { font-size: 12px; color: #333; display: block; margin-bottom: 4px; }
 input, textarea, select, button { font-size: 14px; padding: 8px; }
 input[type="text"] { width: 240px; }
+input[type="date"] { width: 170px; }
+input[type="date"]::-webkit-calendar-picker-indicator {
+  transform: scale(3);
+  transform-origin: right center;
+  cursor: pointer;
+}
 
 /* kraći date inputi (from/to) */
-input.date { width: 140px; }
+input.date { width: 170px; cursor: pointer; }
 
 /* select uredno */
 select { min-width: 120px; }
@@ -94,11 +100,11 @@ td { position: relative; }
     <div class="row">
       <div>
         <label>Period from (YYYY-MM-DD)</label>
-        <input id="from" class="date" type="text" value="2026-01-01" />
+        <input id="from" class="date" type="date" value="2026-01-01" />
       </div>
       <div>
         <label>Period to (YYYY-MM-DD)</label>
-        <input id="to" class="date" type="text" value="2026-01-31" />
+        <input id="to" class="date" type="date" value="2026-01-31" />
       </div>
 
       <!-- NEW: Group view filter -->
@@ -248,6 +254,13 @@ td { position: relative; }
 
   function isISODate(s) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(s || "").trim());
+  }
+  function todayISO() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   }
 
   function setStatus(msg, ok = true) {
@@ -598,6 +611,15 @@ td { position: relative; }
       setError("from/to moraju biti YYYY-MM-DD");
       return;
     }
+    const today = todayISO();
+    if (from >= to) {
+      setError("Neispravan period: datum početka mora biti manji od datuma završetka.");
+      return;
+    }
+    if (from > today || to > today) {
+      setError(`Neispravan period: datumi ne smiju biti u budućnosti (max: ${today}).`);
+      return;
+    }
 
     const useDb = !!elModeDb.checked;
     const url = useDb ? "/api/epr/run-db" : "/api/epr/run";
@@ -742,6 +764,10 @@ td { position: relative; }
 
   // Init config + default view filter, then initial repaint
   (async () => {
+    const today = todayISO();
+    elFrom.max = today;
+    elTo.max = today;
+
     await initInstanceConfig();
 
     // Ensure dropdown value is reflected in selectedViewGroup even if config load failed

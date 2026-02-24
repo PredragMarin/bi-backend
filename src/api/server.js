@@ -88,7 +88,7 @@ app.post("/api/epr/run-db", async (req, res) => {
     const { epr_data, calendar, osebe_raw, meta } = await fetchEprDatasets({
       fromISO,
       toISO,
-      dsn: "Test_64"
+      dsn: (process.env.ERP_DSN || "ERP_POC_RO")
     });
 
    
@@ -177,7 +177,7 @@ app.get("/api/config", (req, res) => {
     server_time: new Date().toISOString(),
   });
 });
-// postvljeno zbog različitih korisnika koji će raditi na različitim grupama (INOX, MXD,ADM )
+// postavljeno zbog razlicitih korisnika koji ce raditi na razlicitim grupama (INOX, MXD, ADM)
 const PORT = 3000;
 const server = app.listen(PORT, () => {
   console.log(`EPR API listening on http://localhost:${PORT}`);
