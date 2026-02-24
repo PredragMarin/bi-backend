@@ -1,0 +1,12 @@
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '_poc/erp_gateway_smoke/query_allowlist.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/api/ui/epr.html', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/dev/db_fetch_epr.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/modules/eojn_v1/layer2_budget_scan.js', LF will be replaced by CRLF the next time Git touches it
+M	.gitignore
+M	_poc/erp_gateway_smoke/query_allowlist.js
+M	scripts/start_epr_server.cmd
+M	src/api/server.js
+M	src/api/ui/epr.html
+M	src/dev/db_fetch_epr.js
+M	src/modules/eojn_v1/layer2_budget_scan.js
