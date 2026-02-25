@@ -1,0 +1,19 @@
+﻿{
+  "remote": {
+    "url": "http://192.168.100.93:8080/heartbeat",
+    "sender_ip": "192.168.100.18",
+    "receiver_ip": "192.168.100.93",
+    "auth_token": ""
+  },
+  "agent": {
+    "agent_version": "1.0.0",
+    "heartbeat_interval_sec": 5,
+    "request_timeout_ms": 1500,
+    "latency_threshold_ms": 50,
+    "nok_consecutive_threshold": 2,
+    "ok_recovery_threshold": 2
+  },
+  "storage": {
+    "retention_days": 30
+  }
+}

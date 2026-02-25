@@ -128,6 +128,23 @@ $excel.Quit()
   return JSON.parse(result.stdout.trim());
 }
 
+function validateExtractData(data) {
+  return !!(data && Array.isArray(data.sheets));
+}
+
+function extractWorkbookData(filePath, opts = {}) {
+  const maxRows = Number(opts.maxRows || 6000);
+  const maxCols = Number(opts.maxCols || 80);
+  const raw = runPowerShellWorkbookExtract(filePath, maxRows, maxCols);
+  return {
+    source_file: filePath,
+    extracted_at: new Date().toISOString(),
+    max_rows: maxRows,
+    max_cols: maxCols,
+    sheets: Array.isArray(raw.sheets) ? raw.sheets : []
+  };
+}
+
 function detectDescriptionColumn(rows) {
   if (!rows || rows.length < 2) return null;
   const colCount = rows[0].length;
@@ -397,23 +414,37 @@ function buildSuggestionsFromFeedback(feedbackRows) {
 }
 
 async function analyzeBudgetFile(filePath, opts = {}) {
-  const wb = runPowerShellWorkbookExtract(filePath, opts.maxRows || 6000, opts.maxCols || 80);
+  const wb = opts.extracted && validateExtractData(opts.extracted)
+    ? opts.extracted
+    : extractWorkbookData(filePath, opts);
   const result = analyzeWorkbookData(wb, opts);
   return {
     file: filePath,
     analyzed_at: new Date().toISOString(),
+    extracted_at: wb.extracted_at || null,
+    extraction_limits: {
+      max_rows: wb.max_rows || null,
+      max_cols: wb.max_cols || null
+    },
     ...result
   };
 }
 
 async function main() {
   const args = parseArgs(process.argv);
-  const file = args.file;
-  if (!file) {
-    throw new Error("Missing --file=<path-to-xls-or-xlsx>");
+  const file = args.file ? path.resolve(String(args.file)) : null;
+  const extractInPath = args.extract_in ? path.resolve(String(args.extract_in)) : null;
+  const extractOutPath = args.extract_out ? path.resolve(String(args.extract_out)) : null;
+  const extractOnly = args.extract_only === "1";
+
+  if (!file && !extractInPath) {
+    throw new Error("Provide --file=<path> or --extract_in=<path-to-extracted-json>");
   }
-  if (!fs.existsSync(file)) {
+  if (file && !fs.existsSync(file)) {
     throw new Error(`File not found: ${file}`);
+  }
+  if (extractInPath && !fs.existsSync(extractInPath)) {
+    throw new Error(`extract_in not found: ${extractInPath}`);
   }
 
   const moduleDir = __dirname;
@@ -427,7 +458,39 @@ async function main() {
     keywords = fromFile.map(String);
   }
 
-  const analysis = await analyzeBudgetFile(path.resolve(file), { keywords });
+  let extracted = null;
+  if (extractInPath) {
+    const fromFile = JSON.parse(fs.readFileSync(extractInPath, "utf8").replace(/^\uFEFF/, ""));
+    if (!validateExtractData(fromFile)) {
+      throw new Error("extract_in JSON is invalid: expected object with sheets[]");
+    }
+    extracted = fromFile;
+  } else {
+    extracted = extractWorkbookData(file, { maxRows: args.max_rows, maxCols: args.max_cols });
+  }
+
+  if (extractOutPath) {
+    await fsp.mkdir(path.dirname(extractOutPath), { recursive: true });
+    await fsp.writeFile(extractOutPath, JSON.stringify(extracted, null, 2), "utf8");
+  }
+
+  if (extractOnly) {
+    const extractSummary = {
+      ok: true,
+      mode: "extract_only",
+      source_file: extracted.source_file || file || null,
+      extracted_at: extracted.extracted_at || null,
+      sheets: Array.isArray(extracted.sheets) ? extracted.sheets.length : 0,
+      extract_out: extractOutPath || null
+    };
+    process.stdout.write(JSON.stringify(extractSummary, null, 2) + "\n");
+    return;
+  }
+
+  const analysis = await analyzeBudgetFile(
+    file || extracted.source_file || "extract_input",
+    { keywords, extracted }
+  );
 
   if (args.out) {
     const outPath = path.resolve(String(args.out));
