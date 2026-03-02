@@ -1,0 +1,13 @@
+{
+  "sheet": "Troškovnik",
+  "rows": [
+    ["R.Br.", "Opis", "JM", "Količina"],
+    ["1", "ALU profil sustav", "", ""],
+    ["", "s termičkim prekidom i", "", ""],
+    ["", "pripadajućim spojnim priborom", "m2", "145.50"],
+    ["2", "Staklo IZO 4+16+4", "m2", "120.00"],
+    ["3", "Montaža i završna obrada", "", ""],
+    ["", "uključivo brtvljenje", "kom", "1"]
+  ]
+}
+

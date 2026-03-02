@@ -1,0 +1,14 @@
+{
+  "module_key": "epr_hzzo",
+  "case_id": "case_basic_open_close",
+  "description": "HZZO rows with confirmed intervals for open/close timeline.",
+  "mode": "STRICT",
+  "inputs": {
+    "hzzo_rows_file": "hzzo_rows.json"
+  },
+  "expected": {
+    "intervals_confirmed_min": 1,
+    "status": "OK"
+  }
+}
+

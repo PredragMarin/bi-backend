@@ -1,0 +1,12 @@
+{
+  "modules": {
+    "epr_hzzo": [
+      "case_basic_open_close"
+    ],
+    "eojn_budget": [
+      "case_sparse_multiline"
+    ]
+  },
+  "notes": "Add new module fixtures under fixtures/excel_ingest/<module_key>/<case_id>/"
+}
+

@@ -1,6 +1,8 @@
 // src/dev/db_fetch_epr.js
 const { transformDataset } = require("../core/validate");
 const { executeAllowedBatch } = require("../core/erp_gateway/client");
+const { buildSyntheticRowsFromHzzo } = require("./hzzo_ingest");
+const { resolveIngestSource } = require("../core/excel_shell/ingest_sources");
 
 // Feature flag:
 // - default = LEGACY (sacuvaj postojecu funkcionalnost)
@@ -46,7 +48,14 @@ function legacyNormalizeGroupCode(skypeName) {
 }
 
 // -------------------- main fetch --------------------
-async function fetchEprDatasets({ fromISO, toISO, dsn = "ERP_POC_RO" }) {
+async function fetchEprDatasets({
+  fromISO,
+  toISO,
+  dsn = "ERP_POC_RO",
+  hzzoEnabled = false,
+  hzzoDir = "",
+  hzzoAsOfDate = ""
+}) {
   assertISODate(fromISO, "from");
   assertISODate(toISO, "to");
 
@@ -164,12 +173,53 @@ async function fetchEprDatasets({ fromISO, toISO, dsn = "ERP_POC_RO" }) {
   const allowedOsebid = new Set(osebe_raw.map(p => p.osebid));
   const epr_data = epr_data_all.filter(r => allowedOsebid.has(r.osebid));
 
+  // Optional: enrich epr_data with HZZO-derived synthetic sick-leave rows.
+  // This reduces false "missing attendance day" signals during the month.
+  let hzzoAudit = {
+    enabled: false,
+    files_total: 0,
+    files_loaded: 0,
+    rows_loaded: 0,
+    intervals_confirmed: 0,
+    open_signals: 0,
+    days_synthesized: 0,
+    unmatched_oib_count: 0
+  };
+  let epr_data_merged = epr_data;
+  if (hzzoEnabled) {
+    const sourceCfg = resolveIngestSource({
+      moduleKey: "epr_hzzo",
+      sourceDirOverride: hzzoDir,
+      periodDateISO: toISO
+    });
+    if (!sourceCfg.resolved_source_dir) {
+      throw new Error("HZZO ingest enabled, but no source_dir resolved. Provide hzzo_dir or set EPR_HZZO_SOURCE_DIR.");
+    }
+    const hzzo = buildSyntheticRowsFromHzzo({
+      fromISO,
+      toISO,
+      asOfISO: hzzoAsOfDate || toISO,
+      eprRows: epr_data,
+      calendar,
+      osebeRaw: osebe_raw,
+      hzzoDir: sourceCfg.resolved_source_dir
+    });
+    hzzoAudit = hzzo.audit || hzzoAudit;
+    hzzoAudit.resolved_source_dir = sourceCfg.resolved_source_dir;
+    hzzoAudit.module_key = sourceCfg.module_key;
+    hzzoAudit.mode = sourceCfg.mode;
+    if (Array.isArray(hzzo.rows) && hzzo.rows.length > 0) {
+      epr_data_merged = epr_data.concat(hzzo.rows);
+    }
+  }
+
   return {
-    epr_data,
+    epr_data: epr_data_merged,
     calendar,
     osebe_raw,
     meta: {
-      eprRows: epr_data.length,
+      eprRows: epr_data_merged.length,
+      eprRows_base: epr_data.length,
       calRows: calendar.length,
       osebeRows: osebe_raw.length,
       erp_gateway: {
@@ -185,7 +235,8 @@ async function fetchEprDatasets({ fromISO, toISO, dsn = "ERP_POC_RO" }) {
         warnings: USE_EMPLOYEE_TAGS && Array.isArray(t.warnings) ? t.warnings.length : 0,
         errors: USE_EMPLOYEE_TAGS && Array.isArray(t.errors) ? t.errors.length : 0,
         facts: USE_EMPLOYEE_TAGS ? (t.facts || {}) : {}
-      }
+      },
+      hzzo: hzzoAudit
     }
   };
 }

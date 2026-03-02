@@ -1,0 +1,30 @@
+[
+  {
+    "vrsta": "Izvješće",
+    "datum_evid": "03.02.2026.",
+    "oib": "15502945591",
+    "zaposlenik": "JUKIĆ DAVOR",
+    "razlog": "A01-BOLEST DO 42 DANA (7 DANA)",
+    "datum_poc": "01.02.2026.",
+    "datum_kraj": "03.02.2026."
+  },
+  {
+    "vrsta": "Izvješće",
+    "datum_evid": "26.02.2026.",
+    "oib": "79032708954",
+    "zaposlenik": "MARTINOVIĆ JAKŠA",
+    "razlog": "A01-BOLEST DO 42 DANA (7 DANA)",
+    "datum_poc": "11.02.2026.",
+    "datum_kraj": "27.02.2026."
+  },
+  {
+    "vrsta": "Obavijest",
+    "datum_evid": "06.02.2026.",
+    "oib": "02536921401",
+    "zaposlenik": "NAZLIĆ MARKO",
+    "razlog": "A0-BOLEST",
+    "datum_poc": "",
+    "datum_kraj": ""
+  }
+]
+

@@ -1,8 +1,8 @@
 {
-  "seq_no": 64986,
+  "seq_no": 65217,
   "test_run_id": "run_20260225012623_92B999D0",
-  "last_event_ts": "2026-02-28T23:23:25.306Z",
+  "last_event_ts": "2026-02-28T23:42:43.635Z",
   "last_status_class": "OK",
   "last_latency_ms": 3,
-  "updated_at": "2026-02-28T23:23:25.306Z"
+  "updated_at": "2026-02-28T23:42:43.635Z"
 }

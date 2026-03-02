@@ -77,18 +77,24 @@ app.post("/api/epr/run-db", async (req, res) => {
     const fromISO = req.body?.from;
     const toISO = req.body?.to;
     const group = String(req.body?.group || "").trim(); // OPTIONAL: "INOX" | "MAXDOOR" | "ADMIN" ...
+    const hzzoEnabled = Boolean(req.body?.hzzo_enabled);
+    const hzzoDir = String(req.body?.hzzo_dir || "").trim();
+    const hzzoAsOf = String(req.body?.hzzo_as_of || "").trim();
 
     if (!fromISO || !toISO) {
       return res.status(400).json({
         error: "EPR_RUN_DB_FAILED",
-        message: "Missing body fields: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD', group?: 'INOX|MAXDOOR|ADMIN|...' }"
+        message: "Missing body fields: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD', group?: 'INOX|MAXDOOR|ADMIN|...', hzzo_enabled?: boolean, hzzo_dir?: string, hzzo_as_of?: 'YYYY-MM-DD' }"
       });
     }
 
     const { epr_data, calendar, osebe_raw, meta } = await fetchEprDatasets({
       fromISO,
       toISO,
-      dsn: (process.env.ERP_DSN || "ERP_POC_RO")
+      dsn: (process.env.ERP_DSN || "ERP_POC_RO"),
+      hzzoEnabled,
+      hzzoDir,
+      hzzoAsOfDate: hzzoAsOf || toISO
     });
 
    
@@ -113,6 +119,9 @@ app.post("/api/epr/run-db", async (req, res) => {
       debug_db: {
         ...meta,
         group: group || null,
+        hzzo_enabled: hzzoEnabled,
+        hzzo_dir: hzzoDir || null,
+        hzzo_as_of: hzzoAsOf || toISO,
         osebe_raw: Array.isArray(osebe_raw) ? osebe_raw.length : 0,
         epr_data: Array.isArray(epr_data) ? epr_data.length : 0,
         osebe_raw_sample: (osebe_raw || []).slice(0, 10).map(p => ({

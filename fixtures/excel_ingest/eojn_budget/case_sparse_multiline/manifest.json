@@ -1,0 +1,14 @@
+{
+  "module_key": "eojn_budget",
+  "case_id": "case_sparse_multiline",
+  "description": "Multi-line description rows and sparse quantity/unit fields.",
+  "mode": "LENIENT",
+  "inputs": {
+    "sheet_rows_file": "sheet_rows.json"
+  },
+  "expected": {
+    "can_continue": true,
+    "manual_review_possible": true
+  }
+}
+
