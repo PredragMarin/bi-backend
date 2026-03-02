@@ -66,7 +66,46 @@ function extractWorkbookRowsViaPowerShell(filePath, opts = {}) {
   return Array.isArray(parsed) ? parsed : [parsed];
 }
 
-module.exports = {
-  extractWorkbookRowsViaPowerShell
-};
+function extractHeaderRowViaPowerShell(filePath, opts = {}) {
+  const { rowIndex = 1, maxCols = 16 } = opts;
+  const script = [
+    "$ErrorActionPreference='Stop'",
+    `$path=${psLiteral(filePath)}`,
+    "$excel = New-Object -ComObject Excel.Application",
+    "$excel.Visible = $false",
+    "$excel.DisplayAlerts = $false",
+    "$wb = $excel.Workbooks.Open($path)",
+    "$ws = $wb.Worksheets.Item(1)",
+    "$ur = $ws.UsedRange",
+    "$vals = @()",
+    `for($c=1; $c -le ${Number(maxCols)}; $c++){`,
+    `  $vals += ([string]$ur.Cells.Item(${Number(rowIndex)},$c).Text).Trim()`,
+    "}",
+    "$wb.Close($false)",
+    "$excel.Quit()",
+    "[System.Runtime.Interopservices.Marshal]::ReleaseComObject($ur) | Out-Null",
+    "[System.Runtime.Interopservices.Marshal]::ReleaseComObject($ws) | Out-Null",
+    "[System.Runtime.Interopservices.Marshal]::ReleaseComObject($wb) | Out-Null",
+    "[System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null",
+    "[GC]::Collect(); [GC]::WaitForPendingFinalizers()",
+    "$vals | ConvertTo-Json -Compress -Depth 2"
+  ].join("\n");
 
+  const out = spawnSync("powershell.exe", ["-NoProfile", "-Command", script], {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024
+  });
+  if (out.status !== 0) {
+    const stderr = (out.stderr || "").trim();
+    throw new Error(`Excel header extract failed for ${filePath}: ${stderr || `exit ${out.status}`}`);
+  }
+  const txt = String(out.stdout || "").trim();
+  if (!txt) return [];
+  const parsed = JSON.parse(txt);
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
+
+module.exports = {
+  extractWorkbookRowsViaPowerShell,
+  extractHeaderRowViaPowerShell
+};

@@ -51,6 +51,25 @@ function discoverBySingleFilePath(filePath) {
     }
   }
 
+  // Fast fallback for mapped/network path not visible to Node fs.
+  const scriptDirect = [
+    "$ErrorActionPreference='Stop'",
+    `$p=${psLiteral(filePath)}`,
+    "$it = Get-Item -LiteralPath $p -ErrorAction SilentlyContinue",
+    "if ($it) { [pscustomobject]@{ fullPath=$it.FullName; name=$it.Name; mtimeMs=[double]([DateTimeOffset]$it.LastWriteTimeUtc).ToUnixTimeMilliseconds() } | ConvertTo-Json -Compress -Depth 3 }"
+  ].join("\n");
+  const outDirect = spawnSync("powershell.exe", ["-NoProfile", "-Command", scriptDirect], {
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024
+  });
+  if (outDirect.status === 0) {
+    const txt = String(outDirect.stdout || "").trim();
+    if (txt) {
+      const obj = JSON.parse(txt);
+      return [normalizeDiscoveredEntry(obj)];
+    }
+  }
+
   const baseName = path.basename(filePath);
   const driveRoot = path.parse(filePath).root || "Z:\\";
   const scriptFindByName = [
@@ -109,4 +128,3 @@ function discoverExcelSources({
 module.exports = {
   discoverExcelSources
 };
-

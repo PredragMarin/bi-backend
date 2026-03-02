@@ -86,6 +86,11 @@ td { position: relative; }
 .pill.WARN { background: #ffe1e1; }
 .pill.INFO { background: #e8f0ff; }
 
+/* action row highlights */
+tr.hl-yellow td { background: #fff8cc; }
+tr.hl-red td { background: #ffe3e3; }
+tr.hl-green td { color: #0b6; font-weight: 600; }
+
 .radio-wrap { display:flex; gap:14px; align-items:center; padding: 6px 0 0 0; }
 .radio-wrap label { display:flex; gap:6px; align-items:center; margin:0; font-size: 12px; color:#111; }
    </style>
@@ -526,6 +531,12 @@ td { position: relative; }
     const tbody = document.createElement("tbody");
     for (const r of rows) {
       const tr = document.createElement("tr");
+      if (tableName === "actions_queue") {
+        const hl = String(r?.ui_highlight || "").toUpperCase();
+        if (hl === "YELLOW_BG") tr.classList.add("hl-yellow");
+        if (hl === "RED_BG") tr.classList.add("hl-red");
+        if (hl === "GREEN_TEXT") tr.classList.add("hl-green");
+      }
       for (const h of headers) {
         const td = document.createElement("td");
 

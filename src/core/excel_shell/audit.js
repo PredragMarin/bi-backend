@@ -7,7 +7,9 @@ function makeBaseAudit(extra = {}) {
     files_loaded: 0,
     rows_loaded: 0,
     files_failed: 0,
+    files_rejected: 0,
     file_errors: [],
+    rejected_files: [],
     warnings: [],
     ...extra
   };
@@ -26,9 +28,17 @@ function addFileError(audit, file, error) {
   });
 }
 
+function addFileRejected(audit, file, reason) {
+  audit.files_rejected += 1;
+  audit.rejected_files.push({
+    file: String(file || ""),
+    reason: String(reason || "Rejected by policy")
+  });
+}
+
 module.exports = {
   makeBaseAudit,
   addFileLoad,
-  addFileError
+  addFileError,
+  addFileRejected
 };
-

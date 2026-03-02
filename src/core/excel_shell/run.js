@@ -1,7 +1,7 @@
 "use strict";
 
 const { discoverExcelSources } = require("./discover");
-const { makeBaseAudit, addFileLoad, addFileError } = require("./audit");
+const { makeBaseAudit, addFileLoad, addFileError, addFileRejected } = require("./audit");
 
 function runExcelIngestShell({
   sourcePath,
@@ -9,7 +9,8 @@ function runExcelIngestShell({
   recursive = false,
   preferNameRegex = "",
   extractRows,
-  normalizeRows
+  normalizeRows,
+  validateFile
 }) {
   if (typeof extractRows !== "function") {
     throw new Error("runExcelIngestShell: extractRows function is required.");
@@ -24,6 +25,13 @@ function runExcelIngestShell({
 
   const normalized = [];
   for (const f of files) {
+    if (typeof validateFile === "function") {
+      const verdict = validateFile(f);
+      if (!verdict || verdict.ok === false) {
+        addFileRejected(audit, f.fullPath, verdict && verdict.reason ? verdict.reason : "Rejected by validateFile");
+        continue;
+      }
+    }
     try {
       const rawRows = extractRows(f);
       const rows = normalizeRows(rawRows, f);

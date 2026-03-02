@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { runExcelIngestShell } = require("../core/excel_shell/run");
-const { extractWorkbookRowsViaPowerShell } = require("../core/excel_shell/extract");
+const { extractWorkbookRowsViaPowerShell, extractHeaderRowViaPowerShell } = require("../core/excel_shell/extract");
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -257,6 +257,20 @@ function normalizeKind(vrsta) {
   return "OTHER";
 }
 
+function isHzzoHeaderValid(headerCells) {
+  const fold = (s) => String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  const cells = (headerCells || []).map(fold).filter(Boolean);
+  const hasVrsta = cells.some(c => c.includes("vrsta zapisa"));
+  const hasOib = cells.some(c => c === "oib" || c.includes("oib "));
+  const hasStart = cells.some(c => c.includes("pocetni datum izvjesca"));
+  const hasEnd = cells.some(c => c.includes("zavrsni datum izvjesca"));
+  return hasVrsta && hasOib && hasStart && hasEnd;
+}
+
 function buildAggregateState(allRows) {
   const byOib = new Map();
   const unresolvedOpen = [];
@@ -413,6 +427,21 @@ function buildSyntheticRowsFromHzzo(opts) {
       ]
     }),
     normalizeRows: (rows, f) => normalizeWorkbookRows(rows, f.name)
+    ,
+    validateFile: (f) => {
+      if (/^PNR-I_/i.test(String(f.name || ""))) {
+        return { ok: true };
+      }
+      try {
+        const header = extractHeaderRowViaPowerShell(f.fullPath, { rowIndex: 1, maxCols: 12 });
+        if (!isHzzoHeaderValid(header)) {
+          return { ok: false, reason: "Header does not match expected HZZO layout" };
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, reason: `Header check failed: ${err && err.message ? err.message : String(err)}` };
+      }
+    }
   });
 
   const allRows = shell.normalized_rows || [];
@@ -428,6 +457,8 @@ function buildSyntheticRowsFromHzzo(opts) {
   }
 
   const synthesized = [];
+  const synthesizedDays = [];
+  const conflictDays = [];
   const unmatched = new Set();
 
   // Confirmed intervals.
@@ -449,7 +480,17 @@ function buildSyntheticRowsFromHzzo(opts) {
         const isHoliday = !!cal && Number(cal.praznik) === 1;
         const isCL = !!cal && isCollectiveLeaveText(cal.tekst);
         if (!isWorkday || isHoliday || isCL || !isWeekday(d)) continue;
-        if (hasAnyAttendanceOnDate(eprRows, osebid, iso)) continue;
+        if (hasAnyAttendanceOnDate(eprRows, osebid, iso)) {
+          conflictDays.push({
+            osebid,
+            oib,
+            ime_prezime: state.ime_prezime || "",
+            work_date: iso,
+            reason: "HZZO_INTERVAL_AND_PRESENCE_SAME_DAY",
+            hzzo_reason: iv.razlog || ""
+          });
+          continue;
+        }
 
         synthesized.push({
           osebid,
@@ -458,6 +499,14 @@ function buildSyntheticRowsFromHzzo(opts) {
           tipvhod: 0,
           tipizhod: 9,
           opomba: "HZZO_AUTO_FROM_XLS"
+        });
+        synthesizedDays.push({
+          osebid,
+          oib,
+          ime_prezime: state.ime_prezime || "",
+          work_date: iso,
+          source: "CONFIRMED_INTERVAL",
+          hzzo_reason: iv.razlog || ""
         });
       }
     }
@@ -487,7 +536,17 @@ function buildSyntheticRowsFromHzzo(opts) {
       const isHoliday = !!cal && Number(cal.praznik) === 1;
       const isCL = !!cal && isCollectiveLeaveText(cal.tekst);
       if (!isWorkday || isHoliday || isCL || !isWeekday(d)) continue;
-      if (hasAnyAttendanceOnDate(eprRows, osebid, iso)) continue;
+      if (hasAnyAttendanceOnDate(eprRows, osebid, iso)) {
+        conflictDays.push({
+          osebid,
+          oib: sig.oib,
+          ime_prezime: sig.ime_prezime || "",
+          work_date: iso,
+          reason: "HZZO_OPEN_SIGNAL_AND_PRESENCE_SAME_DAY",
+          hzzo_reason: sig.razlog || ""
+        });
+        continue;
+      }
 
       synthesized.push({
         osebid,
@@ -496,6 +555,14 @@ function buildSyntheticRowsFromHzzo(opts) {
         tipvhod: 0,
         tipizhod: 9,
         opomba: "HZZO_AUTO_FROM_XLS_OPEN"
+      });
+      synthesizedDays.push({
+        osebid,
+        oib: sig.oib,
+        ime_prezime: sig.ime_prezime || "",
+        work_date: iso,
+        source: "OPEN_SIGNAL",
+        hzzo_reason: sig.razlog || ""
       });
     }
   }
@@ -513,6 +580,9 @@ function buildSyntheticRowsFromHzzo(opts) {
 
   return {
     rows: Array.from(uniq.values()),
+    raw_json: allRows,
+    synthesized_days: synthesizedDays,
+    conflict_days: conflictDays,
     audit: {
       enabled: true,
       files_total: shell.audit.files_total,
@@ -523,7 +593,11 @@ function buildSyntheticRowsFromHzzo(opts) {
       days_synthesized: uniq.size,
       unmatched_oib_count: unmatched.size,
       files_failed: shell.audit.files_failed,
-      file_errors: shell.audit.file_errors || []
+      file_errors: shell.audit.file_errors || [],
+      files_rejected: shell.audit.files_rejected || 0,
+      rejected_files: shell.audit.rejected_files || [],
+      conflict_days_count: conflictDays.length,
+      synthesized_days_count: synthesizedDays.length
     }
   };
 }

@@ -208,6 +208,12 @@ async function fetchEprDatasets({
     hzzoAudit.resolved_source_dir = sourceCfg.resolved_source_dir;
     hzzoAudit.module_key = sourceCfg.module_key;
     hzzoAudit.mode = sourceCfg.mode;
+    hzzoAudit.raw_rows_count = Array.isArray(hzzo.raw_json) ? hzzo.raw_json.length : 0;
+    hzzoAudit.raw_json_sample = Array.isArray(hzzo.raw_json) ? hzzo.raw_json.slice(0, 50) : [];
+    hzzoAudit.synthesized_days_count = Array.isArray(hzzo.synthesized_days) ? hzzo.synthesized_days.length : 0;
+    hzzoAudit.conflict_days_count = Array.isArray(hzzo.conflict_days) ? hzzo.conflict_days.length : 0;
+    hzzoAudit.synthesized_days = Array.isArray(hzzo.synthesized_days) ? hzzo.synthesized_days : [];
+    hzzoAudit.conflict_days = Array.isArray(hzzo.conflict_days) ? hzzo.conflict_days : [];
     if (Array.isArray(hzzo.rows) && hzzo.rows.length > 0) {
       epr_data_merged = epr_data.concat(hzzo.rows);
     }

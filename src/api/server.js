@@ -106,16 +106,42 @@ app.post("/api/epr/run-db", async (req, res) => {
     };
 
     const full = await runUseCase(useCaseReq);
+    const baseActions = Array.isArray(full.actions_queue) ? full.actions_queue.slice() : [];
+    const hzzoActions = buildHzzoOverlayActions({
+      hzzoMeta: meta && meta.hzzo ? meta.hzzo : null,
+      osebeRaw: osebe_raw
+    });
+    const actionsById = new Map();
+    for (const a of [...baseActions, ...hzzoActions]) {
+      const id = String(a.action_id || "").trim();
+      if (!id) continue;
+      if (!actionsById.has(id)) actionsById.set(id, a);
+    }
+    const mergedActions = Array.from(actionsById.values()).sort((a, b) => {
+      const pa = Number.isFinite(Number(a.priority_rank)) ? Number(a.priority_rank) : 99;
+      const pb = Number.isFinite(Number(b.priority_rank)) ? Number(b.priority_rank) : 99;
+      if (pa !== pb) return pa - pb;
+      return String(a.action_id || "").localeCompare(String(b.action_id || ""));
+    });
 
-    // Return UI-friendly subset (keep ALL 5 outputs)
+    const hzzoConflictActionsCount = mergedActions.filter(a => a.action_type === "CONFLICT_HZZO_PRESENCE").length;
+    const hzzoFillActionsCount = mergedActions.filter(a => a.action_type === "HZZO_MISSING_FILL").length;
+    const runMetadata = {
+      ...(full.run_metadata || {}),
+      hzzo_conflict_actions_count: hzzoConflictActionsCount,
+      hzzo_fill_actions_count: hzzoFillActionsCount,
+      payroll_blocked: hzzoConflictActionsCount > 0
+    };
+
+    // Return UI-friendly subset
     const slim = {
-      run_metadata: full.run_metadata,
+      run_metadata: runMetadata,
       run_facts: full.run_facts,
       recap_lines: full.recap_lines || [],
       interval_results: full.interval_results || [],
       daily_summary: full.daily_summary || [],
       period_summary: full.period_summary || [],
-      actions_queue: full.actions_queue || [],
+      actions_queue: mergedActions,
       debug_db: {
         ...meta,
         group: group || null,
@@ -157,6 +183,69 @@ app.post("/api/export-and-publish", async (req, res) => {
 // 24/01/2026 dodano za tretman grupa  
 
 const ALLOWED_GROUPS = ["INOX", "MXD", "ADM", "ALL"];
+
+function buildHzzoOverlayActions({ hzzoMeta, osebeRaw }) {
+  const out = [];
+  const people = new Map((osebeRaw || []).map(p => [Number(p.osebid), p]));
+  const synthesized = Array.isArray(hzzoMeta?.synthesized_days) ? hzzoMeta.synthesized_days : [];
+  const conflicts = Array.isArray(hzzoMeta?.conflict_days) ? hzzoMeta.conflict_days : [];
+
+  for (const d of synthesized) {
+    const osebid = Number(d.osebid);
+    const person = people.get(osebid) || {};
+    out.push({
+      action_id: `HZZO_FILL_${osebid}_${d.work_date}`,
+      action_type: "HZZO_MISSING_FILL",
+      severity: "ACTION",
+      priority_rank: 2,
+      ui_highlight: "YELLOW_BG",
+      osebid,
+      group_code: person.group_code || "",
+      ime: person.ime || "",
+      priimek: person.priimek || "",
+      tel_gsm: person.tel_gsm || "",
+      reason_codes: "HZZO_MISSING_FILL",
+      work_date: d.work_date,
+      summary: "Predložen unos bolovanja iz HZZO izvještaja",
+      suggested_fix: "Potvrditi i upisati bolovanje u ERP za navedeni datum.",
+      source: "hzzo.synthesized_days",
+      sms_candidate: 0,
+      sms_candidate_type: "",
+      status: "OPEN",
+      hzzo_oib: d.oib || "",
+      hzzo_reason: d.hzzo_reason || ""
+    });
+  }
+
+  for (const d of conflicts) {
+    const osebid = Number(d.osebid);
+    const person = people.get(osebid) || {};
+    out.push({
+      action_id: `HZZO_CONFLICT_${osebid}_${d.work_date}`,
+      action_type: "CONFLICT_HZZO_PRESENCE",
+      severity: "ACTION",
+      priority_rank: 1,
+      ui_highlight: "RED_BG",
+      osebid,
+      group_code: person.group_code || "",
+      ime: person.ime || "",
+      priimek: person.priimek || "",
+      tel_gsm: person.tel_gsm || "",
+      reason_codes: "CONFLICT_HZZO_PRESENCE",
+      work_date: d.work_date,
+      summary: "Konflikt: isti dan evidentirano bolovanje i prisustvo",
+      suggested_fix: "Ručno provjeriti i razriješiti konflikt prije payroll zaključka.",
+      source: "hzzo.conflict_days",
+      sms_candidate: 0,
+      sms_candidate_type: "",
+      status: "OPEN",
+      hzzo_oib: d.oib || "",
+      hzzo_reason: d.hzzo_reason || ""
+    });
+  }
+
+  return out;
+}
 
 function normalizeGroup(value) {
   if (!value) return null;
