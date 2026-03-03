@@ -209,6 +209,7 @@ async function fetchEprDatasets({
     hzzoAudit.module_key = sourceCfg.module_key;
     hzzoAudit.mode = sourceCfg.mode;
     hzzoAudit.raw_rows_count = Array.isArray(hzzo.raw_json) ? hzzo.raw_json.length : 0;
+    hzzoAudit.raw_json = Array.isArray(hzzo.raw_json) ? hzzo.raw_json : [];
     hzzoAudit.raw_json_sample = Array.isArray(hzzo.raw_json) ? hzzo.raw_json.slice(0, 50) : [];
     hzzoAudit.synthesized_days_count = Array.isArray(hzzo.synthesized_days) ? hzzo.synthesized_days.length : 0;
     hzzoAudit.conflict_days_count = Array.isArray(hzzo.conflict_days) ? hzzo.conflict_days.length : 0;

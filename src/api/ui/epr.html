@@ -111,6 +111,21 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
         <label>Period to (YYYY-MM-DD)</label>
         <input id="to" class="date" type="date" value="2026-01-31" />
       </div>
+      <div>
+        <label>HZZO overlay (DB mode)</label>
+        <label style="display:flex;gap:8px;align-items:center;margin:0;">
+          <input id="hzzoEnabled" type="checkbox" />
+          <span>Enable</span>
+        </label>
+      </div>
+      <div>
+        <label>HZZO as-of (YYYY-MM-DD)</label>
+        <input id="hzzoAsOf" class="date" type="date" value="" />
+      </div>
+      <div>
+        <label>HZZO source (file/folder)</label>
+        <input id="hzzoDir" type="text" placeholder="Z:\...\PNR-I_...xls ili folder" style="width: 420px;" />
+      </div>
 
       <!-- NEW: Group view filter -->
       <div>
@@ -186,6 +201,9 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
           <option value="period_summary">period_summary</option>
           <option value="daily_summary">daily_summary</option>
           <option value="interval_results">interval_results</option>
+          <option value="hzzo_parsed_rows">hzzo_parsed_rows</option>
+          <option value="hzzo_synthesized_days">hzzo_synthesized_days</option>
+          <option value="hzzo_conflict_days">hzzo_conflict_days</option>
         </select>
       </div>
 
@@ -222,6 +240,9 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
   const elGlobal = document.getElementById("globalSearch");
   const elModeDb = document.getElementById("modeDb");
   const elModeJson = document.getElementById("modeJson");
+  const elHzzoEnabled = document.getElementById("hzzoEnabled");
+  const elHzzoDir = document.getElementById("hzzoDir");
+  const elHzzoAsOf = document.getElementById("hzzoAsOf");
 
   // NEW: view filter + dataset label elements
   const elViewGroup = document.getElementById("viewGroupSelect");
@@ -433,6 +454,9 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     out.daily_summary = applyViewFilterToRows(resultAll.daily_summary, selectedViewGroup);
     out.period_summary = applyViewFilterToRows(resultAll.period_summary, selectedViewGroup);
     out.actions_queue = applyViewFilterToRows(resultAll.actions_queue, selectedViewGroup);
+    out.hzzo_parsed_rows = Array.isArray(resultAll.hzzo_parsed_rows) ? resultAll.hzzo_parsed_rows : [];
+    out.hzzo_synthesized_days = Array.isArray(resultAll.hzzo_synthesized_days) ? resultAll.hzzo_synthesized_days : [];
+    out.hzzo_conflict_days = Array.isArray(resultAll.hzzo_conflict_days) ? resultAll.hzzo_conflict_days : [];
 
     // Leave recap_lines as is (ALL)
     out.recap_lines = Array.isArray(resultAll.recap_lines) ? resultAll.recap_lines : [];
@@ -638,6 +662,14 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
 
     if (useDb) {
       bodyObj = { from, to };
+      const hzzoEnabled = !!elHzzoEnabled?.checked;
+      const hzzoDir = String(elHzzoDir?.value || "").trim();
+      const hzzoAsOf = String(elHzzoAsOf?.value || "").trim();
+      if (hzzoEnabled) {
+        bodyObj.hzzo_enabled = true;
+        if (hzzoDir) bodyObj.hzzo_dir = hzzoDir;
+        bodyObj.hzzo_as_of = hzzoAsOf || to;
+      }
     } else {
       const raw = elReq.value.trim();
       if (!raw) {
@@ -769,6 +801,9 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     daily_summary: [],
     period_summary: [],
     interval_results: [],
+    hzzo_parsed_rows: [],
+    hzzo_synthesized_days: [],
+    hzzo_conflict_days: [],
     run_metadata: {}
   };
   window.lastResultAll = lastResultAll;
@@ -778,6 +813,15 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     const today = todayISO();
     elFrom.max = today;
     elTo.max = today;
+    if (elHzzoAsOf) {
+      elHzzoAsOf.max = today;
+      if (!elHzzoAsOf.value) elHzzoAsOf.value = elTo.value;
+    }
+    if (elTo && elHzzoAsOf) {
+      elTo.addEventListener("change", () => {
+        if (!elHzzoAsOf.value) elHzzoAsOf.value = elTo.value;
+      });
+    }
 
     await initInstanceConfig();
 

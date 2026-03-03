@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const { normalizeObjectStringsDeep } = require("../text/normalize");
 
 function psLiteral(s) {
   return `'${String(s).replace(/'/g, "''")}'`;
@@ -20,6 +21,8 @@ function discoverWithPowerShell(dirAbs, recursive) {
   const recurseSwitch = recursive ? "-Recurse" : "";
   const script = [
     "$ErrorActionPreference='Stop'",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
     `$path=${psLiteral(dirAbs)}`,
     `$files = Get-ChildItem -Path $path -File ${recurseSwitch} -ErrorAction Stop | Where-Object { $_.Name -match '\\.(xlsx|xls)$' } | Select-Object @{N='fullPath';E={$_.FullName}}, @{N='name';E={$_.Name}}, @{N='mtimeMs';E={[double]([DateTimeOffset]$_.LastWriteTimeUtc).ToUnixTimeMilliseconds()}}`,
     "$files | ConvertTo-Json -Compress -Depth 3"
@@ -34,7 +37,7 @@ function discoverWithPowerShell(dirAbs, recursive) {
   }
   const txt = String(out.stdout || "").trim();
   if (!txt) return [];
-  const parsed = JSON.parse(txt);
+  const parsed = normalizeObjectStringsDeep(JSON.parse(txt));
   const arr = Array.isArray(parsed) ? parsed : [parsed];
   return arr.map(normalizeDiscoveredEntry);
 }
@@ -54,6 +57,8 @@ function discoverBySingleFilePath(filePath) {
   // Fast fallback for mapped/network path not visible to Node fs.
   const scriptDirect = [
     "$ErrorActionPreference='Stop'",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
     `$p=${psLiteral(filePath)}`,
     "$it = Get-Item -LiteralPath $p -ErrorAction SilentlyContinue",
     "if ($it) { [pscustomobject]@{ fullPath=$it.FullName; name=$it.Name; mtimeMs=[double]([DateTimeOffset]$it.LastWriteTimeUtc).ToUnixTimeMilliseconds() } | ConvertTo-Json -Compress -Depth 3 }"
@@ -66,7 +71,7 @@ function discoverBySingleFilePath(filePath) {
     const txt = String(outDirect.stdout || "").trim();
     if (txt) {
       const obj = JSON.parse(txt);
-      return [normalizeDiscoveredEntry(obj)];
+      return [normalizeDiscoveredEntry(normalizeObjectStringsDeep(obj))];
     }
   }
 
@@ -74,6 +79,8 @@ function discoverBySingleFilePath(filePath) {
   const driveRoot = path.parse(filePath).root || "Z:\\";
   const scriptFindByName = [
     "$ErrorActionPreference='Stop'",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
     `$root=${psLiteral(driveRoot)}`,
     `$base=${psLiteral(baseName)}`,
     "$it = Get-ChildItem -Path $root -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq $base } | Select-Object -First 1",
@@ -86,7 +93,7 @@ function discoverBySingleFilePath(filePath) {
   if (outByName.status !== 0) return [];
   const txt = String(outByName.stdout || "").trim();
   if (!txt) return [];
-  const obj = JSON.parse(txt);
+  const obj = normalizeObjectStringsDeep(JSON.parse(txt));
   return [normalizeDiscoveredEntry(obj)];
 }
 

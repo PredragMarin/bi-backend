@@ -5,6 +5,18 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 const { runExcelIngestShell } = require("../core/excel_shell/run");
 const { extractWorkbookRowsViaPowerShell, extractHeaderRowViaPowerShell } = require("../core/excel_shell/extract");
+const ABSENCE_CATALOG = require("../core/epr/absence_catalog.json");
+
+const ABSENCE_CATALOG_BY_CODE = new Map(
+  (Array.isArray(ABSENCE_CATALOG) ? ABSENCE_CATALOG : [])
+    .map(x => ({
+      code: String(x && x.code ? x.code : "").trim().toUpperCase(),
+      tipizhod_group: Number(x && x.tipizhod_group),
+      description: String(x && x.description ? x.description : "").trim()
+    }))
+    .filter(x => !!x.code)
+    .map(x => [x.code, x])
+);
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -69,6 +81,8 @@ function listExcelFiles(dirAbs) {
     const driveRoot = path.parse(filePath).root || "Z:\\";
     const scriptFindByName = [
       "$ErrorActionPreference='Stop'",
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+      "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
       `$root=${psLiteral(driveRoot)}`,
       `$base=${psLiteral(baseName)}`,
       "$it = Get-ChildItem -Path $root -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq $base } | Select-Object -First 1",
@@ -99,6 +113,8 @@ function listExcelFiles(dirAbs) {
     // Fallback for mapped/network drives not visible to Node fs in current context.
     const script = [
       "$ErrorActionPreference='Stop'",
+      "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+      "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
       `$path=${psLiteral(dirAbs)}`,
       "$files = Get-ChildItem -Path $path -File -ErrorAction Stop -Recurse | Where-Object { $_.Name -match '\\.(xlsx|xls)$' } | Select-Object @{N='fullPath';E={$_.FullName}}, @{N='name';E={$_.Name}}, @{N='mtimeMs';E={[double]([DateTimeOffset]$_.LastWriteTimeUtc).ToUnixTimeMilliseconds()}}",
       "$files | ConvertTo-Json -Compress -Depth 3"
@@ -146,6 +162,8 @@ function psLiteral(s) {
 function readWorkbookRowsViaPowerShell(filePath) {
   const script = [
     "$ErrorActionPreference='Stop'",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
     `$path=${psLiteral(filePath)}`,
     "$excel = New-Object -ComObject Excel.Application",
     "$excel.Visible = $false",
@@ -222,9 +240,13 @@ function normalizeWorkbookRows(rows, fileName) {
     const vrsta = String(r.vrsta || "").trim();
     const oib = String(r.oib || "").replace(/\D+/g, "");
     if (!oib) continue;
+    if (!/^\d{11}$/.test(oib)) continue;
     const datumEvid = parseHrDate(r.datum_evid);
     const start = parseHrDate(r.datum_poc);
     const end = parseHrDate(r.datum_kraj);
+    const razlog = String(r.razlog || "").trim();
+    const absenceCode = extractAbsenceCode(razlog);
+    const cat = absenceCode ? ABSENCE_CATALOG_BY_CODE.get(absenceCode) : null;
 
     out.push({
       file: fileName,
@@ -232,7 +254,11 @@ function normalizeWorkbookRows(rows, fileName) {
       vrsta_norm: normalizeKind(vrsta),
       oib,
       ime_prezime: String(r.zaposlenik || "").trim(),
-      razlog: String(r.razlog || "").trim(),
+      razlog,
+      absence_code: absenceCode || "",
+      absence_known: !!cat,
+      absence_tipizhod_group: cat ? Number(cat.tipizhod_group) : null,
+      absence_desc_std: cat ? String(cat.description || "") : "",
       datum_evid: datumEvid,
       start,
       end
@@ -255,6 +281,13 @@ function normalizeKind(vrsta) {
   if (v.startsWith("obavijest-storn")) return "OBAVIJEST_STORNIRANA";
   if (v.startsWith("obavijest")) return "OBAVIJEST";
   return "OTHER";
+}
+
+function extractAbsenceCode(reasonText) {
+  const raw = String(reasonText || "").trim().toUpperCase();
+  if (!raw) return "";
+  const m = raw.match(/^([A-Z][A-Z0-9]{0,4})(?:\b|[-_/])/);
+  return m ? String(m[1]).trim().toUpperCase() : "";
 }
 
 function isHzzoHeaderValid(headerCells) {
@@ -384,9 +417,17 @@ function normalizePeriodDate(iso) {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0, 0);
 }
 
+function isPresenceLikeTipizhod(v) {
+  const t = Number(v);
+  // Conflict with HZZO should be raised only for work/presence-like entries.
+  // Paid non-work absence entries (e.g., 3/4/8/9) must not trigger conflict.
+  return t === 0 || t === 6 || t === 7 || t === 66;
+}
+
 function hasAnyAttendanceOnDate(eprRows, osebid, isoDate) {
   for (const r of eprRows || []) {
     if (Number(r.osebid) !== Number(osebid)) continue;
+    if (!isPresenceLikeTipizhod(r.tipizhod)) continue;
     const tv = String(r.timevhod || "");
     const m = tv.match(/^(\d{2})\/(\d{2})\/(\d{4})\s/);
     if (!m) continue;
@@ -460,6 +501,22 @@ function buildSyntheticRowsFromHzzo(opts) {
   const synthesizedDays = [];
   const conflictDays = [];
   const unmatched = new Set();
+  const unknownAbsenceCodes = new Map();
+
+  for (const r of allRows) {
+    const code = String(r && r.absence_code ? r.absence_code : "").trim().toUpperCase();
+    if (!code) continue;
+    if (ABSENCE_CATALOG_BY_CODE.has(code)) continue;
+    if (!unknownAbsenceCodes.has(code)) {
+      unknownAbsenceCodes.set(code, {
+        code,
+        count: 0,
+        sample_reason: String(r.razlog || ""),
+        sample_file: String(r.file || "")
+      });
+    }
+    unknownAbsenceCodes.get(code).count += 1;
+  }
 
   // Confirmed intervals.
   for (const [oib, state] of byOib.entries()) {
@@ -592,6 +649,11 @@ function buildSyntheticRowsFromHzzo(opts) {
       open_signals: openSignals.length,
       days_synthesized: uniq.size,
       unmatched_oib_count: unmatched.size,
+      unknown_absence_codes_count: unknownAbsenceCodes.size,
+      unknown_absence_codes: Array.from(unknownAbsenceCodes.values()).sort((a, b) => String(a.code).localeCompare(String(b.code))),
+      warnings: Array.from(unknownAbsenceCodes.values())
+        .sort((a, b) => String(a.code).localeCompare(String(b.code)))
+        .map(x => `UNKNOWN_HZZO_ABSENCE_CODE:${x.code} (count=${x.count})`),
       files_failed: shell.audit.files_failed,
       file_errors: shell.audit.file_errors || [],
       files_rejected: shell.audit.files_rejected || 0,

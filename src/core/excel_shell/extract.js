@@ -1,6 +1,7 @@
 "use strict";
 
 const { spawnSync } = require("child_process");
+const { normalizeObjectStringsDeep } = require("../text/normalize");
 
 function psLiteral(s) {
   return `'${String(s).replace(/'/g, "''")}'`;
@@ -25,6 +26,8 @@ function extractWorkbookRowsViaPowerShell(filePath, opts = {}) {
 
   const script = [
     "$ErrorActionPreference='Stop'",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
     `$path=${psLiteral(filePath)}`,
     "$excel = New-Object -ComObject Excel.Application",
     "$excel.Visible = $false",
@@ -63,13 +66,16 @@ function extractWorkbookRowsViaPowerShell(filePath, opts = {}) {
   const txt = String(out.stdout || "").trim();
   if (!txt) return [];
   const parsed = JSON.parse(txt);
-  return Array.isArray(parsed) ? parsed : [parsed];
+  const arr = Array.isArray(parsed) ? parsed : [parsed];
+  return normalizeObjectStringsDeep(arr);
 }
 
 function extractHeaderRowViaPowerShell(filePath, opts = {}) {
   const { rowIndex = 1, maxCols = 16 } = opts;
   const script = [
     "$ErrorActionPreference='Stop'",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
     `$path=${psLiteral(filePath)}`,
     "$excel = New-Object -ComObject Excel.Application",
     "$excel.Visible = $false",
@@ -102,7 +108,8 @@ function extractHeaderRowViaPowerShell(filePath, opts = {}) {
   const txt = String(out.stdout || "").trim();
   if (!txt) return [];
   const parsed = JSON.parse(txt);
-  return Array.isArray(parsed) ? parsed : [parsed];
+  const arr = Array.isArray(parsed) ? parsed : [parsed];
+  return normalizeObjectStringsDeep(arr);
 }
 
 module.exports = {

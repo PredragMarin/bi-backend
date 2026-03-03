@@ -107,12 +107,37 @@ app.post("/api/epr/run-db", async (req, res) => {
 
     const full = await runUseCase(useCaseReq);
     const baseActions = Array.isArray(full.actions_queue) ? full.actions_queue.slice() : [];
+    const erpAbsenceDayKeys = new Set(
+      (Array.isArray(full.interval_results) ? full.interval_results : [])
+        .filter(r => {
+          const t = Number(r?.tipizhod);
+          if (!(t === 3 || t === 8 || t === 9)) return false;
+          const notes = String(r?.notes || "").trim().toUpperCase();
+          // Exclude synthetic HZZO rows; we need only real ERP absence entries.
+          if (notes.startsWith("HZZO_AUTO_FROM_XLS")) return false;
+          return true;
+        })
+        .map(r => `${Number(r.osebid)}|${String(r.work_date || "")}`)
+        .filter(k => !k.endsWith("|"))
+    );
+
     const hzzoActions = buildHzzoOverlayActions({
       hzzoMeta: meta && meta.hzzo ? meta.hzzo : null,
-      osebeRaw: osebe_raw
+      osebeRaw: osebe_raw,
+      coveredAbsenceDayKeys: erpAbsenceDayKeys
+    });
+    const hzzoCoveredDayKeys = new Set(
+      hzzoActions
+        .map(a => `${Number(a.osebid)}|${String(a.work_date || "")}`)
+        .filter(k => !k.endsWith("|"))
+    );
+    const baseActionsFiltered = baseActions.filter(a => {
+      if (String(a.action_type || "") !== "MISSING_ATTENDANCE_DAY") return true;
+      const k = `${Number(a.osebid)}|${String(a.work_date || "")}`;
+      return !hzzoCoveredDayKeys.has(k);
     });
     const actionsById = new Map();
-    for (const a of [...baseActions, ...hzzoActions]) {
+    for (const a of [...baseActionsFiltered, ...hzzoActions]) {
       const id = String(a.action_id || "").trim();
       if (!id) continue;
       if (!actionsById.has(id)) actionsById.set(id, a);
@@ -133,6 +158,22 @@ app.post("/api/epr/run-db", async (req, res) => {
       payroll_blocked: hzzoConflictActionsCount > 0
     };
 
+    const hzzoRawRows = Array.isArray(meta?.hzzo?.raw_json) ? meta.hzzo.raw_json : [];
+    const hzzoParsedRows = hzzoRawRows.map(r => ({
+      source_file: r.file || "",
+      oib: r.oib || "",
+      ime_prezime: r.ime_prezime || "",
+      vrsta: r.vrsta || "",
+      vrsta_norm: r.vrsta_norm || "",
+      razlog: r.razlog || "",
+      datum_evid: r.datum_evid || "",
+      datum_pocetka: r.start || "",
+      datum_zavrsetka: r.end || "",
+      parsed_interval: !!(r.start && r.end),
+      parsed_open_signal: !!(!r.start && !r.end && String(r.vrsta_norm || "") === "OBAVIJEST"),
+      parsed_storno_signal: !!(!r.start && !r.end && String(r.vrsta_norm || "") === "OBAVIJEST_STORNIRANA")
+    }));
+
     // Return UI-friendly subset
     const slim = {
       run_metadata: runMetadata,
@@ -142,6 +183,9 @@ app.post("/api/epr/run-db", async (req, res) => {
       daily_summary: full.daily_summary || [],
       period_summary: full.period_summary || [],
       actions_queue: mergedActions,
+      hzzo_parsed_rows: hzzoParsedRows,
+      hzzo_synthesized_days: Array.isArray(meta?.hzzo?.synthesized_days) ? meta.hzzo.synthesized_days : [],
+      hzzo_conflict_days: Array.isArray(meta?.hzzo?.conflict_days) ? meta.hzzo.conflict_days : [],
       debug_db: {
         ...meta,
         group: group || null,
@@ -184,14 +228,17 @@ app.post("/api/export-and-publish", async (req, res) => {
 
 const ALLOWED_GROUPS = ["INOX", "MXD", "ADM", "ALL"];
 
-function buildHzzoOverlayActions({ hzzoMeta, osebeRaw }) {
+function buildHzzoOverlayActions({ hzzoMeta, osebeRaw, coveredAbsenceDayKeys }) {
   const out = [];
   const people = new Map((osebeRaw || []).map(p => [Number(p.osebid), p]));
   const synthesized = Array.isArray(hzzoMeta?.synthesized_days) ? hzzoMeta.synthesized_days : [];
   const conflicts = Array.isArray(hzzoMeta?.conflict_days) ? hzzoMeta.conflict_days : [];
+  const covered = coveredAbsenceDayKeys instanceof Set ? coveredAbsenceDayKeys : new Set();
 
   for (const d of synthesized) {
     const osebid = Number(d.osebid);
+    const dayKey = `${osebid}|${String(d.work_date || "")}`;
+    if (covered.has(dayKey)) continue;
     const person = people.get(osebid) || {};
     out.push({
       action_id: `HZZO_FILL_${osebid}_${d.work_date}`,
