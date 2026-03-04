@@ -1,4 +1,4 @@
-// compute.js — STABLE as of 2025-12-27
+﻿// compute.js â€” STABLE as of 2025-12-27
 // src/core/epr/compute.js
 const { sha256Hex } = require("../hash");
 const { parseDateTimeDMYHM, parseDateDMY, toISODate, toDMYHM } = require("../time");
@@ -11,12 +11,15 @@ const LATE_NORMALIZE_GRACE_MAX = 30; // delta_start in [0..30] => normalized sta
 const BIG_LATE_PLUS_MIN = 5;
 const EXCESSIVE_DURATION_MIN = 16 * 60;
 // Policy multipliers (configurable)
-const LATE_DEBT_MULTIPLIER = 1; // sada 1:1, kasnije možete 2, 3...
+const LATE_DEBT_MULTIPLIER = 1; // sada 1:1, kasnije moĹľete 2, 3...
 // Early arrival overtime policy (configurable)
 const EARLY_OVERTIME_THRESHOLD_MIN = 20; // cenzus: do 20 min ranije = priprema, ne overtime
-const SPLIT_SHIFT_MIN_MINUTES = 15; // tipvhod=1 kraće od ovoga => needs_review (anti-gaming)
+const SPLIT_SHIFT_MIN_MINUTES = 15; // tipvhod=1 kraÄ‡e od ovoga => needs_review (anti-gaming)
 const EARLY_OVERTIME_DEDUCT_MIN = 5;     // oduzimanje (friction) kad early prelazi threshold
 const RFID_IPS = new Set(["192.168.100.77", "192.168.100.41"]);
+const SHIFTED_WORK_MIN_OFFSET = 15;
+const SHIFTED_WORK_ALIGN_TOLERANCE = 20;
+const SHIFTED_WORK_MIN_DURATION = 420;
 
 // tipizhod katalog (ERP): UVEDENO 03/02/2026
 // 0=01 Redovan rad, 3=40 Bolovanje, 4=06 Godisnji odmor, 5=03 Blagdan, 6=01 Rad od kuce,66=01 Teren/Sluzbeni izlaz, 7=05 Blagdan Rad, 8=56 Porodiljni, 9=50 Bolovanje HZZO ,90=90 Pogresno skeniranje
@@ -36,6 +39,32 @@ function dayStartRef(d) {
 
 function dayEndRef(d) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), WORK_END_HH, WORK_END_MM, 0, 0);
+}
+
+function isApprovedShiftedWorkInterval(rec, tvLocal, tiLocal) {
+  if (!rec || !tvLocal || !tiLocal) return false;
+  if (tiLocal.getTime() < tvLocal.getTime()) return false;
+  if (!rec.calendar_flags || rec.calendar_flags.is_workday !== true) return false;
+  if (rec.is_wfh || rec.is_split_shift) return false;
+  if (Number(rec.tipizhod) !== 0) return false;
+
+  const rawDuration = Math.max(0, Number(rec.duration_minutes_raw || 0));
+  if (rawDuration < SHIFTED_WORK_MIN_DURATION) return false;
+
+  const startRef = dayStartRef(tvLocal);
+  const endRef = dayEndRef(tvLocal);
+  const deltaStart = minutesDiff(startRef, tvLocal); // + late / - early
+  const deltaEnd = minutesDiff(endRef, tiLocal);     // + late / - early
+
+  if (Math.abs(deltaStart) < SHIFTED_WORK_MIN_OFFSET) return false;
+  if (Math.abs(deltaEnd) < SHIFTED_WORK_MIN_OFFSET) return false;
+
+  const sameDirection =
+    (deltaStart > 0 && deltaEnd > 0) ||
+    (deltaStart < 0 && deltaEnd < 0);
+  if (!sameDirection) return false;
+
+  return Math.abs(deltaStart - deltaEnd) <= SHIFTED_WORK_ALIGN_TOLERANCE;
 }
 
 function isCollectiveLeaveText(s) {
@@ -127,7 +156,7 @@ function computeInterval(row, calendarByISODate) {
   // notes + WFH: opomba OR tipizhod=6
   const notes = String(row.opomba ?? "");
   const is_wfh = isWFHNote(notes) || (tipizhod === 6);
-  // tipizhod=90 => pogrešno skeniranje (ignorirati u izračunima; ostaje u raw/interval_results)
+  // tipizhod=90 => pogreĹˇno skeniranje (ignorirati u izraÄŤunima; ostaje u raw/interval_results)
   const is_ignored = (tipizhod === 90);
 
   const lokizhod = row.lokizhod ? String(row.lokizhod).trim() : "";
@@ -155,7 +184,7 @@ function computeInterval(row, calendarByISODate) {
     flags.needs_review = true;
   }
 
-  // EFFECTIVE trajanje: na workday računamo od normalized start (RULES 11.2)
+  // EFFECTIVE trajanje: na workday raÄŤunamo od normalized start (RULES 11.2)
   if (is_workday && !is_wfh) {
     const startRefLocal = dayStartRef(tv);
     const delta_start = minutesDiff(startRefLocal, tv); // tv - 07:30
@@ -167,7 +196,7 @@ function computeInterval(row, calendarByISODate) {
       // raniji dolazak i dolazak do +30 min -> efektivno od 07:30
       effectiveStart = startRefLocal;
     } else {
-      // >30 min -> efektivno od timevhod + 5 min (vaše pravilo)
+      // >30 min -> efektivno od timevhod + 5 min (vaĹˇe pravilo)
       effectiveStart = new Date(tv.getTime() + BIG_LATE_PLUS_MIN * 60000);
     }
 
@@ -178,7 +207,7 @@ function computeInterval(row, calendarByISODate) {
       duration_minutes_effective = minutesDiff(effectiveStart, ti);
     }
   } else {
-    // neradni dan: zasad effective = raw (policy možete kasnije definirati)
+    // neradni dan: zasad effective = raw (policy moĹľete kasnije definirati)
     duration_minutes_effective = duration_minutes_raw;
   }
 
@@ -236,7 +265,7 @@ if (Number.isFinite(tipvhod) && !ALLOWED_TIPVHOD.has(tipvhod)) {
   flags.needs_review = true;
 }
 
-  // Split shift (tipvhod=1): ne generira disciplinu ni normalizacije; računa se kao raw
+  // Split shift (tipvhod=1): ne generira disciplinu ni normalizacije; raÄŤuna se kao raw
   if (is_split_shift) {
     late_minutes_raw = 0;
     late_minutes_normalized = 0;
@@ -289,7 +318,7 @@ if (eprRows.length > 0) {
   const rejects_count = (validation && Array.isArray(validation.errors))
   ? validation.errors.length
   : 0;
-// <<< DODAJ OVO TOČNO OVDJE >>>
+// <<< DODAJ OVO TOÄŚNO OVDJE >>>
 if (validation && Array.isArray(validation.errors) && validation.errors.length > 0) {
   console.log("VALIDATION errors sample (first 5):");
   console.dir(validation.errors.slice(0, 5), { depth: null });
@@ -410,6 +439,7 @@ function makeDailyRow({ osebid, isoDate, cal, origin = "auto" }) {
     has_field_work_day: false,          // postoji tipizhod=66 u danu
     non_field_interval_count: 0,        // broj drugih intervala (osim 66, 90, open)
     discipline_override_day: false,     // computed kasnije
+    shifted_worktime_day: false,        // policy 5.2 approved shifted day
 
     has_kasnjenje_raniji_izlaz: false,
     needs_review: false,
@@ -544,25 +574,25 @@ for (const rec of interval_results) {
   // Payroll rule: duplicates do NOT count into totals
   if (isDup) continue;
 
-  // tipizhod=90 (pogrešno skeniranje): ignorirati u svim obračunima (minute, debt, overtime, PT)
+  // tipizhod=90 (pogreĹˇno skeniranje): ignorirati u svim obraÄŤunima (minute, debt, overtime, PT)
   if (rec.is_ignored === true) {
-    // po želji: audit note bez needs_review
+    // po Ĺľelji: audit note bez needs_review
     // d.daily_notes = (d.daily_notes ? d.daily_notes + " | " : "") + "Ignored scan (tipizhod=90)";
     continue;
   }
 
   // vC: "non-field" interval = bilo koji zatvoreni interval koji NIJE 66 i NIJE 90
-  // i nije open (open ionako ne ulazi u minute, ali ovdje ga eksplicitno preskačemo)
+  // i nije open (open ionako ne ulazi u minute, ali ovdje ga eksplicitno preskaÄŤemo)
   if (Number(rec.tipizhod) !== 66 && Number(rec.tipizhod) !== 90 && !(rec.flags && rec.flags.open_interval)) {
     d.non_field_interval_count = (d.non_field_interval_count || 0) + 1;
   }
 
   // -----------------------------
   // -----------------------------
-// zamjene bloka 15/02 FIELD WORK / TEREN (tipizhod=66 OR tipvhod=66) — Option C
+// zamjene bloka 15/02 FIELD WORK / TEREN (tipizhod=66 OR tipvhod=66) â€” Option C
 // Policy:
-// - služi kao TAG za "discipline override" na razini dana (ako postoji i drugi normalni interval)
-// - NE smije presjeći minute-buckete (ne smije "continue"), jer on-site intervali moraju ući u payroll
+// - sluĹľi kao TAG za "discipline override" na razini dana (ako postoji i drugi normalni interval)
+// - NE smije presjeÄ‡i minute-buckete (ne smije "continue"), jer on-site intervali moraju uÄ‡i u payroll
 // -----------------------------
 const isFieldWork = (Number(rec.tipizhod) === 66 || Number(rec.tipvhod) === 66);
 
@@ -570,12 +600,12 @@ if (isFieldWork) {
   d.has_field_work_day = true;
   // audit tag (opcionalno, ali korisno)
   d.daily_notes = (d.daily_notes ? d.daily_notes + " | " : "") + "FIELD_WORK_TAG";
-  // NEMA continue;  -> mora proći dalje u on-site/WFH buckete
+  // NEMA continue;  -> mora proÄ‡i dalje u on-site/WFH buckete
 }
   // kraj zamjene bloka 15/02 
     // -----------------------------
   // EXCUSED ABSENCE: tipizhod=3 (Bolovanje)
-  // Konvencija: voditelj upisuje 07:30–15:30; tretira se kao 8h plaćeno (040_BO_70),
+  // Konvencija: voditelj upisuje 07:30â€“15:30; tretira se kao 8h plaÄ‡eno (040_BO_70),
   // ne ulazi u redovan rad (pay_001) i ne ulazi u disciplinu/overtime.
   // -----------------------------
   if (Number(rec.tipizhod) === 3) {
@@ -591,12 +621,12 @@ if (isFieldWork) {
     d.attendance_origin = d.attendance_origin || "manual_standardized";
     d.attendance_reason = "SICK_LEAVE";
 
-    // NE računati u on-site/WFH minute, NE računati lateness/early leave/overtime:
+    // NE raÄŤunati u on-site/WFH minute, NE raÄŤunati lateness/early leave/overtime:
     continue;
   }
   // dodano 07/02-----------------------------
 // EXCUSED ABSENCE: tipizhod=9 (Bolovanje HZZO 100%)
-// Konvencija: voditelj upisuje 07:30–15:30; tretira se kao 8h plaćeno (050_BO_HZZO_100),
+// Konvencija: voditelj upisuje 07:30â€“15:30; tretira se kao 8h plaÄ‡eno (050_BO_HZZO_100),
 // ne ulazi u pay_001 i ne ulazi u disciplinu/overtime.
 // -----------------------------
 if (Number(rec.tipizhod) === 9) {
@@ -612,12 +642,12 @@ if (Number(rec.tipizhod) === 9) {
   d.attendance_origin = d.attendance_origin || "manual_standardized";
   d.attendance_reason = "SICK_LEAVE_HZZO_100";
 
-  // NE računati u on-site/WFH minute, NE računati lateness/early leave/overtime:
+  // NE raÄŤunati u on-site/WFH minute, NE raÄŤunati lateness/early leave/overtime:
   continue;
 }
 // -----------------------------
-// APPROVED LEAVE 14/02: tipizhod=4 (Godišnji odmor)
-// Konvencija: voditelj upisuje 07:30–15:30; tretira se kao 8h plaćeno (006_Godisnji_Odmor),
+// APPROVED LEAVE 14/02: tipizhod=4 (GodiĹˇnji odmor)
+// Konvencija: voditelj upisuje 07:30â€“15:30; tretira se kao 8h plaÄ‡eno (006_Godisnji_Odmor),
 // ne ulazi u pay_001 i ne ulazi u disciplinu/overtime.
 // -----------------------------
 if (Number(rec.tipizhod) === 4) {
@@ -633,12 +663,12 @@ if (Number(rec.tipizhod) === 4) {
   d.attendance_origin = "manual_standardized";
   d.attendance_reason = "APPROVED_LEAVE";
 
-  // NE računati u on-site/WFH minute, NE računati lateness/early leave/overtime:
+  // NE raÄŤunati u on-site/WFH minute, NE raÄŤunati lateness/early leave/overtime:
   continue;
 }
  // kraj dodano 14/02-----
    // -----------------------------
-  // EXCUSED ABSENCE 14/02: tipizhod=8 (Porodiljni/Očinski) -> tretirati kao 050_BO_HZZO_100
+  // EXCUSED ABSENCE 14/02: tipizhod=8 (Porodiljni/OÄŤinski) -> tretirati kao 050_BO_HZZO_100
   // Policy: suspendira holiday/CL auto-pay i ne ulazi u disciplinu/overtime/premium.
   // -----------------------------
   if (Number(rec.tipizhod) === 8) {
@@ -647,7 +677,7 @@ if (Number(rec.tipizhod) === 4) {
       ? Math.min(MINUTES_PER_WORKDAY, raw)
       : MINUTES_PER_WORKDAY;
 
-    // Mapiramo u 050 (po vašoj odluci)
+    // Mapiramo u 050 (po vaĹˇoj odluci)
     d.paid_sick_hzzo_100_minutes = (d.paid_sick_hzzo_100_minutes || 0) + paidMin;
     d.pay_050_bo_hzzo_100_minutes = (d.pay_050_bo_hzzo_100_minutes || 0) + paidMin;
 
@@ -655,11 +685,11 @@ if (Number(rec.tipizhod) === 4) {
     d.attendance_origin = d.attendance_origin || "manual_standardized";
     d.attendance_reason = "PARENTAL_LEAVE_HZZO_100";
 
-    // KLJUČNO: blokiraj calendar auto-480 (003/006) i blokiraj premium 150% na neradne dane
+    // KLJUÄŚNO: blokiraj calendar auto-480 (003/006) i blokiraj premium 150% na neradne dane
     d.suppress_calendar_paid = true;
     d.suppress_premium_150 = true;
 
-    // NE računati u on-site/WFH minute, NE računati lateness/early leave/overtime:
+    // NE raÄŤunati u on-site/WFH minute, NE raÄŤunati lateness/early leave/overtime:
     continue;
   }
   // kraj EXCUSED ABSENCE 14/02
@@ -690,59 +720,30 @@ if (Number(rec.tipizhod) === 4) {
   const tvLocal = parseDateTimeDMYHM(rec.timevhod_raw);
   const tiLocal = rec.timeizhod_raw ? parseDateTimeDMYHM(rec.timeizhod_raw) : null;
 
-  // za minute-bucket računamo samo zatvorene intervale s valjanim vremenima
+  // za minute-bucket raÄŤunamo samo zatvorene intervale s valjanim vremenima
   if (tvLocal && tiLocal && tiLocal.getTime() >= tvLocal.getTime()) {
+    if (isApprovedShiftedWorkInterval(rec, tvLocal, tiLocal)) {
+      d.shifted_worktime_day = true;
+    }
     const startMs = tvLocal.getTime();
     const endMs   = tiLocal.getTime();
 
     if (rec.is_wfh) {
-      // WFH: zbrajamo samo neto ne-preklapajuće minute (guard)
+      // WFH: zbrajamo samo neto ne-preklapajuce minute (guard)
       const lastEnd = d._last_end_wfh ? Number(d._last_end_wfh) : null;
       const effStartMs = (lastEnd && startMs < lastEnd) ? lastEnd : startMs;
 
       if (effStartMs < endMs) {
-  // POLICY: na WORKDAY (on-site) ne smijemo plaćati minute prije normaliziranog starta
-  // Koristimo istu logiku kao computeInterval.duration_minutes_effective:
-  let startMsForPay = effStartMs;
-
-  if (rec.calendar_flags?.is_workday && !rec.is_wfh) {
-    const tv = tvLocal; // već imate
-    const startRef = dayStartRef(tv).getTime(); // 07:30
-
-    const deltaStartMin = Math.floor((tv.getTime() - startRef) / 60000);
-
-    if (deltaStartMin <= 30) {
-      // rano ili do +30 min -> plaćeno od 07:30
-      startMsForPay = Math.max(effStartMs, startRef);
-    } else {
-      // >30 min -> plaćeno od timevhod + 5 min
-      startMsForPay = Math.max(effStartMs, tv.getTime() + BIG_LATE_PLUS_MIN * 60000);
-    }
-  }
-// izmjena 14/02 
- if (startMsForPay < endMs) {
-  const addMin = Math.floor((endMs - startMsForPay) / 60000);
-  d.presence_on_site_minutes_raw = (d.presence_on_site_minutes_raw || 0) + addMin;
-
-  // tipizhod=7 => Rad na blagdan/nedjelju (premium 150%) ide u 005 bez obzira na kalendar
-  if (Number(rec.tipizhod) === 7) {
-    d.work_on_holiday_150_minutes = (d.work_on_holiday_150_minutes || 0) + addMin;
-  }
-
-} else {
-  d.needs_review = true;
-}
-} else {
-  d.needs_review = true;
-}
-//kraj izmjena 14/02
+        const addMin = Math.floor((endMs - effStartMs) / 60000);
+        d.work_from_home_minutes = (d.work_from_home_minutes || 0) + addMin;
+      } else {
+        d.needs_review = true;
+      }
       d._last_end_wfh = Math.max(lastEnd || 0, endMs);
 
-      // WFH nije prisutnost na lokaciji (PT) i nema lateness/overtime policy
-      d.is_present_on_site = false;
-
+      // WFH interval ne smije resetirati on-site marker ako je isti dan postojao stvarni dolazak.
     } else {
-  // promjenjeno 08/02 ON-SITE: računamo i RAW i EFFECTIVE minute
+  // promjenjeno 08/02 ON-SITE: raÄŤunamo i RAW i EFFECTIVE minute
   const lastEnd = d._last_end_on_site ? Number(d._last_end_on_site) : null;
 
   // RAW start (audit)
@@ -750,7 +751,7 @@ if (Number(rec.tipizhod) === 4) {
 
   // EFFECTIVE start (payroll basis):
   // - za WORKDAY on-site (ne WFH, ne split) koristimo timevhod_normalized (07:30 ili tv+5)
-  // - inače fallback na raw start
+  // - inaÄŤe fallback na raw start
   let payrollStartMs = startMs;
   if (d.is_workday && !rec.is_wfh && !rec.is_split_shift) {
     const tn = parseDateTimeDMYHM(rec.timevhod_normalized);
@@ -771,14 +772,16 @@ if (Number(rec.tipizhod) === 4) {
     const addEff = Math.floor((endMs - effStartMs) / 60000);
     d.presence_on_site_minutes_effective = (d.presence_on_site_minutes_effective || 0) + addEff;
   } else {
-    // ako efektivni start “preskoči” end, to je anomalija
+    // ako efektivni start â€śpreskoÄŤiâ€ť end, to je anomalija
     d.needs_review = true;
   }
 
   d._last_end_on_site = Math.max(lastEnd || 0, endMs);
 
-  // ON-SITE znači prisutan za PT
-  d.is_present_on_site = true;
+  // ON-SITE znaÄŤi prisutan za PT, osim kad je dan pokriven samo terenskim markerom (66).
+  if (!isFieldWork) {
+    d.is_present_on_site = true;
+  }
 }
 // kraj promjenjeno 08/02
   }
@@ -830,21 +833,21 @@ if (!rec.is_wfh && !rec.is_split_shift && Number(rec.tipizhod) !== 7 && !isField
 for (const d of dailyMap.values()) {
   // ON-SITE:
   // - RAW (audit): stvarni interval tv->ti
-  // - EFFECTIVE: normalized start -> ti  (ALI još uvijek uključuje after-shift)
+  // - EFFECTIVE: normalized start -> ti  (ALI joĹˇ uvijek ukljuÄŤuje after-shift)
   const onSiteRaw = Math.max(0, Number(d.presence_on_site_minutes_raw || 0));
   const onSiteEff = Math.max(0, Number(d.presence_on_site_minutes_effective || 0));
 
-  // WFH je RAW (nema normalizacije dolaska u vašim pravilima)
+  // WFH je RAW (nema normalizacije dolaska u vaĹˇim pravilima)
   const wfhRaw = Math.max(0, Number(d.work_from_home_minutes || 0));
 
-  // Outside signal (za mjesečni settlement / audit)
+  // Outside signal (za mjeseÄŤni settlement / audit)
   const after = Math.max(0, Number(d.after_shift_minutes || 0));
   const early = Math.max(0, Number(d.early_overtime_minutes || 0));
   const outside = after + early;
 
   // CRITICAL FIX:
-  // onSiteEff uključuje after-shift jer ide do stvarnog timeizhod.
-  // Za "fund fill" (001) želimo INSIDE shift minute => oduzmi AFTER.
+  // onSiteEff ukljuÄŤuje after-shift jer ide do stvarnog timeizhod.
+  // Za "fund fill" (001) Ĺľelimo INSIDE shift minute => oduzmi AFTER.
   const onSiteInsideWorkday = Math.max(0, onSiteEff - after);
 
   // MONTHLY reconcile input:
@@ -853,7 +856,7 @@ for (const d of dailyMap.values()) {
   d.raw_on_site_minutes = d.is_workday ? onSiteInsideWorkday : onSiteRaw;
   d.raw_wfh_minutes = wfhRaw;
 
-  // (preporučeno) audit polje da u konzoli vidiš koliko je outside
+  // (preporuÄŤeno) audit polje da u konzoli vidiĹˇ koliko je outside
   d.raw_outside_minutes = outside;
 
   // Informativno (nije payroll istina): daily KPI cap 480 iz INSIDE minuta
@@ -862,6 +865,32 @@ for (const d of dailyMap.values()) {
 
   // Informativno: overtime signal (outside only)
   d.overtime_work_minutes = Math.max(0, outside);
+
+  // Policy 5.2: approved shifted workday (start/end shifted in same direction)
+  // => no disciplinary and no overtime signal; treat day as regular shifted attendance.
+  if (d.shifted_worktime_day) {
+    d.total_late_minutes_raw = 0;
+    d.total_late_minutes_normalized = 0;
+    d.total_early_leave_minutes_raw = 0;
+    d.total_early_leave_minutes_normalized = 0;
+    d.late_debt_minutes = 0;
+    d.has_kasnjenje_raniji_izlaz = false;
+    d.lateness_day = false;
+
+    d.early_overtime_minutes = 0;
+    d.after_shift_minutes = 0;
+    d.raw_outside_minutes = 0;
+    d.overtime_work_minutes = 0;
+
+    const shiftedInside = Math.min(
+      MINUTES_PER_WORKDAY,
+      Math.max(0, Number(onSiteRaw || 0)) + Math.max(0, Number(wfhRaw || 0))
+    );
+    d.raw_on_site_minutes = Math.min(MINUTES_PER_WORKDAY, Math.max(0, Number(onSiteRaw || 0)));
+    d.raw_wfh_minutes = Math.max(0, shiftedInside - d.raw_on_site_minutes);
+    d.total_work_minutes = shiftedInside;
+    d.daily_notes = (d.daily_notes ? (d.daily_notes + " | ") : "") + "SHIFT_WORKTIME_POLICY_5_2";
+  }
   // --- dodano 15/02 Option C: disciplinary override for FIELD WORK day (tipizhod=66) ---
 // Condition: day has field-work marker AND has at least one other interval that day.
 d.discipline_override_day = !!d.has_field_work_day && Number(d.non_field_interval_count || 0) > 0;
@@ -950,7 +979,7 @@ for (const d of daily_summary) {
   const wd = (yy && mm && dd) ? new Date(yy, mm - 1, dd).getDay() : -1; // 0=Sun..6=Sat
   const isWeekday = wd >= 1 && wd <= 5;
 
-  // Day type (deterministički)
+  // Day type (deterministiÄŤki)
   d.day_type =
     isHoliday ? "HOLIDAY" :
     isCollectiveLeave ? "COLLECTIVE_LEAVE" :
@@ -959,8 +988,8 @@ for (const d of daily_summary) {
 
   const hasIntervals = (d.interval_count || 0) > 0;
 ///////////////////////+
-// deterministički reset (svaki run iz nule)
-// init (NE reset): ne smije pregaziti vrijednosti koje su već zbrojene u interval loopu
+// deterministiÄŤki reset (svaki run iz nule)
+// init (NE reset): ne smije pregaziti vrijednosti koje su veÄ‡ zbrojene u interval loopu
 d.paid_holiday_100_minutes          = Number(d.paid_holiday_100_minutes ?? 0);
 d.paid_collective_leave_100_minutes = Number(d.paid_collective_leave_100_minutes ?? 0);
 d.overtime_150_minutes              = Number(d.overtime_150_minutes ?? 0);
@@ -981,7 +1010,7 @@ d.needs_action                      = Boolean(d.needs_action ?? false);
 
 //////////////////////+
   // 1) is_present_on_site: ako ima intervale -> true
-  // (kasnije možete razlikovati "RadOdKuce" kroz opomba/attendance_origin)
+  // (kasnije moĹľete razlikovati "RadOdKuce" kroz opomba/attendance_origin)
  // zamjenjeno 15/02 Canonical PT presence (per day, after all intervals processed):
 // Presence day is TRUE only if there are actual on-site minutes recorded.
 // Paid non-work (GO/bolovanje) and field work (66) do NOT count as presence by themselves.
@@ -992,12 +1021,12 @@ if (d.is_paid_non_work_attendance === true && Number(d.presence_on_site_minutes_
   d.is_present_on_site = false;
 }
 // kraj zamjenjeno 15/02
-  // 2) lateness_day: brojimo dane s kašnjenjem/ranijim izlazom (workday only)
+  // 2) lateness_day: brojimo dane s kaĹˇnjenjem/ranijim izlazom (workday only)
   d.lateness_day = Boolean(isWorkday && d.has_kasnjenje_raniji_izlaz);
 
   //  const isWeekday = isWeekdayISO(d.work_date);
 
-  // HOLIDAY: plaća se 8h samo ako je pon–pet (bez obzira na dandelovni)
+  // HOLIDAY: plaÄ‡a se 8h samo ako je ponâ€“pet (bez obzira na dandelovni)
   if (mode !== "SLIM" && isHoliday && isWeekday && !d.suppress_calendar_paid) {
     d.paid_holiday_100_minutes = 480;
     d.pay_003_holiday_minutes = 480;
@@ -1009,7 +1038,7 @@ if (d.is_paid_non_work_attendance === true && Number(d.presence_on_site_minutes_
     d.pay_003_holiday_minutes = 0;
   }
 
-  // COLLECTIVE LEAVE: u praksi je samo pon–pet, ali guard je isti
+  // COLLECTIVE LEAVE: u praksi je samo ponâ€“pet, ali guard je isti
    if (mode !== "SLIM" && isCollectiveLeave && isWeekday && !d.suppress_calendar_paid) {
 
     d.paid_collective_leave_100_minutes = 480;
@@ -1018,8 +1047,8 @@ if (d.is_paid_non_work_attendance === true && Number(d.presence_on_site_minutes_
     d.attendance_origin = d.attendance_origin || "calendar_auto";
     d.attendance_reason = "COLLECTIVE_LEAVE_100";
   } else {
-    // FIX 14/02: ne smijemo pregaziti ručno upisani GO (tipizhod=4) koji koristi payroll kod 006.
-  // Nulu postavljamo samo ako ovaj dan NIJE već “paid non-work attendance” iz interval-loopa.
+    // FIX 14/02: ne smijemo pregaziti ruÄŤno upisani GO (tipizhod=4) koji koristi payroll kod 006.
+  // Nulu postavljamo samo ako ovaj dan NIJE veÄ‡ â€śpaid non-work attendanceâ€ť iz interval-loopa.
   if (!d.is_paid_non_work_attendance) {
     d.paid_collective_leave_100_minutes = 0;
     d.pay_006_collective_leave_minutes = 0;
@@ -1043,7 +1072,7 @@ d.pay_005_work_on_holiday_minutes = Math.max(0, d.work_on_holiday_150_minutes ||
     d.missing_attendance_day = true;
     d.needs_action = true;
     d.attendance_reason = d.attendance_reason || "UNKNOWN_ABSENCE";
-    d.daily_notes = d.daily_notes || "Radni dan bez evidencije – potrebna odluka voditelja";
+    d.daily_notes = d.daily_notes || "Radni dan bez evidencije â€“ potrebna odluka voditelja";
   }
 }
 // --- PATCH: drop NON_WORKDAY rows with no activity (keep exceptions) ---
@@ -1055,7 +1084,7 @@ const daily_summary_out = daily_summary.filter(d => {
   const person = peopleByOsebid.get(Number(d.osebid)) || {};
   const mode = String(person.mode || d.mode || "FULL").toUpperCase();
 
-  // SLIM: zadrži samo stvarnu prisutnost ili tehničke flagove (review/action)
+  // SLIM: zadrĹľi samo stvarnu prisutnost ili tehniÄŤke flagove (review/action)
   if (mode === "SLIM") {
     const hasIntervals = (d.interval_count || 0) > 0;
     const hasFlags = !!d.needs_review || !!d.needs_action;
@@ -1097,11 +1126,11 @@ const run_facts = computeRunFacts({ period, period_label, calendarByISODate, dai
 
 // ---- dodano 25/01/2025 ----
 // ---------------- reason_codes (v1) ----------------
-// Deterministički: day-level anomalije iz interval_results + daily metrika.
+// DeterministiÄŤki: day-level anomalije iz interval_results + daily metrika.
 // Output:
 //  - d.reason_codes (union)
 //  - d.review_reason_codes (actionable / data-quality / anti-gaming)
-//  - d.info_reason_codes (disciplinary/info; ne mora nužno ići u actions_queue)
+//  - d.info_reason_codes (disciplinary/info; ne mora nuĹľno iÄ‡i u actions_queue)
 
 const REASON_ORDER = [
   // Missing
@@ -1143,7 +1172,7 @@ for (const d of daily_summary_out) {
     mode: person.mode ?? "FULL",          // <<< DODANO
     priimek: person.priimek ?? "",
     ime: person.ime ?? "",
-    alt_id: person.alt_id ?? "",          // <<< PREPORUČENO (treba za payroll OIB)
+    alt_id: person.alt_id ?? "",          // <<< PREPORUÄŚENO (treba za payroll OIB)
 
     period_from: period.date_from,
     period_to: period.date_to,
@@ -1155,7 +1184,7 @@ for (const d of daily_summary_out) {
       total_work_minutes: 0,                 // regular payable (sum dnevnih min(presence,480))
       total_overtime_work_minutes: 0,         // overtime CREDIT (sum dnevnih max(presence-480,0))
       total_late_debt_minutes: 0,             // sum debt
-      overtime_payable_150_minutes: 0,        // AFTER compensation (računa se kasnije)
+      overtime_payable_150_minutes: 0,        // AFTER compensation (raÄŤuna se kasnije)
       uncovered_debt_minutes: 0,  
         // --- monthly reconcile facts dodano 07/02---
       billable_days_count: 0,
@@ -1166,7 +1195,7 @@ for (const d of daily_summary_out) {
       workday_overtime_signal_minutes_sum: 0,
       debt_covered_by_overtime_minutes: 0,
 
-            // if debt > credit (računa se kasnije)
+            // if debt > credit (raÄŤuna se kasnije)
       // ---- PAYROLL TOTALS (minute) ----
       pay_001_regular_on_site_minutes: 0,
       pay_001_wfh_minutes: 0,
@@ -1197,7 +1226,7 @@ for (const d of daily_summary_out) {
       needs_review_count: 0,
       presence_days_count: 0,    // Prisutnost_Dana (PT eligibility)
       lateness_days_count: 0,    // Kasnjenja_Broj (broj dana s lateness/early leave)
-      // --- Monthly settlement audit dodano 07/02 (deterministički) ---
+      // --- Monthly settlement audit dodano 07/02 (deterministiÄŤki) ---
       expected_paid_minutes: 0,
       total_paid_minutes_base: 0,
       paid_excess_minutes: 0,
@@ -1216,8 +1245,8 @@ for (const d of daily_summary_out) {
 // billable day = WORKDAY (nije HOLIDAY niti COLLECTIVE_LEAVE)
 if (d.day_type === "WORKDAY") p.billable_days_count += 1;
 
-// PAYABLE DAYS (FIX) 14/02: 1 datum = 1 payable day ako postoji bilo koji plaćeni bucket.
-// Time se sprječava double-count WORKDAY + GO(006) na istom danu, i pokriva tipizhod=8 (pay050)
+// PAYABLE DAYS (FIX) 14/02: 1 datum = 1 payable day ako postoji bilo koji plaÄ‡eni bucket.
+// Time se sprjeÄŤava double-count WORKDAY + GO(006) na istom danu, i pokriva tipizhod=8 (pay050)
 // kad se kalendar suspendira.
 const isPayableDay =
   (d.day_type === "WORKDAY") ||
@@ -1231,13 +1260,13 @@ const isPayableDay =
 
 if (isPayableDay) p.payable_days_count += 1;
 // kraj PAYABLE DAYS (FIX) 14/02
-// 07/02 monthly raw facts (WORKDAY only) — critical: prevent pay_005 work from leaking into WORKDAY excess
+// 07/02 monthly raw facts (WORKDAY only) â€” critical: prevent pay_005 work from leaking into WORKDAY excess
 if (d.day_type === "WORKDAY") {
   p.raw_on_site_minutes_sum += Math.max(0, d.raw_on_site_minutes || 0);
   p.raw_wfh_minutes_sum     += Math.max(0, d.raw_wfh_minutes || 0);
 }
   // kraj 07/02 monthly raw facts  
-  // NEW 14/02: monthly settlement signal = work outside 07:30–15:30 on WORKDAY (make-up minutes)
+  // NEW 14/02: monthly settlement signal = work outside 07:30â€“15:30 on WORKDAY (make-up minutes)
   if (d.day_type === "WORKDAY") {
    const sig = Math.max(0, Number(d.early_overtime_minutes || 0)) +
               Math.max(0, Number(d.after_shift_minutes || 0));
@@ -1259,7 +1288,7 @@ if (d.day_type === "WORKDAY") {
 
   p.pay_005_work_on_holiday_minutes += (d.pay_005_work_on_holiday_minutes || 0);
 
-  // bolovanja (kad uvedete logiku, ova polja će se puniti)
+  // bolovanja (kad uvedete logiku, ova polja Ä‡e se puniti)
   p.pay_040_bo_70_minutes += (d.pay_040_bo_70_minutes || 0);
   p.pay_040_bo_hzzo_70_minutes += (d.pay_040_bo_hzzo_70_minutes || 0);
   p.pay_050_bo_hzzo_100_minutes += (d.pay_050_bo_hzzo_100_minutes || 0);
@@ -1284,7 +1313,7 @@ if (d.day_type === "WORKDAY") {
   // NEW: Prisutnost_Dana (PT) -> broj dana gdje je radnik bio prisutan na lokaciji (ima intervale)
   if (d.is_present_on_site) p.presence_days_count += 1;
 
-  // NEW: Kasnjenja_Broj -> broj dana s kašnjenjem / ranijim odlaskom (vi ste već izračunali lateness_day)
+  // NEW: Kasnjenja_Broj -> broj dana s kaĹˇnjenjem / ranijim odlaskom (vi ste veÄ‡ izraÄŤunali lateness_day)
   if (d.lateness_day) p.lateness_days_count += 1;
 
 }
@@ -1293,7 +1322,7 @@ if (d.day_type === "WORKDAY") {
     const p = periodMap.get(rec.osebid);
     if (!p) continue;
     if (rec.flags.open_interval) p.open_intervals_count += 1;
-    // needs_review_count već dolazi iz daily, ali ovdje ostavljamo daily-driven kao “po danu”
+    // needs_review_count veÄ‡ dolazi iz daily, ali ovdje ostavljamo daily-driven kao â€śpo danuâ€ť
   }
   // 08/02 zamjena bloka 
   // ===== FIX TDZ: period_summary must exist BEFORE monthly reconcile & recap =====
@@ -1305,7 +1334,7 @@ const period_summary = Array.from(periodMap.values())
   const payableDays = Math.max(0, Number(p.payable_days_count || 0));
   const fund = payableDays * MINUTES_PER_WORKDAY;
 
-  // 2) WORKDAY inside-shift minutes (effective) — WORKDAY only
+  // 2) WORKDAY inside-shift minutes (effective) â€” WORKDAY only
   const rawOnSite = Math.max(0, Number(p.raw_on_site_minutes_sum || 0));
   const rawWfh    = Math.max(0, Number(p.raw_wfh_minutes_sum || 0));
   const insideWorkday = rawOnSite + rawWfh; // <-- NE dirati s outside signalom
@@ -1323,7 +1352,7 @@ const period_summary = Array.from(periodMap.values())
   // 4) Regular cap for WORKDAY pay_001
   const regularCapWorkday = Math.max(0, fund - nonworkPaid);
 
-  // 5) Outside work signal (early+after) on WORKDAY — used for make-up minute-for-minute
+  // 5) Outside work signal (early+after) on WORKDAY â€” used for make-up minute-for-minute
   const outsideWorkday = Math.max(0, Number(p.total_overtime_work_minutes || 0));
 
   // 6) Total WORKDAY minutes that can fill the cap (inside + outside)
@@ -1373,7 +1402,7 @@ const period_summary = Array.from(periodMap.values())
 }
 
 //  kraj zamjenjeno 14/02
-// run_facts + recap_lines (v1.0.1)  — AFTER period_summary exists
+// run_facts + recap_lines (v1.0.1)  â€” AFTER period_summary exists
 const recap_lines = buildRecapLines({
   run_facts,
   daily_summary: daily_summary_out,
@@ -1412,7 +1441,7 @@ const dayReasonMap = new Map();          // key -> Set(reason)
 const dayMinDurMap = new Map();          // key -> min duration raw (for suspicious short)
 const dayHasOnSiteMap = new Map();       // key -> boolean (has on-site interval)
 
-//slijedeća funkcija izmjenjena 26/01/2026 , ne oslanja se na flags.negative...
+//slijedeÄ‡a funkcija izmjenjena 26/01/2026 , ne oslanja se na flags.negative...
 for (const rec of interval_results) {
   if (!rec) continue;
 
@@ -1466,7 +1495,7 @@ for (const rec of interval_results) {
   }
 }
 // Enrich daily_summary_out with reason codes
-const SUSPICIOUS_SHORT_MAX_MIN = 2; // prag u minutama (v1); po potrebi podešavati
+const SUSPICIOUS_SHORT_MAX_MIN = 2; // prag u minutama (v1); po potrebi podeĹˇavati
 
 for (const d of daily_summary_out) {
   if (!d) continue;
@@ -1495,7 +1524,7 @@ for (const d of daily_summary_out) {
     }
   }
 
-  // Disciplinary/info (ne mora u actions_queue, ali želite nomenklaturu)
+  // Disciplinary/info (ne mora u actions_queue, ali Ĺľelite nomenklaturu)
   if (Number(d.total_late_minutes_raw || 0) > 0) {
     addReason(all, "LATE_ARRIVAL");
     addReason(info, "LATE_ARRIVAL");
@@ -1511,7 +1540,7 @@ for (const d of daily_summary_out) {
 
   // Suspicious short interval (anti-gaming)
   // Ideja: ima intervala, nije missing, on-site je prisutan, ali min duration je ekstremno mala.
-  // (Ovo hvata 15:30:00–15:30:25 i slične)
+  // (Ovo hvata 15:30:00â€“15:30:25 i sliÄŤne)
   const hasIntervals = (d.interval_count || 0) > 0;
 const minDur = dayMinDurMap.get(k);
 const hasOnSite = !!dayHasOnSiteMap.get(k);
@@ -1557,7 +1586,7 @@ for (const d of daily_summary_out) {
       reason_codes: "MISSING_DAY",// dodano 25/01/2026
       work_date: d.work_date,
       summary: "Nema evidentiranog rada za radni dan",
-      suggested_fix: "Unijeti bolovanje / GO ili ručno evidentirati rad",
+      suggested_fix: "Unijeti bolovanje / GO ili ruÄŤno evidentirati rad",
       source: "daily_summary.missing_attendance_day",
       sms_candidate: person.tel_gsm ? 1 : 0,
       sms_candidate_type: person.tel_gsm ? "MISSING_WEEK" : "",
@@ -1598,7 +1627,7 @@ for (const d of daily_summary_out) {
 }
 }
 ////////////////////////////
-  // run metadata skeleton (core će dopuniti run_id etc)
+  // run metadata skeleton (core Ä‡e dopuniti run_id etc)
   const run_metadata = {
     run_id: "TO_BE_SET_BY_CORE",
     use_case: "epr_attendance_v1",
@@ -1667,7 +1696,7 @@ function computeRunFacts({ period, period_label, calendarByISODate, daily_summar
  const expected_presence_days_count = billable_days_count;
 const expected_effective_presence_minutes = expected_presence_days_count * MINUTES_PER_WORKDAY;
 // umetnuto 07/02 PAYABLE days = weekdays (Mon-Fri) that are either WORKDAY or HOLIDAY or COLLECTIVE_LEAVE
-// (ovo je "mjesečni fond" koji koristite za payroll očekivanje)
+// (ovo je "mjeseÄŤni fond" koji koristite za payroll oÄŤekivanje)
 const payable_days_count = Array.from(calendarByISODate.entries()).filter(([iso, cal]) => {
   const isWeekday = isWeekdayISO(iso);
   if (!isWeekday) return false;
@@ -1682,7 +1711,7 @@ const payable_days_count = Array.from(calendarByISODate.entries()).filter(([iso,
 const expected_paid_minutes_month = payable_days_count * MINUTES_PER_WORKDAY;
 const expected_paid_minutes_policy = "PAYABLE_DAYS(Mon-Fri: workday|holiday|collective_leave)*480";
 // umetnuto 07/02 kraj 
-// --- monthly payroll detector (deterministički) ---
+// --- monthly payroll detector (deterministiÄŤki) ---
 function isFullMonthPayrollPeriod(p) {
   const from = String(p?.date_from || "");
   const to = String(p?.date_to || "");
@@ -1692,7 +1721,7 @@ function isFullMonthPayrollPeriod(p) {
   const [ty, tm, td] = to.split("-").map(n => parseInt(n, 10));
   if (!(fy && fm && fd && ty && tm && td)) return false;
   if (fy !== ty || fm !== tm) return false;     // isti mjesec
-  if (fd !== 1) return false;                   // mora početi 1.
+  if (fd !== 1) return false;                   // mora poÄŤeti 1.
 
   // zadnji dan u mjesecu:
   const lastDay = new Date(fy, fm, 0).getDate(); // 0 => zadnji dan prethodnog mjeseca, ali fm je 1..12 => OK
@@ -1734,3 +1763,4 @@ const is_monthly_payroll = isFullMonthPayrollPeriod(period);
   };
 }
 module.exports = { computeEprOutputs };
+

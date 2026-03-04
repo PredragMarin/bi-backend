@@ -105,11 +105,11 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     <div class="row">
       <div>
         <label>Period from (YYYY-MM-DD)</label>
-        <input id="from" class="date" type="date" value="2026-01-01" />
+        <input id="from" class="date" type="date" value="" />
       </div>
       <div>
         <label>Period to (YYYY-MM-DD)</label>
-        <input id="to" class="date" type="date" value="2026-01-31" />
+        <input id="to" class="date" type="date" value="" />
       </div>
       <div>
         <label>HZZO overlay (DB mode)</label>
@@ -254,6 +254,7 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
   let lastResultAll = null;     // full ALL-company dataset (as returned by backend)
   let lastResultView = null;    // view-filtered dataset (used for rendering)
   let selectedViewGroup = "ALL";
+  let lastAutoHzzoDir = "";
 
   // per-table state
   const stateByTable = new Map(); // name -> { sortKey, sortDir, colFilters: Map }
@@ -287,6 +288,18 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
+  }
+  function monthStartISO(dateISO) {
+    const m = String(dateISO || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return "";
+    return `${m[1]}-${m[2]}-01`;
+  }
+  function defaultHzzoDirForPeriod(fromISO) {
+    const m = String(fromISO || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
+    if (!m) return "";
+    const yyyy = m[1];
+    const mm = m[2];
+    return `Z:\\001_Korisnici\\Marin Andrea\\012_Ljudski Resursi\\003_Place\\02_Tekuce\\${mm}_${yyyy}\\02_Doznake`;
   }
 
   function setStatus(msg, ok = true) {
@@ -786,13 +799,14 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     }
   };
 
-  // Prefill textarea for JSON mode
-  elReq.value = JSON.stringify({
-    use_case: "epr_attendance_v1",
-    period: { date_from: "2025-12-01", date_to: "2025-12-31" },
-    debug: { dry_run: true },
-    datasets: { epr_data: [], calendar: [], osebe_raw: [] }
-  }, null, 2);
+  function setJsonPrefill(fromISO, toISO) {
+    elReq.value = JSON.stringify({
+      use_case: "epr_attendance_v1",
+      period: { date_from: fromISO, date_to: toISO },
+      debug: { dry_run: true },
+      datasets: { epr_data: [], calendar: [], osebe_raw: [] }
+    }, null, 2);
+  }
 
   // Initial empty state
   lastResultAll = {
@@ -811,15 +825,41 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
   // Init config + default view filter, then initial repaint
   (async () => {
     const today = todayISO();
+    const monthStart = monthStartISO(today);
+    elFrom.value = monthStart;
+    elTo.value = today;
     elFrom.max = today;
     elTo.max = today;
     if (elHzzoAsOf) {
       elHzzoAsOf.max = today;
-      if (!elHzzoAsOf.value) elHzzoAsOf.value = elTo.value;
+      elHzzoAsOf.value = today;
     }
+    const autoHzzoDir = defaultHzzoDirForPeriod(elFrom.value);
+    if (elHzzoDir && !String(elHzzoDir.value || "").trim()) {
+      elHzzoDir.value = autoHzzoDir;
+      lastAutoHzzoDir = autoHzzoDir;
+    }
+    setJsonPrefill(elFrom.value, elTo.value);
     if (elTo && elHzzoAsOf) {
       elTo.addEventListener("change", () => {
-        if (!elHzzoAsOf.value) elHzzoAsOf.value = elTo.value;
+        const t = todayISO();
+        const to = String(elTo.value || "").trim();
+        elHzzoAsOf.value = (!to || to > t) ? t : to;
+        setJsonPrefill(String(elFrom.value || "").trim(), to || t);
+      });
+    }
+    if (elFrom) {
+      elFrom.addEventListener("change", () => {
+        const fromVal = String(elFrom.value || "").trim();
+        const toVal = String(elTo.value || "").trim();
+        setJsonPrefill(fromVal, toVal);
+        const nextAutoHzzoDir = defaultHzzoDirForPeriod(fromVal);
+        const currentHzzoDir = String(elHzzoDir?.value || "").trim();
+        // Update auto-prefill only if input is still empty or unchanged from previous auto-value.
+        if (elHzzoDir && (!currentHzzoDir || currentHzzoDir === lastAutoHzzoDir)) {
+          elHzzoDir.value = nextAutoHzzoDir;
+          lastAutoHzzoDir = nextAutoHzzoDir;
+        }
       });
     }
 

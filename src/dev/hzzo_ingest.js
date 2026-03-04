@@ -437,6 +437,20 @@ function hasAnyAttendanceOnDate(eprRows, osebid, isoDate) {
   return false;
 }
 
+function hasAnyErpAbsenceOnDate(eprRows, osebid, isoDate) {
+  for (const r of eprRows || []) {
+    if (Number(r.osebid) !== Number(osebid)) continue;
+    const t = Number(r.tipizhod);
+    if (!(t === 3 || t === 8 || t === 9)) continue;
+    const tv = String(r.timevhod || "");
+    const m = tv.match(/^(\d{2})\/(\d{2})\/(\d{4})\s/);
+    if (!m) continue;
+    const iso = `${m[3]}-${m[2]}-${m[1]}`;
+    if (iso === isoDate) return true;
+  }
+  return false;
+}
+
 function buildSyntheticRowsFromHzzo(opts) {
   const {
     fromISO,
@@ -537,6 +551,7 @@ function buildSyntheticRowsFromHzzo(opts) {
         const isHoliday = !!cal && Number(cal.praznik) === 1;
         const isCL = !!cal && isCollectiveLeaveText(cal.tekst);
         if (!isWorkday || isHoliday || isCL || !isWeekday(d)) continue;
+        if (hasAnyErpAbsenceOnDate(eprRows, osebid, iso)) continue;
         if (hasAnyAttendanceOnDate(eprRows, osebid, iso)) {
           conflictDays.push({
             osebid,
@@ -593,6 +608,7 @@ function buildSyntheticRowsFromHzzo(opts) {
       const isHoliday = !!cal && Number(cal.praznik) === 1;
       const isCL = !!cal && isCollectiveLeaveText(cal.tekst);
       if (!isWorkday || isHoliday || isCL || !isWeekday(d)) continue;
+      if (hasAnyErpAbsenceOnDate(eprRows, osebid, iso)) continue;
       if (hasAnyAttendanceOnDate(eprRows, osebid, iso)) {
         conflictDays.push({
           osebid,
