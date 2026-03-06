@@ -7,8 +7,7 @@ const { validateDatasets } = require("./validate");
 const { sha256Hex } = require("./hash");
 const { nowIsoWithOffset } = require("./time");
 const { writeRunArtifacts, updateCurrentPointer } = require("./store");
-
-const { computeEprOutputs } = require("./epr/compute");
+const { getModuleRuntime } = require("../core_shell/kernel/module_registry");
 
 function stableJsonStringify(obj) {
   return JSON.stringify(obj, Object.keys(obj).sort());
@@ -51,19 +50,15 @@ async function runUseCase(req) {
   };
   const input_hash = `sha256:${sha256Hex(stableJsonStringify(inputMaterial))}`;
 
-  // 4) Compute outputs (module-specific compute is called from core routing)
-  let computed;
-  if (use_case === "epr_attendance_v1") {
-    computed = computeEprOutputs({
-      manifest,
-      period,
-      period_label: periodLabel(period),
-      datasets,
-      validation
-    });
-  } else {
-    throw new Error(`Unknown use_case: ${use_case}`);
-  }
+  // 4) Compute outputs via module registry dispatch
+  const moduleRuntime = getModuleRuntime(use_case);
+  const computed = moduleRuntime.runCompute({
+    manifest,
+    period,
+    period_label: periodLabel(period),
+    datasets,
+    validation
+  });
 
   // 5) Determine run_status (minimalna politika: FINAL samo ako rejects=0 i needs_review=0)
   const rejects_count = computed.run_metadata.rejects_count;
@@ -100,7 +95,12 @@ async function runUseCase(req) {
     });
 
     if (run_status === "FINAL") {
-      await updateCurrentPointer({ storeRoot, period, storeInfo, use_case: "use_case_EPR" });
+      await updateCurrentPointer({
+        storeRoot,
+        period,
+        storeInfo,
+        use_case: moduleRuntime.current_pointer_use_case || use_case
+      });
     }
   }
 
