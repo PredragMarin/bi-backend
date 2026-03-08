@@ -2,6 +2,7 @@
 const fsp = require("fs/promises");
 const path = require("path");
 const { chromium } = require("playwright");
+const { resolveEojnConfigPath } = require("./secret_provider");
 
 function log(...a) { console.log("[EOJN][LOGIN_SMOKE]", ...a); }
 function parseArgs(argv) {
@@ -134,9 +135,7 @@ async function safeFillLogin(page, user, pass) {
   const tenderId = Number(args.tender || 74182);
   const headed = args.headed === "1";
   const fresh = args.fresh === "1";
-  const cfgPath = args.config || process.env.EOJN_CONFIG_PATH || "";
-
-  if (!cfgPath) throw new Error("Missing config path. Use --config=... or EOJN_CONFIG_PATH.");
+  const cfgPath = resolveEojnConfigPath({ configPathOverride: args.config || "" });
   const cfg = readJsonFile(cfgPath);
   const user = cfg.eojnUser || process.env.EOJN_USER;
   const pass = cfg.eojnPass || process.env.EOJN_PASS;
@@ -247,3 +246,4 @@ async function safeFillLogin(page, user, pass) {
   console.error("[EOJN][LOGIN_SMOKE][ERR]", e?.stack || e?.message || String(e));
   process.exit(1);
 });
+

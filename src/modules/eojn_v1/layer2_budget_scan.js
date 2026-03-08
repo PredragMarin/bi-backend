@@ -3,6 +3,7 @@
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
+const os = require("os");
 const { spawnSync } = require("child_process");
 
 const DEFAULT_KEYWORDS = [
@@ -80,11 +81,35 @@ function escapePsSingleQuoted(s) {
   return String(s).replace(/'/g, "''");
 }
 
+function sanitizeJsonText(input) {
+  return String(input || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+}
+
+function parseJsonWithFallback(rawText, sourceLabel) {
+  const text = String(rawText || "").trim();
+  if (!text) {
+    throw new Error(`PowerShell Excel extraction returned empty JSON: ${sourceLabel}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    const sanitized = sanitizeJsonText(text);
+    try {
+      return JSON.parse(sanitized);
+    } catch (err2) {
+      throw new Error(`PowerShell JSON parse failed (${sourceLabel}): ${err2.message}`);
+    }
+  }
+}
+
 function runPowerShellWorkbookExtract(filePath, maxRows = 6000, maxCols = 80) {
   const safePath = escapePsSingleQuoted(filePath);
+  const outJsonPath = path.join(os.tmpdir(), `eojn_l2_extract_${process.pid}_${Date.now()}_${Math.random().toString(16).slice(2)}.json`);
+  const safeOutPath = escapePsSingleQuoted(outJsonPath);
   const command = `
 $ErrorActionPreference='Stop'
 $path='${safePath}'
+$outPath='${safeOutPath}'
 $maxRows=${Number(maxRows)}
 $maxCols=${Number(maxCols)}
 $excel = New-Object -ComObject Excel.Application
@@ -116,7 +141,9 @@ $excel.Quit()
 [void][System.Runtime.Interopservices.Marshal]::ReleaseComObject($wb)
 [void][System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel)
 [gc]::Collect(); [gc]::WaitForPendingFinalizers()
-@{ sheets = $out } | ConvertTo-Json -Depth 8 -Compress
+$json = (@{ sheets = $out } | ConvertTo-Json -Depth 10 -Compress)
+[System.IO.File]::WriteAllText($outPath, $json, [System.Text.Encoding]::UTF8)
+Write-Output $outPath
 `;
   const result = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command], {
     encoding: "utf8",
@@ -125,7 +152,14 @@ $excel.Quit()
   if (result.status !== 0) {
     throw new Error(`PowerShell Excel extraction failed: ${result.stderr || result.stdout}`);
   }
-  return JSON.parse(result.stdout.trim());
+  const reportedPath = String(result.stdout || "").trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] || outJsonPath;
+  let raw = "";
+  try {
+    raw = fs.readFileSync(reportedPath, "utf8");
+    return parseJsonWithFallback(raw, path.basename(reportedPath));
+  } finally {
+    try { fs.unlinkSync(reportedPath); } catch (_) {}
+  }
 }
 
 function validateExtractData(data) {

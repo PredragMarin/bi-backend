@@ -1,8 +1,8 @@
 ﻿{
   "identity": {
     "use_case": "eojn_v1",
-    "contract_version": "1.0.0",
-    "module_version": "0.1.0",
+    "contract_version": "1.1.0",
+    "module_version": "0.2.0",
     "owner": "Marn Expert d.o.o."
   },
   "runtime": {
@@ -13,12 +13,20 @@
   "inputs": {
     "datasets": [
       {
-        "name": "eojn_searchgrid",
+        "name": "eojn_procurements_raw",
         "role": "raw_fact",
         "provenance": "EOJN",
         "format": "json",
         "required": true,
-        "notes": "Search grid export (Layer 1 metadata)."
+        "notes": "Public procurements feed from /procurements-all."
+      },
+      {
+        "name": "eojn_notices_raw",
+        "role": "raw_fact",
+        "provenance": "EOJN",
+        "format": "json",
+        "required": true,
+        "notes": "Public notices feed from /notices-all."
       },
       {
         "name": "eojn_budget",
@@ -32,6 +40,8 @@
   },
   "outputs": {
     "artifacts_minimum": [
+      "procurements_raw.json",
+      "notices_raw.json",
       "raw.json",
       "scored.json",
       "shortlist.json",
@@ -43,6 +53,13 @@
       "layer2_evidence.json",
       "alerts_queue.csv"
     ]
+  },
+  "contracts": {
+    "layer1_run_contract": "contracts/layer1_run_contract.json",
+    "validation_entry": "validate_layer1_request.js"
+  },
+  "storage": {
+    "bi_store_root": "out/eojn_v1"
   },
   "policies": {
     "store_full_docs": false,

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EOJN Layer 1</title>
+  <style>
+    :root { --bg:#f5f7fb; --fg:#1f2937; --card:#ffffff; --line:#d1d5db; --btn:#0f766e; --btn2:#334155; }
+    body { margin:0; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background:var(--bg); color:var(--fg); }
+    .wrap { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    p { margin: 6px 0; }
+    button { border:0; border-radius:8px; padding:10px 14px; color:#fff; cursor:pointer; margin-right:8px; margin-top:8px; }
+    .primary { background: var(--btn); }
+    .secondary { background: var(--btn2); }
+    pre { background:#0b1020; color:#dbeafe; border-radius:8px; padding:12px; overflow:auto; }
+    .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    label { font-weight:600; }
+    input, select { padding:8px; border:1px solid var(--line); border-radius:8px; }
+    input[type="date"] { width: 170px; cursor: pointer; }
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      transform: scale(3);
+      transform-origin: right center;
+      cursor: pointer;
+    }
+    .progress-wrap { margin-top:10px; }
+    .progress-track { width:100%; height:18px; border-radius:9px; background:#e5e7eb; overflow:hidden; }
+    .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,#0f766e,#16a34a); transition:width .2s ease; }
+    .status-line { margin-top:8px; font-weight:600; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>EOJN Layer 1 Control</h1>
+      <p>Backend-first hook for procurements + notices ingest, dedup, scoring and Layer 2 queue prep.</p>
+      <p><a href="/ui/epr">Open EPR UI</a> | <a href="/ui/sms">Open SMS UI</a></p>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="incremental">incremental</option>
+          <option value="bootstrap">bootstrap</option>
+          <option value="safety_full">safety_full</option>
+        </select>
+        <label for="dry">Dry run</label>
+        <input id="dry" type="checkbox" />
+      </div>
+      <div class="row">
+        <button class="secondary" id="btnStatus">Refresh Status</button>
+        <button class="primary" id="btnRun">Run Layer 1</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Response</h3>
+      <pre id="out">{}</pre>
+    </div>
+
+    <div class="card">
+      <h3>Layer 2 Monitor</h3>
+      <div class="row">
+        <label for="l2RunDate">Run date (opt, default latest <= today)</label>
+        <input id="l2RunDate" type="date" value="" />
+        <label for="maxItems">Max items</label>
+        <input id="maxItems" type="number" min="1" value="15" />
+        <label for="retryCount">Retries</label>
+        <input id="retryCount" type="number" min="0" value="1" />
+        <label for="timeoutMs">Item timeout (ms)</label>
+        <input id="timeoutMs" type="number" min="5000" value="300000" />
+        <label for="jitterMinMs">Jitter min (ms)</label>
+        <input id="jitterMinMs" type="number" min="0" value="10000" />
+        <label for="jitterMaxMs">Jitter max (ms)</label>
+        <input id="jitterMaxMs" type="number" min="0" value="15000" />
+        <label for="delayMs">Step delay (ms)</label>
+        <input id="delayMs" type="number" min="0" value="800" />
+        <label for="enableDownload">Enable download</label>
+        <input id="enableDownload" type="checkbox" />
+      </div>
+      <div class="row">
+        <button class="primary" id="btnL2Start">Start Layer 2</button>
+        <button class="secondary" id="btnL2Refresh">Refresh Layer 2 Status</button>
+      </div>
+      <p style="margin-top:8px;">Download mode reads credentials from <code>EOJN_SECRET_FILE</code> (fallback: <code>EOJN_CONFIG_PATH</code>).</p>
+      <div class="progress-wrap">
+        <div class="progress-track">
+          <div class="progress-fill" id="l2Progress"></div>
+        </div>
+        <div class="status-line" id="l2StatusLine">Idle</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const out = document.getElementById("out");
+    const mode = document.getElementById("mode");
+    const dry = document.getElementById("dry");
+    const btnStatus = document.getElementById("btnStatus");
+    const btnRun = document.getElementById("btnRun");
+    const btnL2Start = document.getElementById("btnL2Start");
+    const btnL2Refresh = document.getElementById("btnL2Refresh");
+    const l2RunDate = document.getElementById("l2RunDate");
+    const maxItems = document.getElementById("maxItems");
+    const retryCount = document.getElementById("retryCount");
+    const timeoutMs = document.getElementById("timeoutMs");
+    const jitterMinMs = document.getElementById("jitterMinMs");
+    const jitterMaxMs = document.getElementById("jitterMaxMs");
+    const delayMs = document.getElementById("delayMs");
+    const enableDownload = document.getElementById("enableDownload");
+    const l2Progress = document.getElementById("l2Progress");
+    const l2StatusLine = document.getElementById("l2StatusLine");
+    let l2Timer = null;
+    let l2ExpectedRunId = "";
+
+    function show(data) {
+      out.textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function fetchJson(url, opts) {
+      const res = await fetch(url, opts);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message || ("HTTP " + res.status));
+      return json;
+    }
+
+    btnStatus.onclick = async () => {
+      try {
+        show(await fetchJson("/api/eojn/v1/status"));
+      } catch (e) {
+        show({ error: String(e) });
+      }
+    };
+
+    btnRun.onclick = async () => {
+      try {
+        show(await fetchJson("/api/eojn/v1/run", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: mode.value, dry_run: dry.checked })
+        }));
+      } catch (e) {
+        show({ error: String(e) });
+      }
+    };
+
+    function paintLayer2Status(s) {
+      const pct = Number(s && s.progress_pct || 0);
+      l2Progress.style.width = Math.max(0, Math.min(100, pct)) + "%";
+      const phase = String(s && s.phase || "IDLE");
+      const msg = String(s && s.message || "Idle");
+      const done = Number(s && s.done || 0);
+      const skipped = Number(s && s.skipped || 0);
+      const total = Number(s && s.total || 0);
+      l2StatusLine.textContent = `${phase} | done=${done}, skipped=${skipped}, total=${total} | ${pct}% | ${msg}`;
+    }
+
+    async function refreshLayer2Status() {
+      try {
+        const s = await fetchJson("/api/eojn/v1/layer2/status");
+        paintLayer2Status(s);
+        const runMatches = !l2ExpectedRunId || String(s.run_id || "") === l2ExpectedRunId;
+        if (s.active || !runMatches) {
+          if (!l2Timer) l2Timer = setTimeout(loopLayer2, 2000);
+        } else if (l2Timer) {
+          clearTimeout(l2Timer);
+          l2Timer = null;
+        }
+      } catch (e) {
+        l2StatusLine.textContent = "ERROR | " + String(e);
+      }
+    }
+
+    async function loopLayer2() {
+      if (l2Timer) {
+        clearTimeout(l2Timer);
+        l2Timer = null;
+      }
+      await refreshLayer2Status();
+    }
+
+    btnL2Refresh.onclick = refreshLayer2Status;
+
+    btnL2Start.onclick = async () => {
+      try {
+        const start = await fetchJson("/api/eojn/v1/layer2/start", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            run_date_ymd: String(l2RunDate.value || "").trim() || undefined,
+            max_items: Number(maxItems.value || 15),
+            retry_count: Number(retryCount.value || 1),
+            item_timeout_ms: Number(timeoutMs.value || 300000),
+            human_delay_min_ms: Number(jitterMinMs.value || 10000),
+            human_delay_max_ms: Number(jitterMaxMs.value || 15000),
+            simulated_step_delay_ms: Number(delayMs.value || 800),
+            enable_download: Boolean(enableDownload.checked)
+          })
+        });
+        l2ExpectedRunId = String(start.run_id || "");
+        show(start);
+        if (l2Timer) {
+          clearTimeout(l2Timer);
+          l2Timer = null;
+        }
+        await loopLayer2();
+      } catch (e) {
+        show({ error: String(e) });
+      }
+    };
+
+    btnStatus.click();
+    refreshLayer2Status();
+  </script>
+</body>
+</html>

@@ -5,14 +5,16 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const createSmsApprovalsRouterV1 = require("./routes/sms_approvals_v1");
+const createEojnLayer1RouterV1 = require("./routes/eojn_layer1_v1");
 const { runUseCase } = require("../core/runtime");
-const { fetchEprDatasets } = require("../dev/db_fetch_epr");
+const { fetchEprDatasets } = require("../modules/epr_attendance_v1/adapters/db_fetch_epr");
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 const repoRoot = path.resolve(__dirname, "..", ".."); // src/api -> repo
 const outRoot = path.join(repoRoot, "out");
 app.use("/api/approvals/v1", createSmsApprovalsRouterV1({ outRoot }));
+app.use("/api/eojn/v1", createEojnLayer1RouterV1());
 // ---- Idle shutdown (minutes) ----
 const IDLE_SHUTDOWN_MINUTES = Number(process.env.IDLE_SHUTDOWN_MINUTES || 10);
 const IDLE_SHUTDOWN_MS = Number.isFinite(IDLE_SHUTDOWN_MINUTES) ? IDLE_SHUTDOWN_MINUTES * 60 * 1000 : 0;
@@ -49,6 +51,7 @@ app.use((req, res, next) => {
 const uiDir = path.join(__dirname, "ui");
 const eprHtmlPath = path.join(uiDir, "epr.html");
 const smsHtmlPath = path.join(uiDir, "sms.html"); // +++
+const eojnHtmlPath = path.join(uiDir, "eojn.html");
 
 app.use("/ui", express.static(uiDir, { extensions: ["html"] }));
 
@@ -57,6 +60,8 @@ app.get("/ui/epr.html", (req, res) => res.sendFile(eprHtmlPath));
 // +++ ADD:
 app.get("/ui/sms", (req, res) => res.sendFile(smsHtmlPath));
 app.get("/ui/sms.html", (req, res) => res.sendFile(smsHtmlPath));
+app.get("/ui/eojn", (req, res) => res.sendFile(eojnHtmlPath));
+app.get("/ui/eojn.html", (req, res) => res.sendFile(eojnHtmlPath));
 // health check
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
@@ -328,6 +333,7 @@ const server = app.listen(PORT, () => {
   console.log(`EPR API listening on http://localhost:${PORT}`);
   console.log(`UI: http://localhost:${PORT}/ui/epr`);
   console.log(`UI (alt): http://localhost:${PORT}/ui/epr.html`);
+  console.log(`UI EOJN: http://localhost:${PORT}/ui/eojn`);
   console.log("EMPLOYEE_TAGS_V1 =", process.env.EMPLOYEE_TAGS_V1);
   if (IDLE_SHUTDOWN_MS > 0) {
     console.log(`Idle shutdown: ${IDLE_SHUTDOWN_MINUTES} min`);

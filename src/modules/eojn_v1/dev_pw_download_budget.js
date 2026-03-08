@@ -2,6 +2,7 @@
 const fsp = require("fs/promises");
 const path = require("path");
 const { chromium } = require("playwright");
+const { resolveEojnConfigPath } = require("./secret_provider");
 
 function dbg(...a) { console.log("[EOJN][PW][DBG]", ...a); }
 function inf(...a) { console.log("[EOJN][PW][INF]", ...a); }
@@ -278,13 +279,8 @@ async function main() {
   const args = parseArgs(process.argv);
   const headed = args.headed === "1";
   const fresh = args.fresh === "1";
-  const configPath = args.config || process.env.EOJN_CONFIG_PATH || "";
+  let configPath = "";
   const tenderIds = parseTenderIds(args);
-
-  if (!configPath) {
-    err("Missing config path. Use --config=... or EOJN_CONFIG_PATH.");
-    process.exit(2);
-  }
 
   if (!tenderIds.length) {
     err("Missing tender IDs. Use --tender=<id> or --tenders=74455,74552,...");
@@ -293,10 +289,11 @@ async function main() {
 
   let cfg = {};
   try {
+    configPath = resolveEojnConfigPath({ configPathOverride: args.config || "" });
     cfg = readJsonFile(configPath);
     inf("Loaded config:", configPath);
   } catch (e) {
-    err("Could not read config file:", configPath);
+    err("Could not resolve/read EOJN config file.");
     err(e?.message || String(e));
     process.exit(2);
   }
@@ -440,3 +437,5 @@ main().catch((e) => {
   err(e?.stack || e?.message || String(e));
   process.exit(1);
 });
+
+

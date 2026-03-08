@@ -1,9 +1,11 @@
 "use strict";
 
 const eprAttendanceRuntime = require("../../modules/epr_attendance_v1/module_runtime");
+const eojnRuntime = require("../../modules/eojn_v1/module_runtime");
 
 const MODULE_REGISTRY = new Map([
-  [eprAttendanceRuntime.use_case, eprAttendanceRuntime]
+  [eprAttendanceRuntime.use_case, eprAttendanceRuntime],
+  [eojnRuntime.use_case, eojnRuntime]
 ]);
 
 function getModuleRuntime(useCase) {

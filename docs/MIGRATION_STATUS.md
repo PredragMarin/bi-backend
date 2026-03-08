@@ -38,6 +38,18 @@ Branch: `restructure/core-shell-v1`
 - Preserved existing pointer behavior through module runtime metadata:
   - `current_pointer_use_case: "use_case_EPR"` for EPR module.
 
+## Completed (Helper Consolidation)
+- Extracted shared SMS helpers to Core Shell libs:
+  - `src/core_shell/libs/csv_semicolon.js`
+  - `src/core_shell/libs/sms_common.js`
+- Updated route and publisher to use shared helpers:
+  - `src/api/routes/sms_approvals_v1.js`
+  - `src/core/sms_outbox_publisher.js`
+- Consolidated duplicate logic:
+  - semicolon CSV parsing
+  - period folder validation
+  - approval decision normalization
+
 ## Behavior Intent
 - No intentional business behavior changes.
 - Refactor is boundary/ownership oriented.
@@ -45,11 +57,13 @@ Branch: `restructure/core-shell-v1`
 ## Validation Performed
 - `node --check` passed for changed JS files.
 - Module/runtime load check passed without execution of long-running server.
+- SMS route load check passed.
+- SMS outbox publish smoke passed with shared helper path.
 
 ## Next Phase
-1. Start consolidating duplicated shared helpers (CSV/period/decision parsing) into core shell libs.
-2. Define EOJN consolidation target workflow and watchlist persistence contract through storage interface.
-3. Add EOJN module runtime entry and registry integration.
+1. Define EOJN consolidation target workflow and watchlist persistence contract through storage interface.
+2. Add EOJN module runtime entry and registry integration.
+3. Continue consolidation of any remaining duplicated utility logic.
 4. After parity confidence, remove legacy bridge files (`src/core/epr/*` thin adapters and `src/dev/*` wrappers).
 
 ## Rollback

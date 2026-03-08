@@ -5,82 +5,12 @@ const path = require("path");
 const { buildOutboxRecord, toNdjsonLine } = require("./sms_outbox_contract");
 const { normalizePhoneE164 } = require("./validate");
 const { appendEvent, getLastEventType } = require("./sms_ledger");
-
-function stripBom(s) {
-  if (!s) return s;
-  return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s;
-}
-
-function parseCsvSemicolon(text) {
-  const s = stripBom(String(text || ""));
-  const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-
-    if (inQuotes) {
-      if (ch === '"') {
-        const next = s[i + 1];
-        if (next === '"') {
-          field += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += ch;
-      }
-      continue;
-    }
-
-    if (ch === '"') { inQuotes = true; continue; }
-    if (ch === ";") { row.push(field); field = ""; continue; }
-    if (ch === "\n") { row.push(field); field = ""; rows.push(row); row = []; continue; }
-    if (ch === "\r") continue;
-
-    field += ch;
-  }
-
-  row.push(field);
-  const isLastRowEmpty = row.length === 1 && row[0] === "" && rows.length > 0;
-  if (!isLastRowEmpty) rows.push(row);
-
-  while (rows.length && rows[rows.length - 1].every(v => String(v || "") === "")) rows.pop();
-  if (!rows.length) return { headers: [], records: [] };
-
-  const headers = rows[0].map(h => String(h || "").trim());
-  const records = [];
-  for (let r = 1; r < rows.length; r++) {
-    const arr = rows[r];
-    if (!arr || !arr.length) continue;
-    const obj = {};
-    for (let c = 0; c < headers.length; c++) obj[headers[c]] = arr[c] ?? "";
-    records.push(obj);
-  }
-  return { headers, records };
-}
+const { parseCsvSemicolon } = require("../core_shell/libs/csv_semicolon");
+const { ensureSafePeriodFolder, normalizeDecision } = require("../core_shell/libs/sms_common");
 
 function readCsvFile(filePath) {
   const buf = fs.readFileSync(filePath);
   return parseCsvSemicolon(buf.toString("utf8"));
-}
-
-function ensureSafePeriodFolder(period) {
-  const p = String(period || "").trim();
-  if (!p) throw new Error("Missing period");
-  const norm = p.includes("-") ? p.replace("-", "_") : p;
-  if (!/^\d{4}_\d{2}$/.test(norm)) throw new Error(`Invalid period '${period}'. Expected YYYY_MM.`);
-  return norm;
-}
-
-function normalizeDecision(v) {
-  const s = String(v || "").trim().toLowerCase();
-  if (s === "approved" || s === "approve" || s === "1" || s === "true" || s === "yes") return "approved";
-  if (s === "rejected" || s === "reject" || s === "0" || s === "false" || s === "no") return "rejected";
-  return null;
 }
 
 function atomicWriteFile(filePath, content) {

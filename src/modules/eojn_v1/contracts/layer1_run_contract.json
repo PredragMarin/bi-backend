@@ -1,0 +1,48 @@
+{
+  "contract_id": "eojn_layer1_run_contract_v1",
+  "version": "1.0.0",
+  "description": "EOJN Layer 1 ingest contract for procurements and notices public feeds.",
+  "request": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": ["bootstrap", "incremental", "safety_full"],
+        "default": "incremental"
+      },
+      "run_date_ymd": {
+        "type": "string",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+      },
+      "out_root": {
+        "type": "string"
+      },
+      "dry_run": {
+        "type": "boolean",
+        "default": false
+      }
+    }
+  },
+  "state": {
+    "watermarks": [
+      "procurements_notice_publish_date",
+      "notices_publish_date"
+    ],
+    "dedup_keys": {
+      "procurements": "Id",
+      "notices": "notice_key"
+    }
+  },
+  "outputs": {
+    "required_artifacts": [
+      "procurements_raw.json",
+      "notices_raw.json",
+      "scored.json",
+      "shortlist.json",
+      "layer2_queue.json",
+      "manifest.json",
+      "events.log"
+    ]
+  }
+}
