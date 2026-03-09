@@ -9,7 +9,8 @@
     "fetch-cookie": "^3.2.0",
     "node-fetch": "^2.7.0",
     "odbc": "^2.4.9",
-    "tough-cookie": "^6.0.0"
+    "tough-cookie": "^6.0.0",
+    "xlsx": "^0.18.5"
   },
   "description": "",
   "scripts": {

@@ -28,6 +28,13 @@
     .progress-track { width:100%; height:18px; border-radius:9px; background:#e5e7eb; overflow:hidden; }
     .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,#0f766e,#16a34a); transition:width .2s ease; }
     .status-line { margin-top:8px; font-weight:600; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid var(--line); padding: 6px; font-size: 12px; text-align: left; vertical-align: top; }
+    th { background: #eef2ff; }
+    tr.pick { background: #ecfeff; }
+    .table-wrap { max-height: 280px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+    .tender-link { color:#0f4c81; text-decoration:none; font-weight:600; }
+    .tender-link:hover { color:#2563eb; text-decoration:underline; }
   </style>
 </head>
 <body>
@@ -53,6 +60,7 @@
         <button class="secondary" id="btnStatus">Refresh Status</button>
         <button class="primary" id="btnRun">Run Layer 1</button>
       </div>
+      <p id="activeCycleLine">Active cycle: n/a</p>
     </div>
 
     <div class="card">
@@ -92,6 +100,46 @@
         <div class="status-line" id="l2StatusLine">Idle</div>
       </div>
     </div>
+
+    <div class="card">
+      <h3>Layer 2 Table</h3>
+      <div class="row">
+        <button class="secondary" id="btnL2ViewRefresh">Refresh Layer 2 Table</button>
+      </div>
+      <p>Click a tender row to view its notices timeline.</p>
+      <div class="table-wrap">
+        <table id="tenderTable">
+          <thead>
+            <tr>
+              <th>TenderId</th>
+              <th>Reference</th>
+              <th>Name</th>
+              <th>L1 TopScore</th>
+              <th>L2 Incidence</th>
+              <th>L2 Label</th>
+              <th>Lifecycle</th>
+              <th>Layer2 status</th>
+              <th>Gate</th>
+            </tr>
+          </thead>
+          <tbody id="tenderTableBody"></tbody>
+        </table>
+      </div>
+      <h4 style="margin-top:12px;">Notices timeline</h4>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>PublishDate</th>
+              <th>Doc</th>
+              <th>NoticeNumber</th>
+              <th>ModificationDescription</th>
+            </tr>
+          </thead>
+          <tbody id="noticeTableBody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -100,6 +148,7 @@
     const dry = document.getElementById("dry");
     const btnStatus = document.getElementById("btnStatus");
     const btnRun = document.getElementById("btnRun");
+    const activeCycleLine = document.getElementById("activeCycleLine");
     const btnL2Start = document.getElementById("btnL2Start");
     const btnL2Refresh = document.getElementById("btnL2Refresh");
     const l2RunDate = document.getElementById("l2RunDate");
@@ -112,8 +161,13 @@
     const enableDownload = document.getElementById("enableDownload");
     const l2Progress = document.getElementById("l2Progress");
     const l2StatusLine = document.getElementById("l2StatusLine");
+    const btnL2ViewRefresh = document.getElementById("btnL2ViewRefresh");
+    const tenderTableBody = document.getElementById("tenderTableBody");
+    const noticeTableBody = document.getElementById("noticeTableBody");
     let l2Timer = null;
     let l2ExpectedRunId = "";
+    let l2ViewRows = [];
+    let selectedTenderId = 0;
 
     function show(data) {
       out.textContent = JSON.stringify(data, null, 2);
@@ -128,7 +182,14 @@
 
     btnStatus.onclick = async () => {
       try {
-        show(await fetchJson("/api/eojn/v1/status"));
+        const s = await fetchJson("/api/eojn/v1/status");
+        show(s);
+        const ac = s && s.active_cycle ? s.active_cycle : null;
+        if (ac && ac.run_date_ymd) {
+          activeCycleLine.textContent = `Active cycle: ${ac.run_date_ymd} (${ac.updated_at || ""})`;
+        } else {
+          activeCycleLine.textContent = "Active cycle: n/a";
+        }
       } catch (e) {
         show({ error: String(e) });
       }
@@ -141,6 +202,8 @@
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ mode: mode.value, dry_run: dry.checked })
         }));
+        await btnStatus.onclick();
+        await refreshLayer2View();
       } catch (e) {
         show({ error: String(e) });
       }
@@ -211,8 +274,76 @@
       }
     };
 
+    function renderNoticesForTender(tenderId) {
+      noticeTableBody.innerHTML = "";
+      const row = l2ViewRows.find(x => Number(x.tender_id) === Number(tenderId));
+      const notices = row && Array.isArray(row.notices) ? row.notices : [];
+      for (const n of notices) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${String(n.publish_date || "")}</td>
+          <td>${String(n.doc_short || "")} ${String(n.doc_name || "")}</td>
+          <td>${String(n.notice_number || "")}</td>
+          <td>${String(n.modification_description || "").replace(/\n/g, " ")}</td>
+        `;
+        noticeTableBody.appendChild(tr);
+      }
+    }
+
+    function renderTenderTable() {
+      tenderTableBody.innerHTML = "";
+      const sorted = [...l2ViewRows].sort((a,b) => {
+        const ai = a.layer2_incidence === null || a.layer2_incidence === undefined ? -1 : Number(a.layer2_incidence);
+        const bi = b.layer2_incidence === null || b.layer2_incidence === undefined ? -1 : Number(b.layer2_incidence);
+        if (bi !== ai) return bi - ai;
+        return Number(b.top_score || 0) - Number(a.top_score || 0);
+      });
+      for (const r of sorted) {
+        const tr = document.createElement("tr");
+        if (Number(r.tender_id) === Number(selectedTenderId)) tr.className = "pick";
+        tr.innerHTML = `
+          <td><a class="tender-link" href="https://eojn.hr/tender-eo/${Number(r.tender_id || 0)}" target="_blank" rel="noopener noreferrer">${Number(r.tender_id || 0)}</a></td>
+          <td>${String(r.reference_number || "")}</td>
+          <td>${String(r.name || "")}</td>
+          <td>${Number(r.top_score || 0).toFixed(3)}</td>
+          <td>${r.layer2_incidence === null || r.layer2_incidence === undefined ? "-" : Number(r.layer2_incidence).toFixed(4)}</td>
+          <td>${String(r.layer2_label || "-")}</td>
+          <td>F14=${Boolean(r.lifecycle && r.lifecycle.has_f14)}; F03=${Boolean(r.lifecycle && r.lifecycle.has_f03)}; n=${Number(r.lifecycle && r.lifecycle.notices_count || 0)}</td>
+          <td>${String(r.layer2_status || "")}</td>
+          <td>${String(r.watchlist_gate || "")}</td>
+        `;
+        tr.onclick = () => {
+          selectedTenderId = Number(r.tender_id || 0);
+          renderTenderTable();
+          renderNoticesForTender(selectedTenderId);
+        };
+        tenderTableBody.appendChild(tr);
+      }
+      if (!selectedTenderId && l2ViewRows.length) {
+        selectedTenderId = Number(l2ViewRows[0].tender_id || 0);
+        renderTenderTable();
+        renderNoticesForTender(selectedTenderId);
+      }
+    }
+
+    async function refreshLayer2View() {
+      try {
+        const runDate = String(l2RunDate.value || "").trim();
+        const url = runDate ? `/api/eojn/v1/layer2/view?run_date_ymd=${encodeURIComponent(runDate)}` : "/api/eojn/v1/layer2/view";
+        const data = await fetchJson(url);
+        l2ViewRows = Array.isArray(data && data.rows) ? data.rows : [];
+        if (!l2ViewRows.some(x => Number(x.tender_id) === Number(selectedTenderId))) selectedTenderId = 0;
+        renderTenderTable();
+      } catch (e) {
+        show({ error: String(e) });
+      }
+    }
+
+    btnL2ViewRefresh.onclick = refreshLayer2View;
+
     btnStatus.click();
     refreshLayer2Status();
+    refreshLayer2View();
   </script>
 </body>
 </html>

@@ -9,6 +9,8 @@ const {
   defaultOutRoot,
   loadLayer1State,
   saveLayer1State,
+  loadActiveCycle,
+  saveActiveCycle,
   writeLayer1RunArtifacts,
   appendEventLog
 } = require("../../core_shell/services/eojn_layer1_store");
@@ -244,6 +246,15 @@ async function runLayer1(payload) {
       runMeta
     });
     await saveLayer1State({ outRoot, state: nextState });
+    await saveActiveCycle({
+      outRoot,
+      activeCycle: {
+        cycle_id: runMeta.completed_at,
+        run_date_ymd: runDateYmd,
+        out_dir: writeInfo.outDir,
+        layer1_run: runMeta
+      }
+    });
     return {
       ok: true,
       run: runMeta,
@@ -263,12 +274,14 @@ async function runLayer1(payload) {
 async function getLayer1Status(input) {
   const outRoot = input && input.out_root ? String(input.out_root) : defaultOutRoot();
   const state = await loadLayer1State({ outRoot });
+  const activeCycle = await loadActiveCycle({ outRoot });
   return {
     use_case: "eojn_v1",
     timezone: TZ,
     out_root: outRoot,
     watermarks: state.watermarks || {},
     last_successful_run: state.last_successful_run || null,
+    active_cycle: activeCycle || null,
     totals: {
       processed_tenders: Object.keys(state.processed_tenders || {}).length,
       processed_notices: Object.keys(state.processed_notice_keys || {}).length

@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>EPR Report UI</title>
+  <title>EPR - Evidencija Prisutnosti</title>
   <style>
 body { font-family: Arial, sans-serif; margin: 8px; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
 .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-top: 8px }
 label { font-size: 12px; color: #333; display: block; margin-bottom: 4px; }
-input, textarea, select, button { font-size: 14px; padding: 8px; }
+input, select, button { font-size: 14px; padding: 8px; }
 input[type="text"] { width: 240px; }
 input[type="date"] { width: 170px; }
 input[type="date"]::-webkit-calendar-picker-indicator {
@@ -23,9 +23,6 @@ input.date { width: 170px; cursor: pointer; }
 
 /* select uredno */
 select { min-width: 120px; }
-
-/* (1) Request JSON: pola visine */
-textarea { width: 760px; height: 70px; font-family: Consolas, monospace; }
 
 button { cursor: pointer; }
 .muted { color: #666; font-size: 12px; }
@@ -91,12 +88,10 @@ tr.hl-yellow td { background: #fff8cc; }
 tr.hl-red td { background: #ffe3e3; }
 tr.hl-green td { color: #0b6; font-weight: 600; }
 
-.radio-wrap { display:flex; gap:14px; align-items:center; padding: 6px 0 0 0; }
-.radio-wrap label { display:flex; gap:6px; align-items:center; margin:0; font-size: 12px; color:#111; }
    </style>
 </head>
 <body>
-  <h2>EPR Report UI (minimal)</h2>
+  <h2>EPR - Evidencija Prisutnosti</h2>
   <div class="muted">
     Sort: klik na naziv kolone. Filter: input ispod headera. Global search: iznad tablice.
   </div>
@@ -114,7 +109,7 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
       <div>
         <label>HZZO overlay (DB mode)</label>
         <label style="display:flex;gap:8px;align-items:center;margin:0;">
-          <input id="hzzoEnabled" type="checkbox" />
+          <input id="hzzoEnabled" type="checkbox" checked />
           <span>Enable</span>
         </label>
       </div>
@@ -148,14 +143,6 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
       </div>
 
       <div>
-        <label>Mode</label>
-        <div class="radio-wrap">
-          <label><input type="radio" name="mode" id="modeDb" checked /> DB (run-db)</label>
-          <label><input type="radio" name="mode" id="modeJson" /> JSON (run)</label>
-        </div>
-      </div>
-
-      <div>
         <label>&nbsp;</label>
         <button id="runBtn">Run</button>
       </div>
@@ -176,13 +163,8 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
       </div>
     </div>
 
-    <div style="margin-top: 10px;">
-      <label>Request JSON (koristi se samo u JSON (run) modu)</label>
-      <textarea id="reqJson"></textarea>
-      <div class="muted">
-        DB (run-db): textarea se ignorira; šalje se samo {"from","to"}.<br/>
-        JSON (run): period from/to iz input polja prepisuje period u JSON-u.
-      </div>
+    <div style="margin-top: 10px;" class="muted">
+        DB (run-db): salje se payload s periodom i HZZO opcijama.
     </div>
 
     <div style="margin-top: 10px;">
@@ -230,7 +212,6 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
   const elFrom = document.getElementById("from");
   const elTo = document.getElementById("to");
   const elRun = document.getElementById("runBtn");
-  const elReq = document.getElementById("reqJson");
   const elStatus = document.getElementById("status");
   const elError = document.getElementById("error");
   const elSelect = document.getElementById("tableSelect");
@@ -238,8 +219,6 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
   const elRowsCount = document.getElementById("rowsCount");
   const elMeta = document.getElementById("meta");
   const elGlobal = document.getElementById("globalSearch");
-  const elModeDb = document.getElementById("modeDb");
-  const elModeJson = document.getElementById("modeJson");
   const elHzzoEnabled = document.getElementById("hzzoEnabled");
   const elHzzoDir = document.getElementById("hzzoDir");
   const elHzzoAsOf = document.getElementById("hzzoAsOf");
@@ -265,20 +244,6 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     return stateByTable.get(name);
   }
 
-  function defaultReq() {
-    return {
-      use_case: "epr_attendance_v1",
-      period: { date_from: elFrom.value.trim(), date_to: elTo.value.trim() },
-      debug: { dry_run: true },
-      datasets: { epr_data: [], calendar: [], osebe_raw: [] }
-    };
-  }
-
-  function safeParseJson(s) {
-    try { return { ok: true, value: JSON.parse(s) }; }
-    catch (e) { return { ok: false, error: e.message }; }
-  }
-
   function isISODate(s) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(s || "").trim());
   }
@@ -293,6 +258,22 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     const m = String(dateISO || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return "";
     return `${m[1]}-${m[2]}-01`;
+  }
+  function monthEndISO(dateISO) {
+    const m = String(dateISO || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return "";
+    const y = Number(m[1]);
+    const mm = Number(m[2]);
+    const last = new Date(y, mm, 0);
+    const day = String(last.getDate()).padStart(2, "0");
+    return `${m[1]}-${m[2]}-${day}`;
+  }
+  function hzzoAsOfForToDate(toISO) {
+    const t = todayISO();
+    const thisMonthStart = monthStartISO(t);
+    const thisMonthEnd = monthEndISO(t);
+    if (toISO >= thisMonthStart && toISO <= thisMonthEnd) return t;
+    return monthEndISO(toISO) || t;
   }
   function defaultHzzoDirForPeriod(fromISO) {
     const m = String(fromISO || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
@@ -669,38 +650,15 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
       return;
     }
 
-    const useDb = !!elModeDb.checked;
-    const url = useDb ? "/api/epr/run-db" : "/api/epr/run";
-    let bodyObj;
-
-    if (useDb) {
-      bodyObj = { from, to };
-      const hzzoEnabled = !!elHzzoEnabled?.checked;
-      const hzzoDir = String(elHzzoDir?.value || "").trim();
-      const hzzoAsOf = String(elHzzoAsOf?.value || "").trim();
-      if (hzzoEnabled) {
-        bodyObj.hzzo_enabled = true;
-        if (hzzoDir) bodyObj.hzzo_dir = hzzoDir;
-        bodyObj.hzzo_as_of = hzzoAsOf || to;
-      }
-    } else {
-      const raw = elReq.value.trim();
-      if (!raw) {
-        bodyObj = defaultReq();
-      } else {
-        const parsed = safeParseJson(raw);
-        if (!parsed.ok) {
-          setError("Neispravan JSON: " + parsed.error);
-          return;
-        }
-        bodyObj = parsed.value;
-        bodyObj.use_case = bodyObj.use_case || "epr_attendance_v1";
-        bodyObj.period = bodyObj.period || {};
-        bodyObj.period.date_from = from;
-        bodyObj.period.date_to = to;
-        bodyObj.debug = bodyObj.debug || {};
-        if (bodyObj.debug.dry_run === undefined) bodyObj.debug.dry_run = true;
-      }
+    const url = "/api/epr/run-db";
+    const bodyObj = { from, to };
+    const hzzoEnabled = !!elHzzoEnabled?.checked;
+    const hzzoDir = String(elHzzoDir?.value || "").trim();
+    const hzzoAsOf = String(elHzzoAsOf?.value || "").trim();
+    if (hzzoEnabled) {
+      bodyObj.hzzo_enabled = true;
+      if (hzzoDir) bodyObj.hzzo_dir = hzzoDir;
+      bodyObj.hzzo_as_of = hzzoAsOf || hzzoAsOfForToDate(to);
     }
 
     setStatus("running...");
@@ -799,15 +757,6 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     }
   };
 
-  function setJsonPrefill(fromISO, toISO) {
-    elReq.value = JSON.stringify({
-      use_case: "epr_attendance_v1",
-      period: { date_from: fromISO, date_to: toISO },
-      debug: { dry_run: true },
-      datasets: { epr_data: [], calendar: [], osebe_raw: [] }
-    }, null, 2);
-  }
-
   // Initial empty state
   lastResultAll = {
     recap_lines: [],
@@ -832,27 +781,24 @@ tr.hl-green td { color: #0b6; font-weight: 600; }
     elTo.max = today;
     if (elHzzoAsOf) {
       elHzzoAsOf.max = today;
-      elHzzoAsOf.value = today;
+      elHzzoAsOf.value = hzzoAsOfForToDate(elTo.value);
     }
     const autoHzzoDir = defaultHzzoDirForPeriod(elFrom.value);
     if (elHzzoDir && !String(elHzzoDir.value || "").trim()) {
       elHzzoDir.value = autoHzzoDir;
       lastAutoHzzoDir = autoHzzoDir;
     }
-    setJsonPrefill(elFrom.value, elTo.value);
     if (elTo && elHzzoAsOf) {
       elTo.addEventListener("change", () => {
         const t = todayISO();
         const to = String(elTo.value || "").trim();
-        elHzzoAsOf.value = (!to || to > t) ? t : to;
-        setJsonPrefill(String(elFrom.value || "").trim(), to || t);
+        const effectiveTo = (!to || to > t) ? t : to;
+        elHzzoAsOf.value = hzzoAsOfForToDate(effectiveTo);
       });
     }
     if (elFrom) {
       elFrom.addEventListener("change", () => {
         const fromVal = String(elFrom.value || "").trim();
-        const toVal = String(elTo.value || "").trim();
-        setJsonPrefill(fromVal, toVal);
         const nextAutoHzzoDir = defaultHzzoDirForPeriod(fromVal);
         const currentHzzoDir = String(elHzzoDir?.value || "").trim();
         // Update auto-prefill only if input is still empty or unchanged from previous auto-value.

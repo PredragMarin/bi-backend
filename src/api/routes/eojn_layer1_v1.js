@@ -2,7 +2,7 @@
 
 const express = require("express");
 const { runLayer1, getLayer1Status } = require("../../modules/eojn_v1/module_runtime");
-const { startLayer2Run, getLayer2RunStatus } = require("../../modules/eojn_v1/layer2_runtime");
+const { startLayer2Run, getLayer2RunStatus, getLayer2ViewData } = require("../../modules/eojn_v1/layer2_runtime");
 
 function createEojnLayer1RouterV1() {
   const router = express.Router();
@@ -54,6 +54,21 @@ function createEojnLayer1RouterV1() {
     } catch (err) {
       res.status(400).json({
         error: "EOJN_LAYER2_START_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.get("/layer2/view", async (req, res) => {
+    try {
+      const view = await getLayer2ViewData({
+        out_root: req.query && req.query.out_root ? String(req.query.out_root) : "",
+        run_date_ymd: req.query && req.query.run_date_ymd ? String(req.query.run_date_ymd) : ""
+      });
+      res.json(view);
+    } catch (err) {
+      res.status(400).json({
+        error: "EOJN_LAYER2_VIEW_FAILED",
         message: err && err.message ? err.message : String(err)
       });
     }

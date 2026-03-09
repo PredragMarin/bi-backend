@@ -6,6 +6,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { spawnSync } = require("child_process");
 const { defaultOutRoot, loadLayer2Status, saveLayer2Status } = require("../../core_shell/services/eojn_layer2_store");
+const { loadActiveCycle, saveActiveCycle } = require("../../core_shell/services/eojn_layer1_store");
 const { resolveEojnConfigPath } = require("./secret_provider");
 
 let activeRun = null;
@@ -42,6 +43,125 @@ function resolveRunDir(outRoot, runDateYmd) {
   const eligible = all.filter((d) => d <= todayTag);
   const picked = eligible.length ? eligible[eligible.length - 1] : all[all.length - 1];
   return path.join(outRoot, picked);
+}
+
+async function readQueueCount(runDir) {
+  try {
+    const p = path.join(runDir, "layer2_queue.json");
+    if (!fs.existsSync(p)) return 0;
+    const rows = await readJson(p);
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+async function findLatestNonEmptyQueueRunDir(outRoot) {
+  const all = listRunFolders(outRoot);
+  if (!all.length) return "";
+  const todayTag = ymdTodayLocal().replace(/-/g, "_");
+  const eligible = all.filter((d) => d <= todayTag).sort().reverse();
+  for (const d of eligible) {
+    const runDir = path.join(outRoot, d);
+    const q = await readQueueCount(runDir);
+    if (q > 0) return runDir;
+  }
+  return "";
+}
+
+async function resolveRunDirForLayer2(outRoot, runDateYmd) {
+  if (runDateYmd) {
+    return resolveRunDir(outRoot, runDateYmd);
+  }
+  const activeCycle = await loadActiveCycle({ outRoot });
+  const activeDate = String(activeCycle && activeCycle.run_date_ymd ? activeCycle.run_date_ymd : "").trim();
+  if (activeDate) {
+    try {
+      const activeDir = resolveRunDir(outRoot, activeDate);
+      const activeQueue = await readQueueCount(activeDir);
+      if (activeQueue > 0) return activeDir;
+    } catch (_) {
+      // fallback below
+    }
+  }
+  const nonEmpty = await findLatestNonEmptyQueueRunDir(outRoot);
+  if (nonEmpty) return nonEmpty;
+  return resolveRunDir(outRoot, "");
+}
+
+function parseIsoTs(value) {
+  const t = Date.parse(String(value || ""));
+  return Number.isFinite(t) ? t : 0;
+}
+
+function normalizeDocShort(v) {
+  return String(v || "").replace(/\s+/g, "").toUpperCase();
+}
+
+function buildNoticesByTender(noticesRows) {
+  const map = new Map();
+  for (const n of noticesRows || []) {
+    const tenderId = Number(n && (n.TenderId || n.TenderID || n.ProcurementId));
+    if (!Number.isFinite(tenderId)) continue;
+    if (!map.has(tenderId)) map.set(tenderId, []);
+    map.get(tenderId).push(n);
+  }
+  for (const [k, arr] of map.entries()) {
+    map.set(k, arr.sort((a, b) => parseIsoTs(b.PublishDate || b.NoticePublishDate) - parseIsoTs(a.PublishDate || a.NoticePublishDate)));
+  }
+  return map;
+}
+
+function summarizeTenderNotices(notices) {
+  const rows = Array.isArray(notices) ? notices : [];
+  let hasF14 = false;
+  let hasF03 = false;
+  for (const n of rows) {
+    const docId = Number(n && n.DocumentTypeId);
+    const short = normalizeDocShort(n && n.DocumentTypeShortName);
+    if (docId === 9 || short.startsWith("F14")) hasF14 = true;
+    if (docId === 11 || short.startsWith("F03")) hasF03 = true;
+  }
+  const latest = rows[0] || null;
+  let watchlistGate = "REVIEW_DEFAULT";
+  if (hasF03) watchlistGate = "CLOSED_NO_ACTION";
+  else if (hasF14) watchlistGate = "REVIEW_WITH_UPDATES";
+  return {
+    notices_count: rows.length,
+    has_f14: hasF14,
+    has_f03: hasF03,
+    latest_notice_id: latest ? (latest.Id || null) : null,
+    latest_publish_date: latest ? (latest.PublishDate || latest.NoticePublishDate || null) : null,
+    watchlist_gate: watchlistGate
+  };
+}
+
+function readLatestLayer2ResultFile(runDir) {
+  if (!fs.existsSync(runDir)) return "";
+  const files = fs.readdirSync(runDir)
+    .filter((n) => /^layer2_monitor_result_.*\.json$/i.test(n))
+    .map((n) => path.join(runDir, n));
+  if (!files.length) return "";
+  files.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  return files[0];
+}
+
+function buildResultByTender(runDir) {
+  const p = readLatestLayer2ResultFile(runDir);
+  if (!p) return new Map();
+  try {
+    const json = JSON.parse(fs.readFileSync(p, "utf8"));
+    const rows = Array.isArray(json && json.results) ? json.results : [];
+    const map = new Map();
+    for (const r of rows) {
+      const id = Number(r && r.tender_id);
+      if (!Number.isFinite(id)) continue;
+      map.set(id, r);
+    }
+    return map;
+  } catch (_) {
+    return new Map();
+  }
 }
 
 function normalizeStartOptions(opts) {
@@ -247,11 +367,14 @@ async function processTender({
   configPath,
   runId,
   jitterMinMs,
-  jitterMaxMs
+  jitterMaxMs,
+  noticesForTender
 }) {
   const tenderId = row && row.Id ? Number(row.Id) : null;
   const attempts = retryCount + 1;
   let lastErr = null;
+  const tenderNotices = Array.isArray(noticesForTender) ? noticesForTender : [];
+  const noticeSummary = summarizeTenderNotices(tenderNotices);
 
   for (let a = 1; a <= attempts; a += 1) {
     try {
@@ -317,7 +440,10 @@ async function processTender({
         label: analysis.label || "",
         incidence: Number(analysis.incidence || 0),
         total_items: Number(analysis.total_items || 0),
-        hit_items: Number(analysis.hit_items || 0)
+        hit_items: Number(analysis.hit_items || 0),
+        notice_summary: noticeSummary,
+        tender_notices: tenderNotices,
+        watchlist_gate: noticeSummary.watchlist_gate
       };
     } catch (err) {
       lastErr = err;
@@ -340,7 +466,10 @@ async function processTender({
     status: kind,
     analyzed_at: new Date().toISOString(),
     attempts,
-    error: String((lastErr && lastErr.message) || lastErr || "")
+    error: String((lastErr && lastErr.message) || lastErr || ""),
+    notice_summary: noticeSummary,
+    tender_notices: tenderNotices,
+    watchlist_gate: noticeSummary.watchlist_gate
   };
 }
 
@@ -349,6 +478,17 @@ async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
   const total = selected.length;
   const results = [];
   const moduleDir = __dirname;
+  let noticesRows = [];
+  try {
+    const noticesPath = path.join(runDir, "notices_raw.json");
+    if (fs.existsSync(noticesPath)) {
+      const loaded = await readJson(noticesPath);
+      noticesRows = Array.isArray(loaded) ? loaded : [];
+    }
+  } catch (_) {
+    noticesRows = [];
+  }
+  const noticesByTender = buildNoticesByTender(noticesRows);
   let done = 0;
   let skipped = 0;
   let failed = 0;
@@ -386,7 +526,8 @@ async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
       configPath: cfg.config_path || "",
       runId,
       jitterMinMs: cfg.human_delay_min_ms,
-      jitterMaxMs: cfg.human_delay_max_ms
+      jitterMaxMs: cfg.human_delay_max_ms,
+      noticesForTender: noticesByTender.get(Number(row && row.Id)) || []
     });
     results.push(item);
     if (item.status === "DONE") done += 1;
@@ -456,7 +597,7 @@ async function startLayer2Run(opts) {
     });
   }
 
-  const runDir = resolveRunDir(outRoot, cfg.run_date_ymd);
+  const runDir = await resolveRunDirForLayer2(outRoot, cfg.run_date_ymd);
   const queuePath = path.join(runDir, "layer2_queue.json");
   let queueRows;
   try {
@@ -494,6 +635,24 @@ async function startLayer2Run(opts) {
       output_file: null
     }
   });
+  try {
+    const prevCycle = await loadActiveCycle({ outRoot });
+    await saveActiveCycle({
+      outRoot,
+      activeCycle: {
+        ...(prevCycle || {}),
+        run_date_ymd: cfg.run_date_ymd || path.basename(runDir).replace(/_/g, "-"),
+        out_dir: runDir,
+        layer2_run: {
+          run_id: runId,
+          started_at: new Date().toISOString(),
+          status: "STARTING"
+        }
+      }
+    });
+  } catch (_) {
+    // non-blocking for Layer 2 start
+  }
 
   runLayer2Worker({
     outRoot,
@@ -528,7 +687,53 @@ async function getLayer2RunStatus(opts) {
   return { ...status, out_root: outRoot };
 }
 
+async function getLayer2ViewData(opts) {
+  const outRoot = opts && opts.out_root ? String(opts.out_root) : defaultOutRoot();
+  const runDir = await resolveRunDirForLayer2(outRoot, opts && opts.run_date_ymd ? String(opts.run_date_ymd) : "");
+  const queuePath = path.join(runDir, "layer2_queue.json");
+  const noticesPath = path.join(runDir, "notices_raw.json");
+  const queueRows = fs.existsSync(queuePath) ? await readJson(queuePath) : [];
+  const noticesRows = fs.existsSync(noticesPath) ? await readJson(noticesPath) : [];
+  const noticesByTender = buildNoticesByTender(Array.isArray(noticesRows) ? noticesRows : []);
+  const resultByTender = buildResultByTender(runDir);
+
+  const rows = (Array.isArray(queueRows) ? queueRows : []).map((q) => {
+    const tenderId = Number(q && q.Id);
+    const tn = noticesByTender.get(tenderId) || [];
+    const summary = summarizeTenderNotices(tn);
+    const rr = resultByTender.get(tenderId) || null;
+    return {
+      tender_id: tenderId,
+      reference_number: q.ReferenceNumber || "",
+      name: q.Name || "",
+      top_program: q.topProgram || "",
+      top_score: Number(q.topScore || 0),
+      reasons: Array.isArray(q.reasons) ? q.reasons : [],
+      watchlist_gate: rr && rr.watchlist_gate ? rr.watchlist_gate : summary.watchlist_gate,
+      lifecycle: summary,
+      layer2_status: rr ? (rr.status || "") : "PENDING",
+      layer2_label: rr ? (rr.label || "") : "",
+      layer2_incidence: rr ? Number(rr.incidence || 0) : null,
+      notices: tn.map((n) => ({
+        id: n.Id || null,
+        publish_date: n.PublishDate || n.NoticePublishDate || "",
+        doc_short: n.DocumentTypeShortName || "",
+        doc_name: n.DocumentTypeName || "",
+        notice_number: n.NoticeNumber || "",
+        modification_description: n.ModificationDescription || ""
+      }))
+    };
+  });
+
+  return {
+    run_dir: runDir,
+    queue_total: rows.length,
+    rows
+  };
+}
+
 module.exports = {
   startLayer2Run,
-  getLayer2RunStatus
+  getLayer2RunStatus,
+  getLayer2ViewData
 };

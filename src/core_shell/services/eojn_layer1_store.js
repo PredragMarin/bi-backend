@@ -31,6 +31,10 @@ function stateFilePath(outRoot) {
   return path.join(outRoot, "_state", "layer1_state.json");
 }
 
+function activeCycleFilePath(outRoot) {
+  return path.join(outRoot, "_state", "active_cycle.json");
+}
+
 function defaultState() {
   return {
     version: STATE_VERSION,
@@ -71,6 +75,37 @@ async function saveLayer1State({ outRoot, state }) {
   return next;
 }
 
+async function loadActiveCycle({ outRoot } = {}) {
+  const root = path.resolve(String(outRoot || defaultOutRoot()));
+  const existing = await readJsonSafe(activeCycleFilePath(root), null);
+  if (existing && existing.run_date_ymd) return existing;
+  const l1 = await readJsonSafe(stateFilePath(root), defaultState());
+  const runDate = String(l1 && l1.last_successful_run && l1.last_successful_run.run_date_ymd ? l1.last_successful_run.run_date_ymd : "").trim();
+  if (!runDate) return null;
+  return {
+    cycle_id: String(l1.last_successful_run.completed_at || ""),
+    run_date_ymd: runDate,
+    out_dir: outDirForDate(root, runDate),
+    layer1_run: l1.last_successful_run || null,
+    layer2_run: null,
+    updated_at: new Date().toISOString()
+  };
+}
+
+async function saveActiveCycle({ outRoot, activeCycle }) {
+  const root = path.resolve(String(outRoot || defaultOutRoot()));
+  const payload = {
+    cycle_id: String(activeCycle && activeCycle.cycle_id ? activeCycle.cycle_id : ""),
+    run_date_ymd: String(activeCycle && activeCycle.run_date_ymd ? activeCycle.run_date_ymd : ""),
+    out_dir: String(activeCycle && activeCycle.out_dir ? activeCycle.out_dir : ""),
+    layer1_run: activeCycle && activeCycle.layer1_run ? activeCycle.layer1_run : null,
+    layer2_run: activeCycle && activeCycle.layer2_run ? activeCycle.layer2_run : null,
+    updated_at: new Date().toISOString()
+  };
+  await writeJsonAtomic(activeCycleFilePath(root), payload);
+  return payload;
+}
+
 async function appendEventLog({ outDir, event }) {
   const target = path.join(outDir, "events.log");
   await fsp.mkdir(path.dirname(target), { recursive: true });
@@ -108,6 +143,8 @@ module.exports = {
   defaultOutRoot,
   loadLayer1State,
   saveLayer1State,
+  loadActiveCycle,
+  saveActiveCycle,
   writeLayer1RunArtifacts,
   appendEventLog
 };
