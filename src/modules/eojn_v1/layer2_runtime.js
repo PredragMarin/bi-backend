@@ -5,7 +5,14 @@ const fsp = fs.promises;
 const path = require("path");
 const crypto = require("crypto");
 const { spawnSync } = require("child_process");
-const { defaultOutRoot, loadLayer2Status, saveLayer2Status } = require("../../core_shell/services/eojn_layer2_store");
+const {
+  defaultOutRoot,
+  loadLayer2Status,
+  saveLayer2Status,
+  saveLayer2Result,
+  loadLatestLayer2Result
+} = require("../../core_shell/services/eojn_layer2_store");
+const { getReviewDecisionsForRun } = require("../../core_shell/services/eojn_review_store");
 const { loadActiveCycle, saveActiveCycle } = require("../../core_shell/services/eojn_layer1_store");
 const { resolveEojnConfigPath } = require("./secret_provider");
 
@@ -136,32 +143,17 @@ function summarizeTenderNotices(notices) {
   };
 }
 
-function readLatestLayer2ResultFile(runDir) {
-  if (!fs.existsSync(runDir)) return "";
-  const files = fs.readdirSync(runDir)
-    .filter((n) => /^layer2_monitor_result_.*\.json$/i.test(n))
-    .map((n) => path.join(runDir, n));
-  if (!files.length) return "";
-  files.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-  return files[0];
-}
-
-function buildResultByTender(runDir) {
-  const p = readLatestLayer2ResultFile(runDir);
-  if (!p) return new Map();
-  try {
-    const json = JSON.parse(fs.readFileSync(p, "utf8"));
-    const rows = Array.isArray(json && json.results) ? json.results : [];
-    const map = new Map();
-    for (const r of rows) {
-      const id = Number(r && r.tender_id);
-      if (!Number.isFinite(id)) continue;
-      map.set(id, r);
-    }
-    return map;
-  } catch (_) {
-    return new Map();
+async function buildResultByTender(runDir) {
+  const latest = await loadLatestLayer2Result({ runDir });
+  const json = latest && latest.payload ? latest.payload : null;
+  const rows = Array.isArray(json && json.results) ? json.results : [];
+  const map = new Map();
+  for (const r of rows) {
+    const id = Number(r && r.tender_id);
+    if (!Number.isFinite(id)) continue;
+    map.set(id, r);
   }
+  return map;
 }
 
 function normalizeStartOptions(opts) {
@@ -173,6 +165,9 @@ function normalizeStartOptions(opts) {
   const delayMax = Number(input.human_delay_max_ms === undefined ? 15000 : input.human_delay_max_ms);
   const minMs = Number.isFinite(delayMin) && delayMin >= 0 ? Math.floor(delayMin) : 10000;
   const maxMs = Number.isFinite(delayMax) && delayMax >= minMs ? Math.floor(delayMax) : Math.max(minMs, 15000);
+  const tenderIds = Array.isArray(input.tender_ids)
+    ? input.tender_ids.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
+    : [];
   return {
     out_root: input.out_root ? String(input.out_root) : "",
     run_date_ymd: input.run_date_ymd ? String(input.run_date_ymd) : "",
@@ -182,7 +177,40 @@ function normalizeStartOptions(opts) {
     enable_download: Boolean(input.enable_download),
     config_path: input.config_path ? String(input.config_path) : "",
     human_delay_min_ms: minMs,
-    human_delay_max_ms: maxMs
+    human_delay_max_ms: maxMs,
+    tender_ids: Array.from(new Set(tenderIds)),
+    force_reprocess: Boolean(input.force_reprocess)
+  };
+}
+
+function filterQueueByTenderIds(queueRows, tenderIds) {
+  return Array.isArray(tenderIds) && tenderIds.length
+    ? queueRows.filter((row) => tenderIds.includes(Number(row && row.Id)))
+    : queueRows;
+}
+
+function filterQueueByReviewState(queueRows, reviewDecisions, runDateYmd, forceReprocess) {
+  if (forceReprocess) {
+    return {
+      rows: queueRows,
+      skipped_reviewed: 0
+    };
+  }
+  const rows = [];
+  let skippedReviewed = 0;
+  for (const row of queueRows) {
+    const tenderId = Number(row && row.Id);
+    const key = `${runDateYmd}|${tenderId}`;
+    const review = reviewDecisions[key] || null;
+    if (review && String(review.decision_code || "").trim()) {
+      skippedReviewed += 1;
+      continue;
+    }
+    rows.push(row);
+  }
+  return {
+    rows,
+    skipped_reviewed: skippedReviewed
   };
 }
 
@@ -259,6 +287,59 @@ function findFilesRecursive(dir, pred, out = []) {
   return out;
 }
 
+function safeFolderName(input) {
+  return String(input || "")
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120) || "archive";
+}
+
+function runPowerShellExpandZip(zipPath, destDir) {
+  const command = [
+    "$ErrorActionPreference='Stop'",
+    `$zip='${String(zipPath).replace(/'/g, "''")}'`,
+    `$dest='${String(destDir).replace(/'/g, "''")}'`,
+    "[System.IO.Directory]::CreateDirectory($dest) | Out-Null",
+    "Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force"
+  ].join("; ");
+  const out = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command], {
+    encoding: "utf8",
+    timeout: 120000,
+    maxBuffer: 20 * 1024 * 1024
+  });
+  if (out.status !== 0) {
+    const message = String(out.stderr || out.stdout || "ZIP extraction failed");
+    throw new Error(`ZIP_EXTRACT_FAILED: ${message}`);
+  }
+}
+
+function extractNestedZipTree(rootDir, maxDepth = 4) {
+  const queue = [{
+    dir: rootDir,
+    depth: 0
+  }];
+  const extractedDirs = [];
+  const seenZipTargets = new Set();
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || current.depth > maxDepth) continue;
+    const zipFiles = findFilesRecursive(current.dir, (p) => /\.zip$/i.test(p), []);
+    for (const zipPath of zipFiles) {
+      const zipKey = path.resolve(zipPath);
+      if (seenZipTargets.has(zipKey)) continue;
+      seenZipTargets.add(zipKey);
+      const destDir = path.join(path.dirname(zipPath), `_extracted_${safeFolderName(path.basename(zipPath, path.extname(zipPath)))}`);
+      runPowerShellExpandZip(zipPath, destDir);
+      extractedDirs.push(destDir);
+      queue.push({ dir: destDir, depth: current.depth + 1 });
+    }
+  }
+
+  return extractedDirs;
+}
+
 function extScore(filePath) {
   return /\.xlsx$/i.test(filePath) ? 2 : /\.xls$/i.test(filePath) ? 1 : 0;
 }
@@ -290,6 +371,38 @@ function findBudgetFilesForTender({ outRoot, runDir, tenderId }) {
   }
 
   return [...inRun, ...fromDev];
+}
+
+function findBudgetArchivesForTender({ outRoot, runDir, tenderId }) {
+  const matcher = (p) => /\.zip$/i.test(p);
+  const tenderFolder = path.join(runDir, `tender_${tenderId}`);
+  const inRun = findFilesRecursive(tenderFolder, matcher, []);
+
+  const devRoot = path.join(outRoot, "_dev_budget_pw");
+  const devDirs = fs.existsSync(devRoot)
+    ? fs.readdirSync(devRoot, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort().reverse()
+    : [];
+  const fromDev = [];
+  for (const d of devDirs) {
+    const p = path.join(devRoot, d, `tender_${tenderId}`);
+    findFilesRecursive(p, matcher, fromDev);
+  }
+
+  return [...inRun, ...fromDev];
+}
+
+async function extractBudgetArchivesForTender({ outRoot, runDir, tenderId }) {
+  const archives = findBudgetArchivesForTender({ outRoot, runDir, tenderId });
+  if (!archives.length) return [];
+  const extracted = [];
+  for (const archivePath of archives) {
+    try {
+      extracted.push(...extractNestedZipTree(path.dirname(archivePath)));
+    } catch (_) {
+      // Do not fail the tender here; fallback remains NO_BUDGET_FILE if no workbook appears.
+    }
+  }
+  return extracted;
 }
 
 function tryDownloadBudgetForTender({ outRoot, moduleDir, tenderId, configPath, timeoutMs }) {
@@ -396,6 +509,7 @@ async function processTender({
         message: `Downloading troskovnik ${idx}/${total} (attempt ${a}/${attempts})`
       });
 
+      await extractBudgetArchivesForTender({ outRoot, runDir, tenderId });
       let files = findBudgetFilesForTender({ outRoot, runDir, tenderId });
       if (!files.length && enableDownload) {
         tryDownloadBudgetForTender({
@@ -405,6 +519,7 @@ async function processTender({
           configPath,
           timeoutMs: itemTimeoutMs
         });
+        await extractBudgetArchivesForTender({ outRoot, runDir, tenderId });
         files = findBudgetFilesForTender({ outRoot, runDir, tenderId });
       }
       if (!files.length) {
@@ -474,7 +589,11 @@ async function processTender({
 }
 
 async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
-  const selected = queueRows.slice(0, cfg.max_items);
+  const runDateYmd = path.basename(runDir).replace(/_/g, "-");
+  const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
+  const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
+  const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, runDateYmd, cfg.force_reprocess);
+  const selected = reviewFiltered.rows.slice(0, cfg.max_items);
   const total = selected.length;
   const results = [];
   const moduleDir = __dirname;
@@ -504,6 +623,7 @@ async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
     total,
     done: 0,
     skipped: 0,
+    reviewed: reviewFiltered.skipped_reviewed,
     failed: 0,
     progress_pct: 0,
     current_tender_id: null,
@@ -538,14 +658,14 @@ async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
       current_index: idx,
       done,
       skipped,
+      reviewed: reviewFiltered.skipped_reviewed,
       failed,
       current_tender_id: null,
       message: `Processed ${idx}/${total} (done=${done}, skipped=${skipped}, failed=${failed})`
     });
   }
 
-  const outputFile = path.join(runDir, `layer2_monitor_result_${runId}.json`);
-  await fsp.writeFile(outputFile, JSON.stringify({
+  const outputPayload = {
     run_id: runId,
     created_at: new Date().toISOString(),
     run_dir: runDir,
@@ -562,13 +682,18 @@ async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
     skipped,
     failed,
     results
-  }, null, 2), "utf8");
+  };
+  const outputFile = await saveLayer2Result({
+    runDir,
+    runId,
+    result: outputPayload
+  });
 
   await updateStatus(outRoot, {
     active: false,
     completed_at: new Date().toISOString(),
     phase: "DONE",
-    message: `Layer 2 run done (${done}/${total}, skipped=${skipped}, failed=${failed})`,
+    message: `Layer 2 run done (${done}/${total}, skipped=${skipped}, reviewed=${reviewFiltered.skipped_reviewed}, failed=${failed})`,
     current_tender_id: null,
     output_file: outputFile,
     current_index: total
@@ -611,6 +736,11 @@ async function startLayer2Run(opts) {
   if (!Array.isArray(queueRows)) {
     throw new Error(`Invalid layer2_queue.json in ${runDir}`);
   }
+  const runDateYmd = path.basename(runDir).replace(/_/g, "-");
+  const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
+  const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
+  const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, runDateYmd, cfg.force_reprocess);
+  const filteredQueue = reviewFiltered.rows;
 
   const runId = crypto.randomUUID();
   activeRun = { runId, outRoot };
@@ -625,9 +755,10 @@ async function startLayer2Run(opts) {
       phase: "STARTING",
       message: "Layer 2 run is starting...",
       current_index: 0,
-      total: Math.min(queueRows.length, cfg.max_items),
+      total: Math.min(filteredQueue.length, cfg.max_items),
       done: 0,
       skipped: 0,
+      reviewed: reviewFiltered.skipped_reviewed,
       failed: 0,
       progress_pct: 0,
       current_tender_id: null,
@@ -669,14 +800,17 @@ async function startLayer2Run(opts) {
     started: true,
     run_id: runId,
     run_dir: runDir,
-    queue_total: queueRows.length,
-    queue_selected: Math.min(queueRows.length, cfg.max_items),
+    queue_total: filteredQueue.length,
+    queue_selected: Math.min(filteredQueue.length, cfg.max_items),
+    queue_skipped_reviewed: reviewFiltered.skipped_reviewed,
     config: {
       retry_count: cfg.retry_count,
       item_timeout_ms: cfg.item_timeout_ms,
       enable_download: cfg.enable_download,
       human_delay_min_ms: cfg.human_delay_min_ms,
-      human_delay_max_ms: cfg.human_delay_max_ms
+      human_delay_max_ms: cfg.human_delay_max_ms,
+      tender_ids: cfg.tender_ids,
+      force_reprocess: cfg.force_reprocess
     }
   };
 }
@@ -690,15 +824,18 @@ async function getLayer2RunStatus(opts) {
 async function getLayer2ViewData(opts) {
   const outRoot = opts && opts.out_root ? String(opts.out_root) : defaultOutRoot();
   const runDir = await resolveRunDirForLayer2(outRoot, opts && opts.run_date_ymd ? String(opts.run_date_ymd) : "");
+  const runDateYmd = path.basename(runDir).replace(/_/g, "-");
   const queuePath = path.join(runDir, "layer2_queue.json");
   const noticesPath = path.join(runDir, "notices_raw.json");
   const queueRows = fs.existsSync(queuePath) ? await readJson(queuePath) : [];
   const noticesRows = fs.existsSync(noticesPath) ? await readJson(noticesPath) : [];
   const noticesByTender = buildNoticesByTender(Array.isArray(noticesRows) ? noticesRows : []);
-  const resultByTender = buildResultByTender(runDir);
+  const resultByTender = await buildResultByTender(runDir);
+  const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
 
   const rows = (Array.isArray(queueRows) ? queueRows : []).map((q) => {
     const tenderId = Number(q && q.Id);
+    const review = reviewDecisions[`${runDateYmd}|${tenderId}`] || null;
     const tn = noticesByTender.get(tenderId) || [];
     const summary = summarizeTenderNotices(tn);
     const rr = resultByTender.get(tenderId) || null;
@@ -714,8 +851,13 @@ async function getLayer2ViewData(opts) {
       layer2_status: rr ? (rr.status || "") : "PENDING",
       layer2_label: rr ? (rr.label || "") : "",
       layer2_incidence: rr ? Number(rr.incidence || 0) : null,
+      review_decision: review ? (review.decision_code || "") : "",
+      review_reason_code: review ? (review.reason_code || "") : "",
+      review_reason_note: review ? (review.reason_note || "") : "",
+      review_updated_at: review ? (review.updated_at || "") : "",
       notices: tn.map((n) => ({
         id: n.Id || null,
+        tender_id: Number(n.TenderId || n.TenderID || tenderId || 0),
         publish_date: n.PublishDate || n.NoticePublishDate || "",
         doc_short: n.DocumentTypeShortName || "",
         doc_name: n.DocumentTypeName || "",
@@ -727,6 +869,7 @@ async function getLayer2ViewData(opts) {
 
   return {
     run_dir: runDir,
+    run_date_ymd: runDateYmd,
     queue_total: rows.length,
     rows
   };

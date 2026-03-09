@@ -1,12 +1,16 @@
 "use strict";
 
-const eprAttendanceRuntime = require("../../modules/epr_attendance_v1/module_runtime");
-const eojnRuntime = require("../../modules/eojn_v1/module_runtime");
+const MODULE_REGISTRY = new Map();
 
-const MODULE_REGISTRY = new Map([
-  [eprAttendanceRuntime.use_case, eprAttendanceRuntime],
-  [eojnRuntime.use_case, eojnRuntime]
-]);
+function registerModuleRuntime(runtime) {
+  const candidate = runtime && typeof runtime === "object" ? runtime : null;
+  const useCase = String(candidate && candidate.use_case ? candidate.use_case : "").trim();
+  if (!useCase) {
+    throw new Error("Cannot register module runtime without use_case.");
+  }
+  MODULE_REGISTRY.set(useCase, candidate);
+  return candidate;
+}
 
 function getModuleRuntime(useCase) {
   const key = String(useCase || "").trim();
@@ -22,6 +26,7 @@ function listRegisteredUseCases() {
 }
 
 module.exports = {
+  registerModuleRuntime,
   getModuleRuntime,
   listRegisteredUseCases
 };

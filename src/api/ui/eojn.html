@@ -14,10 +14,12 @@
     button { border:0; border-radius:8px; padding:10px 14px; color:#fff; cursor:pointer; margin-right:8px; margin-top:8px; }
     .primary { background: var(--btn); }
     .secondary { background: var(--btn2); }
+    .danger { background:#b91c1c; }
     pre { background:#0b1020; color:#dbeafe; border-radius:8px; padding:12px; overflow:auto; }
     .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
     label { font-weight:600; }
-    input, select { padding:8px; border:1px solid var(--line); border-radius:8px; }
+    input, select, textarea { padding:8px; border:1px solid var(--line); border-radius:8px; }
+    textarea { min-height:72px; width:100%; resize:vertical; }
     input[type="date"] { width: 170px; cursor: pointer; }
     input[type="date"]::-webkit-calendar-picker-indicator {
       transform: scale(3);
@@ -32,9 +34,14 @@
     th, td { border: 1px solid var(--line); padding: 6px; font-size: 12px; text-align: left; vertical-align: top; }
     th { background: #eef2ff; }
     tr.pick { background: #ecfeff; }
+    tr.inactive { opacity: 0.55; }
     .table-wrap { max-height: 280px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
     .tender-link { color:#0f4c81; text-decoration:none; font-weight:600; }
     .tender-link:hover { color:#2563eb; text-decoration:underline; }
+    .review-grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .summary-box { border:1px solid var(--line); border-radius:8px; padding:10px; background:#f8fafc; }
+    .muted { color:#64748b; font-size:12px; }
+    @media (max-width: 900px) { .review-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -86,7 +93,7 @@
         <label for="delayMs">Step delay (ms)</label>
         <input id="delayMs" type="number" min="0" value="800" />
         <label for="enableDownload">Enable download</label>
-        <input id="enableDownload" type="checkbox" />
+        <input id="enableDownload" type="checkbox" checked />
       </div>
       <div class="row">
         <button class="primary" id="btnL2Start">Start Layer 2</button>
@@ -105,8 +112,11 @@
       <h3>Layer 2 Table</h3>
       <div class="row">
         <button class="secondary" id="btnL2ViewRefresh">Refresh Layer 2 Table</button>
+        <button class="secondary" id="btnL2RerunSelected">Rerun Selected Tender</button>
+        <label for="showInactiveRows">Show inactive</label>
+        <input id="showInactiveRows" type="checkbox" />
       </div>
-      <p>Click a tender row to view its notices timeline.</p>
+      <p>Click a tender row to view its notices timeline. Inactive rows are hidden by default.</p>
       <div class="table-wrap">
         <table id="tenderTable">
           <thead>
@@ -119,17 +129,50 @@
               <th>L2 Label</th>
               <th>Lifecycle</th>
               <th>Layer2 status</th>
+              <th>Review</th>
               <th>Gate</th>
             </tr>
           </thead>
           <tbody id="tenderTableBody"></tbody>
         </table>
       </div>
+      <h4 style="margin-top:12px;">Review</h4>
+      <div class="review-grid">
+        <div>
+          <p id="reviewTenderLine">No tender selected.</p>
+          <p class="muted" id="reviewSavedLine"></p>
+          <div class="summary-box">
+            <strong>Review summary</strong>
+            <pre id="reviewSummaryOut" style="margin-top:8px;">{}</pre>
+          </div>
+        </div>
+        <div>
+          <div class="row">
+            <label for="reviewDecision">Decision</label>
+            <select id="reviewDecision">
+              <option value="HOLD">HOLD</option>
+              <option value="WATCH">WATCH</option>
+              <option value="REJECT">REJECT</option>
+            </select>
+            <label for="reviewReason">Reason</label>
+            <select id="reviewReason"></select>
+          </div>
+          <div style="margin-top:8px;">
+            <label for="reviewNote">Note</label>
+            <textarea id="reviewNote" placeholder="Short operator note"></textarea>
+          </div>
+          <div class="row">
+            <button class="primary" id="btnReviewSave">Save Review</button>
+            <button class="secondary" id="btnReviewLoad">Load Review</button>
+          </div>
+        </div>
+      </div>
       <h4 style="margin-top:12px;">Notices timeline</h4>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
+              <th>TenderId</th>
               <th>PublishDate</th>
               <th>Doc</th>
               <th>NoticeNumber</th>
@@ -162,12 +205,31 @@
     const l2Progress = document.getElementById("l2Progress");
     const l2StatusLine = document.getElementById("l2StatusLine");
     const btnL2ViewRefresh = document.getElementById("btnL2ViewRefresh");
+    const btnL2RerunSelected = document.getElementById("btnL2RerunSelected");
     const tenderTableBody = document.getElementById("tenderTableBody");
     const noticeTableBody = document.getElementById("noticeTableBody");
+    const showInactiveRows = document.getElementById("showInactiveRows");
+    const reviewDecision = document.getElementById("reviewDecision");
+    const reviewReason = document.getElementById("reviewReason");
+    const reviewNote = document.getElementById("reviewNote");
+    const reviewSummaryOut = document.getElementById("reviewSummaryOut");
+    const btnReviewSave = document.getElementById("btnReviewSave");
+    const btnReviewLoad = document.getElementById("btnReviewLoad");
+    const reviewTenderLine = document.getElementById("reviewTenderLine");
+    const reviewSavedLine = document.getElementById("reviewSavedLine");
     let l2Timer = null;
     let l2ExpectedRunId = "";
     let l2ViewRows = [];
     let selectedTenderId = 0;
+    let currentRunDateYmd = "";
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;");
+    }
 
     function show(data) {
       out.textContent = JSON.stringify(data, null, 2);
@@ -216,8 +278,9 @@
       const msg = String(s && s.message || "Idle");
       const done = Number(s && s.done || 0);
       const skipped = Number(s && s.skipped || 0);
+      const reviewed = Number(s && s.reviewed || 0);
       const total = Number(s && s.total || 0);
-      l2StatusLine.textContent = `${phase} | done=${done}, skipped=${skipped}, total=${total} | ${pct}% | ${msg}`;
+      l2StatusLine.textContent = `${phase} | done=${done}, skipped=${skipped}, reviewed=${reviewed}, total=${total} | ${pct}% | ${msg}`;
     }
 
     async function refreshLayer2Status() {
@@ -259,7 +322,8 @@
             human_delay_min_ms: Number(jitterMinMs.value || 10000),
             human_delay_max_ms: Number(jitterMaxMs.value || 15000),
             simulated_step_delay_ms: Number(delayMs.value || 800),
-            enable_download: Boolean(enableDownload.checked)
+            enable_download: Boolean(enableDownload.checked),
+            force_reprocess: false
           })
         });
         l2ExpectedRunId = String(start.run_id || "");
@@ -281,6 +345,7 @@
       for (const n of notices) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
+          <td><a class="tender-link" href="https://eojn.hr/tender-eo/${Number(n.tender_id || 0)}" target="_blank" rel="noopener noreferrer">${Number(n.tender_id || 0)}</a></td>
           <td>${String(n.publish_date || "")}</td>
           <td>${String(n.doc_short || "")} ${String(n.doc_name || "")}</td>
           <td>${String(n.notice_number || "")}</td>
@@ -290,9 +355,96 @@
       }
     }
 
+    function renderReviewPanel() {
+      const row = l2ViewRows.find(x => Number(x.tender_id) === Number(selectedTenderId));
+      if (!row) {
+        reviewTenderLine.textContent = "No tender selected.";
+        reviewSavedLine.textContent = "";
+        reviewDecision.value = "HOLD";
+        reviewNote.value = "";
+        return;
+      }
+      reviewTenderLine.textContent = `${Number(row.tender_id || 0)} | ${String(row.reference_number || "")} | ${String(row.name || "")}`;
+      reviewSavedLine.textContent = row.review_updated_at
+        ? `Saved: ${String(row.review_decision || "")} / ${String(row.review_reason_code || "")} @ ${String(row.review_updated_at || "")}`
+        : "No saved review yet.";
+      reviewDecision.value = String(row.review_decision || "HOLD");
+      if (row.review_reason_code) {
+        reviewReason.value = String(row.review_reason_code);
+      }
+      reviewNote.value = String(row.review_reason_note || "");
+    }
+
+    function renderReviewSummary() {
+      const decisionCounts = {};
+      const reasonCounts = {};
+      let reviewed = 0;
+      let pending = 0;
+      for (const row of l2ViewRows) {
+        const decision = String(row.review_decision || "").trim();
+        const reason = String(row.review_reason_code || "").trim();
+        if (decision) {
+          reviewed += 1;
+          decisionCounts[decision] = (decisionCounts[decision] || 0) + 1;
+        } else {
+          pending += 1;
+        }
+        if (reason) {
+          reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+        }
+      }
+      const topReasons = Object.entries(reasonCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([code, count]) => ({ code, count }));
+      reviewSummaryOut.textContent = JSON.stringify({
+        run_date_ymd: currentRunDateYmd || null,
+        queue_total: l2ViewRows.length,
+        reviewed,
+        pending,
+        decisions: decisionCounts,
+        top_reason_codes: topReasons
+      }, null, 2);
+    }
+
+    async function loadReviewCatalog() {
+      const data = await fetchJson("/api/eojn/v1/layer2/review/catalog");
+      const rows = Array.isArray(data && data.reason_catalog) ? data.reason_catalog : [];
+      reviewReason.innerHTML = "";
+      for (const r of rows) {
+        const opt = document.createElement("option");
+        opt.value = String(r.code || "");
+        opt.textContent = `${String(r.code || "")} | ${String(r.label || "")}`;
+        reviewReason.appendChild(opt);
+      }
+      if (!reviewReason.value && rows.length) reviewReason.value = String(rows[0].code || "OTHER");
+    }
+
+    async function loadSelectedReview() {
+      if (!selectedTenderId) return;
+      try {
+        const data = await fetchJson(`/api/eojn/v1/layer2/review?run_date_ymd=${encodeURIComponent(currentRunDateYmd)}&tender_id=${encodeURIComponent(selectedTenderId)}`);
+        const decision = data && data.decision ? data.decision : null;
+        if (decision) {
+          reviewDecision.value = String(decision.decision_code || "HOLD");
+          reviewReason.value = String(decision.reason_code || reviewReason.value || "OTHER");
+          reviewNote.value = String(decision.reason_note || "");
+          reviewSavedLine.textContent = `Saved: ${String(decision.decision_code || "")} / ${String(decision.reason_code || "")} @ ${String(decision.updated_at || "")}`;
+        } else {
+          reviewSavedLine.textContent = "No saved review yet.";
+        }
+      } catch (e) {
+        show({ error: String(e) });
+      }
+    }
+
     function renderTenderTable() {
       tenderTableBody.innerHTML = "";
-      const sorted = [...l2ViewRows].sort((a,b) => {
+      const visibleRows = l2ViewRows.filter((r) => {
+        const inactive = String(r.watchlist_gate || "") === "CLOSED_NO_ACTION" || String(r.layer2_status || "") === "NEMA_TROSKOVNIK";
+        return showInactiveRows.checked || !inactive;
+      });
+      const sorted = [...visibleRows].sort((a,b) => {
         const ai = a.layer2_incidence === null || a.layer2_incidence === undefined ? -1 : Number(a.layer2_incidence);
         const bi = b.layer2_incidence === null || b.layer2_incidence === undefined ? -1 : Number(b.layer2_incidence);
         if (bi !== ai) return bi - ai;
@@ -300,7 +452,9 @@
       });
       for (const r of sorted) {
         const tr = document.createElement("tr");
+        const inactive = String(r.watchlist_gate || "") === "CLOSED_NO_ACTION" || String(r.layer2_status || "") === "NEMA_TROSKOVNIK";
         if (Number(r.tender_id) === Number(selectedTenderId)) tr.className = "pick";
+        if (inactive) tr.className = `${tr.className ? tr.className + " " : ""}inactive`;
         tr.innerHTML = `
           <td><a class="tender-link" href="https://eojn.hr/tender-eo/${Number(r.tender_id || 0)}" target="_blank" rel="noopener noreferrer">${Number(r.tender_id || 0)}</a></td>
           <td>${String(r.reference_number || "")}</td>
@@ -310,19 +464,22 @@
           <td>${String(r.layer2_label || "-")}</td>
           <td>F14=${Boolean(r.lifecycle && r.lifecycle.has_f14)}; F03=${Boolean(r.lifecycle && r.lifecycle.has_f03)}; n=${Number(r.lifecycle && r.lifecycle.notices_count || 0)}</td>
           <td>${String(r.layer2_status || "")}</td>
+          <td>${escapeHtml(r.review_decision || "-")} ${escapeHtml(r.review_reason_code || "")}</td>
           <td>${String(r.watchlist_gate || "")}</td>
         `;
         tr.onclick = () => {
           selectedTenderId = Number(r.tender_id || 0);
           renderTenderTable();
           renderNoticesForTender(selectedTenderId);
+          renderReviewPanel();
         };
         tenderTableBody.appendChild(tr);
       }
-      if (!selectedTenderId && l2ViewRows.length) {
-        selectedTenderId = Number(l2ViewRows[0].tender_id || 0);
+      if (!selectedTenderId && sorted.length) {
+        selectedTenderId = Number(sorted[0].tender_id || 0);
         renderTenderTable();
         renderNoticesForTender(selectedTenderId);
+        renderReviewPanel();
       }
     }
 
@@ -331,16 +488,83 @@
         const runDate = String(l2RunDate.value || "").trim();
         const url = runDate ? `/api/eojn/v1/layer2/view?run_date_ymd=${encodeURIComponent(runDate)}` : "/api/eojn/v1/layer2/view";
         const data = await fetchJson(url);
+        currentRunDateYmd = String(data && data.run_date_ymd ? data.run_date_ymd : runDate || "");
         l2ViewRows = Array.isArray(data && data.rows) ? data.rows : [];
         if (!l2ViewRows.some(x => Number(x.tender_id) === Number(selectedTenderId))) selectedTenderId = 0;
         renderTenderTable();
+        renderReviewPanel();
+        renderReviewSummary();
       } catch (e) {
         show({ error: String(e) });
       }
     }
 
     btnL2ViewRefresh.onclick = refreshLayer2View;
+    showInactiveRows.onchange = () => {
+      if (!l2ViewRows.some((x) => Number(x.tender_id) === Number(selectedTenderId))) selectedTenderId = 0;
+      renderTenderTable();
+      renderNoticesForTender(selectedTenderId);
+      renderReviewPanel();
+    };
+    btnReviewLoad.onclick = loadSelectedReview;
+    btnL2RerunSelected.onclick = async () => {
+      if (!selectedTenderId) {
+        show({ error: "No tender selected" });
+        return;
+      }
+      try {
+        const start = await fetchJson("/api/eojn/v1/layer2/start", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            run_date_ymd: String(currentRunDateYmd || "").trim() || undefined,
+            max_items: 1,
+            tender_ids: [Number(selectedTenderId)],
+            retry_count: Number(retryCount.value || 1),
+            item_timeout_ms: Number(timeoutMs.value || 300000),
+            human_delay_min_ms: Number(jitterMinMs.value || 10000),
+            human_delay_max_ms: Number(jitterMaxMs.value || 15000),
+            simulated_step_delay_ms: Number(delayMs.value || 800),
+            enable_download: Boolean(enableDownload.checked),
+            force_reprocess: true
+          })
+        });
+        l2ExpectedRunId = String(start.run_id || "");
+        show(start);
+        if (l2Timer) {
+          clearTimeout(l2Timer);
+          l2Timer = null;
+        }
+        await loopLayer2();
+      } catch (e) {
+        show({ error: String(e) });
+      }
+    };
+    btnReviewSave.onclick = async () => {
+      if (!selectedTenderId) {
+        show({ error: "No tender selected" });
+        return;
+      }
+      try {
+        const data = await fetchJson("/api/eojn/v1/layer2/review", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            run_date_ymd: currentRunDateYmd,
+            tender_id: Number(selectedTenderId),
+            decision_code: String(reviewDecision.value || "HOLD"),
+            reason_code: String(reviewReason.value || "OTHER"),
+            reason_note: String(reviewNote.value || "")
+          })
+        });
+        show(data);
+        await refreshLayer2View();
+      } catch (e) {
+        show({ error: String(e) });
+      }
+    };
 
+    loadReviewCatalog();
     btnStatus.click();
     refreshLayer2Status();
     refreshLayer2View();

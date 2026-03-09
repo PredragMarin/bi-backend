@@ -8,6 +8,9 @@ const createSmsApprovalsRouterV1 = require("./routes/sms_approvals_v1");
 const createEojnLayer1RouterV1 = require("./routes/eojn_layer1_v1");
 const { runUseCase } = require("../core/runtime");
 const { fetchEprDatasets } = require("../modules/epr_attendance_v1/adapters/db_fetch_epr");
+const { registerModules } = require("../bootstrap/register_modules");
+
+registerModules();
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));

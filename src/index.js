@@ -5,6 +5,9 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 
 const { runUseCase } = require("./core/runtime");
+const { registerModules } = require("./bootstrap/register_modules");
+
+registerModules();
 
 app.post("/api/epr/attendance/v1/run", async (req, res) => {
   try {
