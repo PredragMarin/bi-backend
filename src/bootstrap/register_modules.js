@@ -16,6 +16,8 @@ function registerModules() {
   configureEojnApiService({
     runLayer1: eojnRuntime.runLayer1,
     getLayer1Status: eojnRuntime.getLayer1Status,
+    getLayer1ViewData: eojnRuntime.getLayer1ViewData,
+    recomputeLayer1FromStoredRaw: eojnRuntime.recomputeLayer1FromStoredRaw,
     startLayer2Run: eojnLayer2Runtime.startLayer2Run,
     getLayer2RunStatus: eojnLayer2Runtime.getLayer2RunStatus,
     getLayer2ViewData: eojnLayer2Runtime.getLayer2ViewData,

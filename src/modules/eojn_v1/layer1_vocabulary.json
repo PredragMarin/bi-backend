@@ -1,0 +1,113 @@
+{
+  "version": "1.0.0",
+  "strong_signals": {
+    "name": [
+      "konvekc",
+      "konvekt",
+      "pecnic",
+      "pec",
+      "convection oven",
+      "cooking oven",
+      "sudoper",
+      "radni stol",
+      "neutralni element",
+      "perilic",
+      "posud",
+      "hladnj",
+      "zamrziv",
+      "rashlad",
+      "napa",
+      "hauba",
+      "fritez",
+      "rostilj",
+      "kotao",
+      "inox",
+      "aisi"
+    ],
+    "cpv_prefix": [
+      "422141",
+      "393140",
+      "393150",
+      "397111",
+      "397112",
+      "397214"
+    ]
+  },
+  "concept_groups": {
+    "heat_equipment": [
+      "konvekc",
+      "konvekt",
+      "pecnic",
+      "pec",
+      "stednjak",
+      "fritez",
+      "rostilj",
+      "kotao"
+    ],
+    "cold_equipment": [
+      "hladnj",
+      "zamrziv",
+      "rashlad",
+      "komora"
+    ],
+    "washing": [
+      "perilic",
+      "posud",
+      "casa"
+    ],
+    "ventilation": [
+      "napa",
+      "hauba"
+    ],
+    "inox_furniture": [
+      "inox",
+      "aisi",
+      "radni stol",
+      "stol inox",
+      "sudoper",
+      "regal",
+      "polic",
+      "ormar",
+      "kolica",
+      "neutralni element"
+    ],
+    "kitchen_context": [
+      "kuhinj",
+      "gastro",
+      "ugostitelj"
+    ],
+    "facility_context": [
+      "skola",
+      "vrtic",
+      "bolnic",
+      "dom",
+      "blagovaonic"
+    ]
+  },
+  "negative_groups": {
+    "weak_false_positives": [
+      "obnova",
+      "rekonstrukcija",
+      "adaptacija",
+      "sanacija"
+    ],
+    "hard_negatives": [
+      "elektricna energija",
+      "gradsko grijanje",
+      "dizelsko gorivo",
+      "medicinski potrosni",
+      "reagens",
+      "mamograf",
+      "sterilizator",
+      "asfalt",
+      "sljunak",
+      "pijesak",
+      "agregat",
+      "cjevovod",
+      "vodovod",
+      "software maintenance",
+      "usluga odrzavanja sustava",
+      "bis"
+    ]
+  }
+}

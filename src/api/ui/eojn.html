@@ -76,6 +76,32 @@
     </div>
 
     <div class="card">
+      <h3>Layer 1 View</h3>
+      <div class="row">
+        <label for="l1RunDate">Run date</label>
+        <input id="l1RunDate" type="date" value="" />
+        <button class="secondary" id="btnL1ViewRefresh">Refresh Layer 1 View</button>
+        <button class="primary" id="btnL1Recompute">Recompute Layer 1</button>
+      </div>
+      <pre id="l1SummaryOut">{}</pre>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>TenderId</th>
+              <th>Reference</th>
+              <th>Name</th>
+              <th>TopProgram</th>
+              <th>TopScore</th>
+              <th>Reasons</th>
+            </tr>
+          </thead>
+          <tbody id="l1QueueTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
       <h3>Layer 2 Monitor</h3>
       <div class="row">
         <label for="l2RunDate">Run date (opt, default latest <= today)</label>
@@ -205,6 +231,11 @@
     const l2Progress = document.getElementById("l2Progress");
     const l2StatusLine = document.getElementById("l2StatusLine");
     const btnL2ViewRefresh = document.getElementById("btnL2ViewRefresh");
+    const btnL1ViewRefresh = document.getElementById("btnL1ViewRefresh");
+    const btnL1Recompute = document.getElementById("btnL1Recompute");
+    const l1RunDate = document.getElementById("l1RunDate");
+    const l1SummaryOut = document.getElementById("l1SummaryOut");
+    const l1QueueTableBody = document.getElementById("l1QueueTableBody");
     const btnL2RerunSelected = document.getElementById("btnL2RerunSelected");
     const tenderTableBody = document.getElementById("tenderTableBody");
     const noticeTableBody = document.getElementById("noticeTableBody");
@@ -265,6 +296,7 @@
           body: JSON.stringify({ mode: mode.value, dry_run: dry.checked })
         }));
         await btnStatus.onclick();
+        await refreshLayer1View();
         await refreshLayer2View();
       } catch (e) {
         show({ error: String(e) });
@@ -282,6 +314,61 @@
       const total = Number(s && s.total || 0);
       l2StatusLine.textContent = `${phase} | done=${done}, skipped=${skipped}, reviewed=${reviewed}, total=${total} | ${pct}% | ${msg}`;
     }
+
+    function renderLayer1Queue(rows) {
+      l1QueueTableBody.innerHTML = "";
+      for (const r of rows || []) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><a class="tender-link" href="https://eojn.hr/tender-eo/${Number(r.Id || 0)}" target="_blank" rel="noopener noreferrer">${Number(r.Id || 0)}</a></td>
+          <td>${escapeHtml(r.ReferenceNumber || "")}</td>
+          <td>${escapeHtml(r.Name || "")}</td>
+          <td>${escapeHtml(r.topProgram || "")}</td>
+          <td>${Number(r.topScore || 0).toFixed(3)}</td>
+          <td>${escapeHtml(Array.isArray(r.reasons) ? r.reasons.join(", ") : "")}</td>
+        `;
+        l1QueueTableBody.appendChild(tr);
+      }
+    }
+
+    async function refreshLayer1View() {
+      try {
+        const runDate = String(l1RunDate.value || "").trim();
+        const url = runDate ? `/api/eojn/v1/layer1/view?run_date_ymd=${encodeURIComponent(runDate)}` : "/api/eojn/v1/layer1/view";
+        const data = await fetchJson(url);
+        l1SummaryOut.textContent = JSON.stringify({
+          run_date_ymd: data.run_date_ymd,
+          out_dir: data.out_dir,
+          counts: data.counts,
+          manifest_counts: data.manifest && data.manifest.run ? data.manifest.run.counts : null
+        }, null, 2);
+        renderLayer1Queue(Array.isArray(data.layer2_queue_rows) ? data.layer2_queue_rows : []);
+      } catch (e) {
+        l1SummaryOut.textContent = JSON.stringify({ error: String(e) }, null, 2);
+        l1QueueTableBody.innerHTML = "";
+      }
+    }
+
+    btnL1Recompute.onclick = async () => {
+      try {
+        const runDate = String(l1RunDate.value || "").trim();
+        if (!runDate) {
+          l1SummaryOut.textContent = JSON.stringify({ error: "Select Layer 1 run date first." }, null, 2);
+          return;
+        }
+        const result = await fetchJson("/api/eojn/v1/layer1/recompute", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            run_date_ymd: runDate
+          })
+        });
+        show(result);
+        await refreshLayer1View();
+      } catch (e) {
+        show({ error: String(e) });
+      }
+    };
 
     async function refreshLayer2Status() {
       try {
@@ -500,6 +587,7 @@
     }
 
     btnL2ViewRefresh.onclick = refreshLayer2View;
+    btnL1ViewRefresh.onclick = refreshLayer1View;
     showInactiveRows.onchange = () => {
       if (!l2ViewRows.some((x) => Number(x.tender_id) === Number(selectedTenderId))) selectedTenderId = 0;
       renderTenderTable();
@@ -566,6 +654,7 @@
 
     loadReviewCatalog();
     btnStatus.click();
+    refreshLayer1View();
     refreshLayer2Status();
     refreshLayer2View();
   </script>

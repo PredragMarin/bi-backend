@@ -4,6 +4,8 @@ const express = require("express");
 const {
   runLayer1,
   getLayer1Status,
+  getLayer1ViewData,
+  recomputeLayer1FromStoredRaw,
   startLayer2Run,
   getLayer2RunStatus,
   getLayer2ViewData,
@@ -36,6 +38,33 @@ function createEojnLayer1RouterV1() {
     } catch (err) {
       res.status(400).json({
         error: "EOJN_RUN_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.get("/layer1/view", async (req, res) => {
+    try {
+      const view = await getLayer1ViewData({
+        out_root: req.query && req.query.out_root ? String(req.query.out_root) : "",
+        run_date_ymd: req.query && req.query.run_date_ymd ? String(req.query.run_date_ymd) : ""
+      });
+      res.json(view);
+    } catch (err) {
+      res.status(400).json({
+        error: "EOJN_LAYER1_VIEW_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/layer1/recompute", async (req, res) => {
+    try {
+      const result = await recomputeLayer1FromStoredRaw(req.body || {});
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({
+        error: "EOJN_LAYER1_RECOMPUTE_FAILED",
         message: err && err.message ? err.message : String(err)
       });
     }

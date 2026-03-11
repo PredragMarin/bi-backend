@@ -14,6 +14,8 @@ function configureEojnApiService(nextHandlers) {
   const required = [
     "runLayer1",
     "getLayer1Status",
+    "getLayer1ViewData",
+    "recomputeLayer1FromStoredRaw",
     "startLayer2Run",
     "getLayer2RunStatus",
     "getLayer2ViewData",
@@ -36,6 +38,14 @@ async function runLayer1(payload) {
 
 async function getLayer1Status(payload) {
   return assertConfigured().getLayer1Status(payload);
+}
+
+async function getLayer1ViewData(payload) {
+  return assertConfigured().getLayer1ViewData(payload);
+}
+
+async function recomputeLayer1FromStoredRaw(payload) {
+  return assertConfigured().recomputeLayer1FromStoredRaw(payload);
 }
 
 async function startLayer2Run(payload) {
@@ -66,6 +76,8 @@ module.exports = {
   configureEojnApiService,
   runLayer1,
   getLayer1Status,
+  getLayer1ViewData,
+  recomputeLayer1FromStoredRaw,
   startLayer2Run,
   getLayer2RunStatus,
   getLayer2ViewData,

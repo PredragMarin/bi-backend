@@ -139,6 +139,68 @@ async function writeLayer1RunArtifacts({
   return { outDir };
 }
 
+async function loadLayer1RunView({ outRoot, runDateYmd }) {
+  const root = path.resolve(String(outRoot || defaultOutRoot()));
+  const activeCycle = await loadActiveCycle({ outRoot: root });
+  const resolvedYmd = String(runDateYmd || activeCycle?.run_date_ymd || "").trim();
+  if (!resolvedYmd) {
+    throw new Error("Missing run_date_ymd and no active cycle available.");
+  }
+  const outDir = outDirForDate(root, resolvedYmd);
+  const manifest = await readJsonSafe(path.join(outDir, "manifest.json"), null);
+  const scored = await readJsonSafe(path.join(outDir, "scored.json"), []);
+  const shortlist = await readJsonSafe(path.join(outDir, "shortlist.json"), []);
+  const layer2Queue = await readJsonSafe(path.join(outDir, "layer2_queue.json"), []);
+  return {
+    run_date_ymd: resolvedYmd,
+    out_dir: outDir,
+    manifest,
+    counts: {
+      scored: Array.isArray(scored) ? scored.length : 0,
+      shortlist: Array.isArray(shortlist) ? shortlist.length : 0,
+      layer2_queue: Array.isArray(layer2Queue) ? layer2Queue.length : 0
+    },
+    layer2_queue_rows: Array.isArray(layer2Queue) ? layer2Queue : []
+  };
+}
+
+async function loadLayer1RawArtifacts({ outRoot, runDateYmd }) {
+  const root = path.resolve(String(outRoot || defaultOutRoot()));
+  const outDir = outDirForDate(root, runDateYmd);
+  const procurementsRows = await readJsonSafe(path.join(outDir, "procurements_raw.json"), null);
+  const noticesRows = await readJsonSafe(path.join(outDir, "notices_raw.json"), null);
+  const manifest = await readJsonSafe(path.join(outDir, "manifest.json"), null);
+  if (!Array.isArray(procurementsRows) || !Array.isArray(noticesRows)) {
+    throw new Error(`Missing raw artifacts for ${runDateYmd} in ${outDir}`);
+  }
+  return {
+    outDir,
+    manifest,
+    procurementsRows,
+    noticesRows
+  };
+}
+
+async function writeLayer1DerivedArtifacts({
+  outRoot,
+  runDateYmd,
+  scoredRows,
+  shortlistRows,
+  layer2QueueRows,
+  manifest
+}) {
+  const root = path.resolve(String(outRoot || defaultOutRoot()));
+  const outDir = outDirForDate(root, runDateYmd);
+  await fsp.mkdir(outDir, { recursive: true });
+  await Promise.all([
+    writeJsonAtomic(path.join(outDir, "scored.json"), scoredRows || []),
+    writeJsonAtomic(path.join(outDir, "shortlist.json"), shortlistRows || []),
+    writeJsonAtomic(path.join(outDir, "layer2_queue.json"), layer2QueueRows || []),
+    writeJsonAtomic(path.join(outDir, "manifest.json"), manifest || {})
+  ]);
+  return { outDir };
+}
+
 module.exports = {
   defaultOutRoot,
   loadLayer1State,
@@ -146,5 +208,8 @@ module.exports = {
   loadActiveCycle,
   saveActiveCycle,
   writeLayer1RunArtifacts,
-  appendEventLog
+  appendEventLog,
+  loadLayer1RunView,
+  loadLayer1RawArtifacts,
+  writeLayer1DerivedArtifacts
 };

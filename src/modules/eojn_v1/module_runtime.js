@@ -12,7 +12,10 @@ const {
   loadActiveCycle,
   saveActiveCycle,
   writeLayer1RunArtifacts,
-  appendEventLog
+  appendEventLog,
+  loadLayer1RunView,
+  loadLayer1RawArtifacts,
+  writeLayer1DerivedArtifacts
 } = require("../../core_shell/services/eojn_layer1_store");
 const { ymdInTZ, TZ } = require("./adapters/public_feed_common");
 
@@ -289,6 +292,81 @@ async function getLayer1Status(input) {
   };
 }
 
+async function getLayer1ViewData(input) {
+  const outRoot = input && input.out_root ? String(input.out_root) : defaultOutRoot();
+  const view = await loadLayer1RunView({
+    outRoot,
+    runDateYmd: input && input.run_date_ymd ? String(input.run_date_ymd) : ""
+  });
+  return {
+    use_case: "eojn_v1",
+    ...view
+  };
+}
+
+async function recomputeLayer1FromStoredRaw(input) {
+  const outRoot = input && input.out_root ? String(input.out_root) : defaultOutRoot();
+  const runDateYmd = String(input && input.run_date_ymd ? input.run_date_ymd : "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(runDateYmd)) {
+    throw new Error("Invalid run_date_ymd; expected YYYY-MM-DD");
+  }
+
+  const loaded = await loadLayer1RawArtifacts({ outRoot, runDateYmd });
+  const scoreResult = await scoreRows({
+    moduleDir: __dirname,
+    rows: loaded.procurementsRows
+  });
+  const completedAt = new Date().toISOString();
+  const prevRun = loaded.manifest && loaded.manifest.run ? loaded.manifest.run : null;
+  const nextManifest = {
+    ...(loaded.manifest || {}),
+    module: "eojn_v1",
+    phase: "EOJN-1-RECOMPUTE",
+    recomputed_at: completedAt,
+    recompute: {
+      source: "stored_raw",
+      run_date_ymd: runDateYmd
+    },
+    run: {
+      ...(prevRun || {}),
+      run_date_ymd: runDateYmd,
+      completed_at: completedAt,
+      counts: {
+        ...(prevRun && prevRun.counts ? prevRun.counts : {}),
+        scored: scoreResult.scoredCount,
+        shortlist: scoreResult.shortlistCount,
+        layer2_queue: scoreResult.layer2Queue.length
+      }
+    }
+  };
+
+  const writeInfo = await writeLayer1DerivedArtifacts({
+    outRoot,
+    runDateYmd,
+    scoredRows: scoreResult.scored,
+    shortlistRows: scoreResult.shortlist,
+    layer2QueueRows: scoreResult.layer2Queue,
+    manifest: nextManifest
+  });
+  await appendEventLog({
+    outDir: writeInfo.outDir,
+    event: {
+      ts: completedAt,
+      type: "LAYER1_RECOMPUTE_OK",
+      run_date_ymd: runDateYmd,
+      counts: nextManifest.run.counts
+    }
+  });
+
+  return {
+    ok: true,
+    recomputed: true,
+    run_date_ymd: runDateYmd,
+    out_dir: writeInfo.outDir,
+    counts: nextManifest.run.counts
+  };
+}
+
 function runCompute() {
   throw new Error("eojn_v1 runCompute is not used. Use runLayer1 orchestration.");
 }
@@ -298,5 +376,7 @@ module.exports = {
   current_pointer_use_case: "eojn_v1",
   runCompute,
   runLayer1,
-  getLayer1Status
+  getLayer1Status,
+  getLayer1ViewData,
+  recomputeLayer1FromStoredRaw
 };
