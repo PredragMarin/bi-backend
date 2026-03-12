@@ -1,0 +1,39 @@
+{
+  "version": "1.0.0",
+  "high_priority_terms": [
+    "skola",
+    "osnovna skola",
+    "srednja skola",
+    "ucenicki dom",
+    "vrtic",
+    "bolnica",
+    "klinicki",
+    "klinika",
+    "dom",
+    "studentski centar",
+    "centar",
+    "dom za starije",
+    "specijalna bolnica"
+  ],
+  "medium_priority_terms": [
+    "grad",
+    "opcina",
+    "zupanija",
+    "ministarstvo",
+    "fakultet",
+    "sveuciliste",
+    "ustanova"
+  ],
+  "low_priority_terms": [
+    "zbrinjavanje",
+    "ceste",
+    "vode",
+    "komunalno"
+  ],
+  "scores": {
+    "high": 0.85,
+    "medium": 0.55,
+    "low": 0.2,
+    "default": 0.35
+  }
+}

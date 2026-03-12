@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "hard": [
+    "zbrinjavanje otpada",
+    "obrada otpada",
+    "otpad",
+    "kruzni proizvodi",
+    "svjeza peciva",
+    "peciva",
+    "kolaci",
+    "pekarski proizvodi",
+    "prehrambeni proizvodi",
+    "meso",
+    "mlijeko",
+    "voce i povrce",
+    "gorivo",
+    "elektricna energija",
+    "gradsko grijanje",
+    "reagens",
+    "medicinski potrosni",
+    "software",
+    "odrzavanje sustava"
+  ],
+  "soft": [
+    "obnova",
+    "rekonstrukcija",
+    "adaptacija",
+    "sanacija",
+    "projektiranje",
+    "nadzor",
+    "savjetovanje",
+    "usluga odrzavanja",
+    "servisiranje"
+  ]
+}

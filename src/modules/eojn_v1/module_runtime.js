@@ -298,9 +298,31 @@ async function getLayer1ViewData(input) {
     outRoot,
     runDateYmd: input && input.run_date_ymd ? String(input.run_date_ymd) : ""
   });
+  const shortlistRows = Array.isArray(view.shortlist_rows) ? view.shortlist_rows : [];
+  const queueRows = Array.isArray(view.layer2_queue_rows) ? view.layer2_queue_rows : [];
+  const normalizeShortlistRow = (row) => ({
+    Id: row.Id,
+    ReferenceNumber: row.ReferenceNumber || "",
+    Name: row.Name || "",
+    NoticePublishDate: row.NoticePublishDate || "",
+    topProgram: row._eojn && row._eojn.topProgram ? row._eojn.topProgram : "",
+    topScore: row._eojn && Number.isFinite(Number(row._eojn.topScore)) ? Number(row._eojn.topScore) : 0,
+    reasons: row._eojn && Array.isArray(row._eojn.reasons) ? row._eojn.reasons : []
+  });
+  const normalizeQueueRow = (row) => ({
+    Id: row.Id,
+    ReferenceNumber: row.ReferenceNumber || "",
+    Name: row.Name || "",
+    NoticePublishDate: row.NoticePublishDate || "",
+    topProgram: row.topProgram || "",
+    topScore: Number.isFinite(Number(row.topScore)) ? Number(row.topScore) : 0,
+    reasons: Array.isArray(row.reasons) ? row.reasons : []
+  });
   return {
     use_case: "eojn_v1",
-    ...view
+    ...view,
+    shortlist_rows: shortlistRows.map(normalizeShortlistRow),
+    layer2_queue_rows: queueRows.map(normalizeQueueRow)
   };
 }
 

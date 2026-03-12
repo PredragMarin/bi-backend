@@ -160,6 +160,7 @@ async function loadLayer1RunView({ outRoot, runDateYmd }) {
       shortlist: Array.isArray(shortlist) ? shortlist.length : 0,
       layer2_queue: Array.isArray(layer2Queue) ? layer2Queue.length : 0
     },
+    shortlist_rows: Array.isArray(shortlist) ? shortlist : [],
     layer2_queue_rows: Array.isArray(layer2Queue) ? layer2Queue : []
   };
 }

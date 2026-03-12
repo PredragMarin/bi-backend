@@ -1,0 +1,227 @@
+{
+  "version": "1.0.0",
+  "domains": [
+    {
+      "id": "kitchen",
+      "score": 0.95,
+      "terms": [
+        "kuhinj",
+        "gastro",
+        "konvekc",
+        "konvekt",
+        "pecnic",
+        "sudoper",
+        "perilic posud",
+        "napa",
+        "hauba",
+        "fritez",
+        "rostilj",
+        "kotao",
+        "stednjak"
+      ],
+      "cpv_prefixes": [
+        "422141",
+        "393140",
+        "393150",
+        "391410"
+      ]
+    },
+    {
+      "id": "inox_fitout",
+      "score": 0.9,
+      "terms": [
+        "inox",
+        "aisi",
+        "radni stol",
+        "stol inox",
+        "sudoper",
+        "regal",
+        "polic",
+        "ormar",
+        "kolica",
+        "neutralni element"
+      ],
+      "cpv_prefixes": [
+        "391410",
+        "391511",
+        "444100"
+      ]
+    },
+    {
+      "id": "laboratory",
+      "score": 0.65,
+      "terms": [
+        "laborator",
+        "mikroskop",
+        "analizator",
+        "fluoresc",
+        "elektronski mikroskop",
+        "istrazivacka oprema"
+      ],
+      "cpv_prefixes": [
+        "380000",
+        "3851"
+      ]
+    },
+    {
+      "id": "medical",
+      "score": 0.55,
+      "terms": [
+        "medicinsk",
+        "zdravstven",
+        "bolnic",
+        "klinick"
+      ],
+      "cpv_prefixes": [
+        "3319",
+        "3314"
+      ]
+    },
+    {
+      "id": "hvac",
+      "score": 0.2,
+      "terms": [
+        "klima",
+        "klimatiz",
+        "split sustav",
+        "ventilokonvektor",
+        "rashladni sustav"
+      ],
+      "cpv_prefixes": [
+        "397172",
+        "507300"
+      ]
+    },
+    {
+      "id": "waste",
+      "score": 0.0,
+      "terms": [
+        "otpad",
+        "zbrinjavanje",
+        "obrada otpada"
+      ],
+      "cpv_prefixes": [
+        "9051",
+        "9052"
+      ]
+    },
+    {
+      "id": "food_supply",
+      "score": 0.0,
+      "terms": [
+        "peciva",
+        "kolaci",
+        "kruzni proizvodi",
+        "namirnice",
+        "meso",
+        "mlijeko"
+      ],
+      "cpv_prefixes": [
+        "158",
+        "151",
+        "152",
+        "153",
+        "154",
+        "155"
+      ]
+    }
+  ],
+  "intents": [
+    {
+      "id": "discrete_device",
+      "score": 0.85,
+      "terms": [
+        "konvekc",
+        "konvekt",
+        "pecnic",
+        "pecnica",
+        "mikroskop",
+        "uredaj",
+        "aparat",
+        "analizator",
+        "instrument",
+        "klima uredaj",
+        "split klima"
+      ]
+    },
+    {
+      "id": "fitout_furnishing",
+      "score": 0.95,
+      "terms": [
+        "oprem",
+        "namjestaj",
+        "radni stol",
+        "sudoper",
+        "ormar",
+        "regal",
+        "radna ploha",
+        "inox"
+      ]
+    },
+    {
+      "id": "construction_reconstruction",
+      "score": 0.6,
+      "terms": [
+        "rekonstruk",
+        "adapt",
+        "izgrad",
+        "dograd",
+        "uredenje prostora",
+        "izvodenje radova"
+      ]
+    },
+    {
+      "id": "maintenance_service",
+      "score": 0.05,
+      "terms": [
+        "odrzav",
+        "servis",
+        "poprav",
+        "nadzor",
+        "projektir"
+      ]
+    },
+    {
+      "id": "consumables_supply",
+      "score": 0.0,
+      "terms": [
+        "peciva",
+        "kolaci",
+        "namirnice",
+        "potrosni",
+        "reagens"
+      ]
+    }
+  ],
+  "business_fit": {
+    "kitchen:discrete_device": 0.95,
+    "kitchen:fitout_furnishing": 1.0,
+    "kitchen:construction_reconstruction": 0.75,
+    "inox_fitout:fitout_furnishing": 1.0,
+    "inox_fitout:construction_reconstruction": 0.8,
+    "laboratory:fitout_furnishing": 0.8,
+    "laboratory:construction_reconstruction": 0.55,
+    "laboratory:discrete_device": 0.1,
+    "medical:fitout_furnishing": 0.75,
+    "medical:construction_reconstruction": 0.55,
+    "medical:discrete_device": 0.1,
+    "hvac:discrete_device": 0.05,
+    "hvac:fitout_furnishing": 0.15,
+    "other:fitout_furnishing": 0.25,
+    "other:discrete_device": 0.15,
+    "food_supply:consumables_supply": 0.0,
+    "waste:maintenance_service": 0.0
+  },
+  "allowed_l2_pairs": [
+    "kitchen:discrete_device",
+    "kitchen:fitout_furnishing",
+    "kitchen:construction_reconstruction",
+    "inox_fitout:fitout_furnishing",
+    "inox_fitout:construction_reconstruction",
+    "laboratory:fitout_furnishing",
+    "medical:fitout_furnishing"
+  ],
+  "default_domain_score": 0.2,
+  "default_intent_score": 0.25,
+  "default_business_fit": 0.2
+}

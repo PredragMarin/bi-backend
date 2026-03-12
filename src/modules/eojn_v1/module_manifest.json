@@ -56,7 +56,15 @@
   },
   "contracts": {
     "layer1_run_contract": "contracts/layer1_run_contract.json",
-    "validation_entry": "validate_layer1_request.js"
+    "validation_entry": "validate_layer1_request.js",
+    "layer1_semantic_rules": [
+      "l1_cpv_rules_v1.json",
+      "l1_contract_type_rules_v1.json",
+      "l1_contracting_body_rules_v1.json",
+      "l1_negative_semantics_v1.json",
+      "l1_scope_taxonomy_v1.json",
+      "l1_semantic_matrix_v1.json"
+    ]
   },
   "storage": {
     "bi_store_root": "out/eojn_v1"

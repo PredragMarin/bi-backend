@@ -80,6 +80,11 @@
       <div class="row">
         <label for="l1RunDate">Run date</label>
         <input id="l1RunDate" type="date" value="" />
+        <label for="l1ViewSet">View set</label>
+        <select id="l1ViewSet">
+          <option value="layer2_queue">layer2_queue</option>
+          <option value="shortlist">shortlist</option>
+        </select>
         <button class="secondary" id="btnL1ViewRefresh">Refresh Layer 1 View</button>
         <button class="primary" id="btnL1Recompute">Recompute Layer 1</button>
       </div>
@@ -89,6 +94,7 @@
           <thead>
             <tr>
               <th>TenderId</th>
+              <th>PublishDate</th>
               <th>Reference</th>
               <th>Name</th>
               <th>TopProgram</th>
@@ -234,6 +240,7 @@
     const btnL1ViewRefresh = document.getElementById("btnL1ViewRefresh");
     const btnL1Recompute = document.getElementById("btnL1Recompute");
     const l1RunDate = document.getElementById("l1RunDate");
+    const l1ViewSet = document.getElementById("l1ViewSet");
     const l1SummaryOut = document.getElementById("l1SummaryOut");
     const l1QueueTableBody = document.getElementById("l1QueueTableBody");
     const btnL2RerunSelected = document.getElementById("btnL2RerunSelected");
@@ -321,6 +328,7 @@
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td><a class="tender-link" href="https://eojn.hr/tender-eo/${Number(r.Id || 0)}" target="_blank" rel="noopener noreferrer">${Number(r.Id || 0)}</a></td>
+          <td>${escapeHtml(r.NoticePublishDate || "")}</td>
           <td>${escapeHtml(r.ReferenceNumber || "")}</td>
           <td>${escapeHtml(r.Name || "")}</td>
           <td>${escapeHtml(r.topProgram || "")}</td>
@@ -339,10 +347,14 @@
         l1SummaryOut.textContent = JSON.stringify({
           run_date_ymd: data.run_date_ymd,
           out_dir: data.out_dir,
+          view_set: String(l1ViewSet.value || "layer2_queue"),
           counts: data.counts,
           manifest_counts: data.manifest && data.manifest.run ? data.manifest.run.counts : null
         }, null, 2);
-        renderLayer1Queue(Array.isArray(data.layer2_queue_rows) ? data.layer2_queue_rows : []);
+        const rows = String(l1ViewSet.value || "layer2_queue") === "shortlist"
+          ? (Array.isArray(data.shortlist_rows) ? data.shortlist_rows : [])
+          : (Array.isArray(data.layer2_queue_rows) ? data.layer2_queue_rows : []);
+        renderLayer1Queue(rows);
       } catch (e) {
         l1SummaryOut.textContent = JSON.stringify({ error: String(e) }, null, 2);
         l1QueueTableBody.innerHTML = "";
@@ -588,6 +600,7 @@
 
     btnL2ViewRefresh.onclick = refreshLayer2View;
     btnL1ViewRefresh.onclick = refreshLayer1View;
+    l1ViewSet.onchange = refreshLayer1View;
     showInactiveRows.onchange = () => {
       if (!l2ViewRows.some((x) => Number(x.tender_id) === Number(selectedTenderId))) selectedTenderId = 0;
       renderTenderTable();

@@ -1,0 +1,109 @@
+{
+  "version": "1.0.0",
+  "weights": {
+    "cpv": 0.45,
+    "body": 0.25,
+    "name": 0.3
+  },
+  "thresholds": {
+    "layer2": 0.5,
+    "shortlist": 0.5
+  },
+  "name_classes": [
+    {
+      "id": "kitchen_equipment",
+      "score": 0.95,
+      "terms": [
+        "konvekc",
+        "konvekt",
+        "pecnic",
+        "pecnica",
+        "konvektomat",
+        "napa",
+        "hauba",
+        "perilica posud",
+        "perilic posud",
+        "fritez",
+        "rostilj",
+        "kotao",
+        "stednjak",
+        "kuhinjska oprema",
+        "gastro oprema"
+      ]
+    },
+    {
+      "id": "inox_furniture",
+      "score": 0.88,
+      "terms": [
+        "inox",
+        "aisi",
+        "radni stol",
+        "sudoper",
+        "regal",
+        "polica",
+        "ormar",
+        "kolica",
+        "neutralni element",
+        "namjestaj od inox"
+      ]
+    },
+    {
+      "id": "refrigeration",
+      "score": 0.9,
+      "terms": [
+        "hladnj",
+        "zamrziv",
+        "rashlad",
+        "komora",
+        "hladnjak",
+        "zamrzivac",
+        "hladnjaca"
+      ]
+    },
+    {
+      "id": "lab_support_equipment",
+      "score": 0.72,
+      "terms": [
+        "laboratorijska oprema",
+        "metalni namjestaj",
+        "tehnicka oprema",
+        "industrijski stroj"
+      ]
+    },
+    {
+      "id": "construction_installation",
+      "score": 0.58,
+      "terms": [
+        "opremanje",
+        "ugradnja opreme",
+        "instalacija opreme",
+        "izvedba i opremanje"
+      ]
+    },
+    {
+      "id": "maintenance_service",
+      "score": 0.18,
+      "terms": [
+        "odrzavanje",
+        "servis",
+        "popravak",
+        "zbrinjavanje",
+        "obrada otpada"
+      ]
+    },
+    {
+      "id": "food_supply",
+      "score": 0.05,
+      "terms": [
+        "kruzni proizvodi",
+        "peciva",
+        "kolaci",
+        "prehrambeni proizvodi",
+        "namirnice",
+        "meso",
+        "mlijeko"
+      ]
+    }
+  ],
+  "default_name_score": 0.1
+}
