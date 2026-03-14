@@ -1,7 +1,12 @@
 "use strict";
 
 const path = require("path");
-const { defaultOutRoot, getReviewDecision, saveReviewDecision } = require("../../core_shell/services/eojn_review_store");
+const {
+  defaultOutRoot,
+  getReviewDecision,
+  getLatestReviewDecisionByTender,
+  saveReviewDecision
+} = require("../../core_shell/services/eojn_review_store");
 const { loadActiveCycle } = require("../../core_shell/services/eojn_layer1_store");
 
 const REVIEW_REASON_CATALOG = [
@@ -90,12 +95,14 @@ async function getOperatorReview(input) {
   if (!Number.isFinite(tenderId) || tenderId <= 0) {
     throw new Error("Invalid tender_id");
   }
-  const decision = await getReviewDecision({ outRoot, runDateYmd, tenderId });
+  const exact = await getReviewDecision({ outRoot, runDateYmd, tenderId });
+  const decision = exact || await getLatestReviewDecisionByTender({ outRoot, tenderId });
   return {
     ok: true,
     run_date_ymd: runDateYmd,
     tender_id: tenderId,
-    decision
+    decision,
+    source: exact ? "exact_run" : (decision ? "latest_tender" : "none")
   };
 }
 

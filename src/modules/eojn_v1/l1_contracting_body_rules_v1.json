@@ -30,6 +30,39 @@
     "vode",
     "komunalno"
   ],
+  "context_boost_terms": [
+    "skol",
+    "osnovn",
+    "srednj",
+    "vrtic",
+    "jasl",
+    "menz",
+    "studentski dom",
+    "ucenicki dom",
+    "dom"
+  ],
+  "context_boost_scope_terms": [
+    "oprem",
+    "rekonstruk",
+    "dograd",
+    "uredenje",
+    "izvodenje radova"
+  ],
+  "context_boost_cpv_divisions": [
+    "39",
+    "45"
+  ],
+  "context_boost_cpv_prefixes": [
+    "452141",
+    "452142"
+  ],
+  "context_boost_score": 0.18,
+  "context_boost_business_fit_overrides": {
+    "fitout_furnishing": 0.45,
+    "construction_reconstruction": 0.5,
+    "generic": 0.35
+  },
+  "context_boost_negative_penalty_scale": 0.4,
   "scores": {
     "high": 0.85,
     "medium": 0.55,

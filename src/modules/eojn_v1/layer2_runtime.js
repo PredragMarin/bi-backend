@@ -4,7 +4,7 @@ const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
 const crypto = require("crypto");
-const { spawnSync } = require("child_process");
+const { spawnSync, spawn } = require("child_process");
 const {
   defaultOutRoot,
   loadLayer2Status,
@@ -12,7 +12,10 @@ const {
   saveLayer2Result,
   loadLatestLayer2Result
 } = require("../../core_shell/services/eojn_layer2_store");
-const { getReviewDecisionsForRun } = require("../../core_shell/services/eojn_review_store");
+const {
+  getReviewDecisionsForRun,
+  getLatestReviewDecisionsByTender
+} = require("../../core_shell/services/eojn_review_store");
 const { loadActiveCycle, saveActiveCycle } = require("../../core_shell/services/eojn_layer1_store");
 const { resolveEojnConfigPath } = require("./secret_provider");
 
@@ -189,7 +192,12 @@ function filterQueueByTenderIds(queueRows, tenderIds) {
     : queueRows;
 }
 
-function filterQueueByReviewState(queueRows, reviewDecisions, runDateYmd, forceReprocess) {
+function resolveReviewForTender(reviewDecisionsForRun, latestReviewByTender, runDateYmd, tenderId) {
+  const runKey = `${String(runDateYmd || "").trim()}|${Number(tenderId || 0)}`;
+  return reviewDecisionsForRun[runKey] || latestReviewByTender[String(Number(tenderId || 0))] || null;
+}
+
+function filterQueueByReviewState(queueRows, reviewDecisionsForRun, latestReviewByTender, runDateYmd, forceReprocess) {
   if (forceReprocess) {
     return {
       rows: queueRows,
@@ -200,8 +208,7 @@ function filterQueueByReviewState(queueRows, reviewDecisions, runDateYmd, forceR
   let skippedReviewed = 0;
   for (const row of queueRows) {
     const tenderId = Number(row && row.Id);
-    const key = `${runDateYmd}|${tenderId}`;
-    const review = reviewDecisions[key] || null;
+    const review = resolveReviewForTender(reviewDecisionsForRun, latestReviewByTender, runDateYmd, tenderId);
     if (review && String(review.decision_code || "").trim()) {
       skippedReviewed += 1;
       continue;
@@ -240,6 +247,92 @@ function runNodeScript(scriptPath, args, timeoutMs) {
     throw e;
   }
   return out;
+}
+
+function summarizeScriptOutput(stdout, stderr) {
+  const merged = String(stderr || stdout || "");
+  const head = merged.slice(0, 300);
+  const tail = merged.length > 900 ? merged.slice(-900) : merged;
+  return `${head}${merged.length > 900 ? "\n...\n" : "\n"}${tail}` || "";
+}
+
+async function runNodeScriptMonitored(scriptPath, args, timeoutMs, hooks) {
+  return await new Promise((resolve, reject) => {
+    const child = spawn("node", [scriptPath, ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+    let stdout = "";
+    let stderr = "";
+    let finished = false;
+    let timeoutHandle = null;
+    let heartbeatHandle = null;
+    let stdoutRemainder = "";
+    let stderrRemainder = "";
+
+    const finish = (fn, value) => {
+      if (finished) return;
+      finished = true;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      if (heartbeatHandle) clearInterval(heartbeatHandle);
+      fn(value);
+    };
+
+    const emitLine = (kind, line) => {
+      if (!hooks || typeof hooks.onLine !== "function") return;
+      Promise.resolve(hooks.onLine({ kind, line })).catch(() => {});
+    };
+
+    const flushChunk = (kind, chunk, remainder) => {
+      const merged = remainder + String(chunk || "");
+      const parts = merged.split(/\r?\n/);
+      const rest = parts.pop() || "";
+      for (const part of parts) {
+        const line = String(part || "").trim();
+        if (line) emitLine(kind, line);
+      }
+      return rest;
+    };
+
+    child.stdout.on("data", (chunk) => {
+      const text = String(chunk || "");
+      stdout += text;
+      stdoutRemainder = flushChunk("stdout", text, stdoutRemainder);
+    });
+    child.stderr.on("data", (chunk) => {
+      const text = String(chunk || "");
+      stderr += text;
+      stderrRemainder = flushChunk("stderr", text, stderrRemainder);
+    });
+    child.on("error", (err) => finish(reject, err));
+    child.on("close", (code) => {
+      if (stdoutRemainder.trim()) emitLine("stdout", stdoutRemainder.trim());
+      if (stderrRemainder.trim()) emitLine("stderr", stderrRemainder.trim());
+      if (code !== 0) {
+        const e = new Error(summarizeScriptOutput(stdout, stderr) || `Exit code ${code}`);
+        e.code = "SCRIPT_FAILED";
+        return finish(reject, e);
+      }
+      return finish(resolve, { status: code, stdout, stderr });
+    });
+
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        try { child.kill(); } catch (_) {}
+        const e = new Error(`Timed out after ${timeoutMs}ms`);
+        e.code = "TIMEOUT";
+        finish(reject, e);
+      }, timeoutMs);
+    }
+
+    if (hooks && typeof hooks.onHeartbeat === "function") {
+      const startedAt = Date.now();
+      const hbMs = Number(hooks.heartbeatMs) > 0 ? Number(hooks.heartbeatMs) : 4000;
+      heartbeatHandle = setInterval(() => {
+        Promise.resolve(hooks.onHeartbeat({ elapsedMs: Date.now() - startedAt })).catch(() => {});
+      }, hbMs);
+    }
+  });
 }
 
 function findLatestBatchReport(outRoot) {
@@ -405,14 +498,42 @@ async function extractBudgetArchivesForTender({ outRoot, runDir, tenderId }) {
   return extracted;
 }
 
-function tryDownloadBudgetForTender({ outRoot, moduleDir, tenderId, configPath, timeoutMs }) {
+async function tryDownloadBudgetForTender({ outRoot, moduleDir, tenderId, configPath, timeoutMs, onProgress }) {
   const resolvedConfigPath = resolveEojnConfigPath({ configPathOverride: configPath });
   const downloader = path.join(moduleDir, "dev_pw_download_budget.js");
   try {
-    runNodeScript(
+    await runNodeScriptMonitored(
       downloader,
       [`--config=${resolvedConfigPath}`, `--tender=${tenderId}`, "--fresh=0", "--headed=0"],
-      timeoutMs
+      timeoutMs,
+      {
+        heartbeatMs: 4000,
+        onHeartbeat: ({ elapsedMs }) => onProgress && onProgress({
+          stage: "download_wait",
+          message: `Downloading tender ${tenderId}... ${Math.round(elapsedMs / 1000)}s`
+        }),
+        onLine: ({ line }) => {
+          if (!onProgress) return;
+          if (/Opening:/i.test(line)) {
+            onProgress({ stage: "contacting_eojn", message: `Contacting EOJN for tender ${tenderId}` });
+            return;
+          }
+          if (/budget candidates:/i.test(line)) {
+            onProgress({ stage: "budget_links_found", message: `Budget links discovered for tender ${tenderId}` });
+            return;
+          }
+          if (/Tender .* downloading /i.test(line)) {
+            onProgress({
+              stage: "downloading_budget",
+              message: line.replace(/^\[EOJN\]\[PW\]\[[A-Z]+\]\s*/, "")
+            });
+            return;
+          }
+          if (/BATCH DONE/i.test(line)) {
+            onProgress({ stage: "download_done", message: `Download phase finished for tender ${tenderId}` });
+          }
+        }
+      }
     );
   } catch (err) {
     const reason = readDownloaderFailureReason({ outRoot, tenderId });
@@ -425,9 +546,15 @@ function tryDownloadBudgetForTender({ outRoot, moduleDir, tenderId, configPath, 
   }
 }
 
-function runBudgetAnalyzer({ moduleDir, budgetFile, outFile, timeoutMs }) {
+async function runBudgetAnalyzer({ moduleDir, budgetFile, outFile, timeoutMs, onProgress }) {
   const scanner = path.join(moduleDir, "layer2_budget_scan.js");
-  runNodeScript(scanner, [`--file=${budgetFile}`, `--out=${outFile}`], timeoutMs);
+  await runNodeScriptMonitored(scanner, [`--file=${budgetFile}`, `--out=${outFile}`], timeoutMs, {
+    heartbeatMs: 4000,
+    onHeartbeat: ({ elapsedMs }) => onProgress && onProgress({
+      stage: "analyzing_incidence",
+      message: `Calculating incidence for ${path.basename(budgetFile)}... ${Math.round(elapsedMs / 1000)}s`
+    })
+  });
   return readJson(outFile);
 }
 
@@ -438,6 +565,22 @@ function randomIntInclusive(min, max) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sleepWithCountdown(ms, onTick) {
+  let remaining = Number(ms || 0);
+  if (!(remaining > 0)) return;
+  while (remaining > 0) {
+    const step = Math.min(1000, remaining);
+    await sleep(step);
+    remaining -= step;
+    if (typeof onTick === "function") {
+      await onTick({
+        remainingMs: remaining,
+        remainingSec: Math.ceil(Math.max(0, remaining) / 1000)
+      });
+    }
+  }
 }
 
 async function updateStatus(outRoot, patch) {
@@ -495,29 +638,55 @@ async function processTender({
       if (jitterMs > 0) {
         await updateStatus(outRoot, {
           phase: "RUNNING",
+          subphase: "HUMAN_DELAY",
           current_index: idx,
           current_tender_id: tenderId,
           message: `Human delay ${Math.round(jitterMs / 1000)}s before tender ${idx}/${total}`
         });
-        await sleep(jitterMs);
+        await sleepWithCountdown(jitterMs, async ({ remainingSec }) => {
+          await updateStatus(outRoot, {
+            phase: "RUNNING",
+            subphase: "HUMAN_DELAY",
+            current_index: idx,
+            current_tender_id: tenderId,
+            message: `Human delay ${remainingSec}s before tender ${idx}/${total}`
+          });
+        });
       }
 
       await updateStatus(outRoot, {
         phase: "RUNNING",
+        subphase: "PREPARING_TENDER",
         current_index: idx,
         current_tender_id: tenderId,
-        message: `Downloading troskovnik ${idx}/${total} (attempt ${a}/${attempts})`
+        message: `Preparing tender ${tenderId} (${idx}/${total}, attempt ${a}/${attempts})`
       });
 
       await extractBudgetArchivesForTender({ outRoot, runDir, tenderId });
       let files = findBudgetFilesForTender({ outRoot, runDir, tenderId });
       if (!files.length && enableDownload) {
-        tryDownloadBudgetForTender({
+        await updateStatus(outRoot, {
+          phase: "RUNNING",
+          subphase: "CONTACTING_EOJN",
+          current_index: idx,
+          current_tender_id: tenderId,
+          message: `Contacting EOJN for tender ${tenderId} (${idx}/${total})`
+        });
+        await tryDownloadBudgetForTender({
           outRoot,
           moduleDir,
           tenderId,
           configPath,
-          timeoutMs: itemTimeoutMs
+          timeoutMs: itemTimeoutMs,
+          onProgress: async ({ stage, message }) => {
+            await updateStatus(outRoot, {
+              phase: "RUNNING",
+              subphase: String(stage || "DOWNLOADING_BUDGET").toUpperCase(),
+              current_index: idx,
+              current_tender_id: tenderId,
+              message: `${message} (${idx}/${total})`
+            });
+          }
         });
         await extractBudgetArchivesForTender({ outRoot, runDir, tenderId });
         files = findBudgetFilesForTender({ outRoot, runDir, tenderId });
@@ -531,16 +700,26 @@ async function processTender({
 
       await updateStatus(outRoot, {
         phase: "RUNNING",
+        subphase: "ANALYZING_INCIDENCE",
         current_index: idx,
         current_tender_id: tenderId,
-        message: `Analyzing troskovnik ${idx}/${total} (attempt ${a}/${attempts})`
+        message: `Calculating incidence for tender ${tenderId} (${idx}/${total}, attempt ${a}/${attempts})`
       });
 
       const analysis = await runBudgetAnalyzer({
         moduleDir,
         budgetFile,
         outFile: analysisOut,
-        timeoutMs: itemTimeoutMs
+        timeoutMs: itemTimeoutMs,
+        onProgress: async ({ stage, message }) => {
+          await updateStatus(outRoot, {
+            phase: "RUNNING",
+            subphase: String(stage || "ANALYZING_INCIDENCE").toUpperCase(),
+            current_index: idx,
+            current_tender_id: tenderId,
+            message: `${message} (${idx}/${total})`
+          });
+        }
       });
 
       return {
@@ -591,8 +770,9 @@ async function processTender({
 async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
   const runDateYmd = path.basename(runDir).replace(/_/g, "-");
   const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
+  const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
   const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
-  const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, runDateYmd, cfg.force_reprocess);
+  const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, latestReviewByTender, runDateYmd, cfg.force_reprocess);
   const selected = reviewFiltered.rows.slice(0, cfg.max_items);
   const total = selected.length;
   const results = [];
@@ -738,8 +918,9 @@ async function startLayer2Run(opts) {
   }
   const runDateYmd = path.basename(runDir).replace(/_/g, "-");
   const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
+  const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
   const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
-  const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, runDateYmd, cfg.force_reprocess);
+  const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, latestReviewByTender, runDateYmd, cfg.force_reprocess);
   const filteredQueue = reviewFiltered.rows;
 
   const runId = crypto.randomUUID();
@@ -832,10 +1013,11 @@ async function getLayer2ViewData(opts) {
   const noticesByTender = buildNoticesByTender(Array.isArray(noticesRows) ? noticesRows : []);
   const resultByTender = await buildResultByTender(runDir);
   const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
+  const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
 
   const rows = (Array.isArray(queueRows) ? queueRows : []).map((q) => {
     const tenderId = Number(q && q.Id);
-    const review = reviewDecisions[`${runDateYmd}|${tenderId}`] || null;
+    const review = resolveReviewForTender(reviewDecisions, latestReviewByTender, runDateYmd, tenderId);
     const tn = noticesByTender.get(tenderId) || [];
     const summary = summarizeTenderNotices(tn);
     const rr = resultByTender.get(tenderId) || null;

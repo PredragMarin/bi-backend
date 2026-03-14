@@ -1,6 +1,8 @@
 "use strict";
 
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const { scoreRows } = require("./layer1_score");
 const { validateLayer1Request } = require("./validate_layer1_request");
 const { fetchProcurementsPublic } = require("./adapters/fetch_procurements_public");
@@ -17,6 +19,7 @@ const {
   loadLayer1RawArtifacts,
   writeLayer1DerivedArtifacts
 } = require("../../core_shell/services/eojn_layer1_store");
+const { loadReviewState } = require("../../core_shell/services/eojn_review_store");
 const { ymdInTZ, TZ } = require("./adapters/public_feed_common");
 
 function parseDateToYmd(value) {
@@ -35,12 +38,69 @@ function stableHash(obj) {
   return crypto.createHash("sha256").update(JSON.stringify(obj || {})).digest("hex");
 }
 
+function listRunDateDirs(outRoot) {
+  try {
+    return fs.readdirSync(outRoot, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && /^\d{4}_\d{2}_\d{2}$/.test(e.name))
+      .map((e) => e.name)
+      .sort();
+  } catch (_) {
+    return [];
+  }
+}
+
+async function getUnresolvedDecisionSummary(outRoot) {
+  const reviewState = await loadReviewState({ outRoot });
+  const decisions = reviewState && reviewState.decisions ? reviewState.decisions : {};
+  const unresolved = [];
+  const runs = listRunDateDirs(outRoot);
+  for (const runTag of runs) {
+    const runDateYmd = runTag.replace(/_/g, "-");
+    const queuePath = path.join(outRoot, runTag, "layer2_queue.json");
+    if (!fs.existsSync(queuePath)) continue;
+    try {
+      const rows = JSON.parse(fs.readFileSync(queuePath, "utf8"));
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const tenderId = Number(row && row.Id);
+        if (!Number.isFinite(tenderId)) continue;
+        const key = `${runDateYmd}|${tenderId}`;
+        const review = decisions[key] || null;
+        if (review && String(review.decision_code || "").trim()) continue;
+        unresolved.push({
+          run_date_ymd: runDateYmd,
+          tender_id: tenderId,
+          publish_date: String(row && row.NoticePublishDate || "").trim()
+        });
+      }
+    } catch (_) {
+      // ignore malformed debug artifact and continue summary build
+    }
+  }
+
+  const publishDates = unresolved.map((x) => x.publish_date).filter(Boolean).sort();
+  return {
+    count: unresolved.length,
+    oldest_publish_date: publishDates[0] || null,
+    newest_publish_date: publishDates[publishDates.length - 1] || null
+  };
+}
+
 function dedupeById(rows) {
   const map = new Map();
   for (const row of rows || []) {
     const id = Number(row && row.Id);
     if (!Number.isFinite(id)) continue;
     if (!map.has(id)) map.set(id, row);
+  }
+  return Array.from(map.values());
+}
+
+function dedupeNotices(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const key = resolveNoticeKey(row);
+    if (!key) continue;
+    if (!map.has(key)) map.set(key, row);
   }
   return Array.from(map.values());
 }
@@ -186,12 +246,13 @@ async function runLayer1(payload) {
   });
 
   const uniqueProcurements = dedupeById(procurementsFeed.rows);
+  const uniqueNotices = dedupeNotices(noticesFeed.rows);
   const procurementsMarked = markProcurementsWithState(uniqueProcurements, state);
-  const noticesMarked = markNoticesWithState(noticesFeed.rows, state);
+  const noticesMarked = markNoticesWithState(uniqueNotices, state);
 
   const scoreResult = await scoreRows({
     moduleDir: __dirname,
-    rows: procurementsMarked.changedOrNew
+    rows: procurementsMarked.procurementsWithStatus
   });
 
   const completedAt = new Date().toISOString();
@@ -202,8 +263,12 @@ async function runLayer1(payload) {
     completed_at: completedAt,
     timezone: TZ,
     counts: {
+      procurements_fetched: Array.isArray(procurementsFeed.rows) ? procurementsFeed.rows.length : 0,
+      procurements_unique: uniqueProcurements.length,
       procurements_total: procurementsMarked.procurementsWithStatus.length,
       procurements_changed_or_new: procurementsMarked.changedOrNew.length,
+      notices_fetched: Array.isArray(noticesFeed.rows) ? noticesFeed.rows.length : 0,
+      notices_unique: uniqueNotices.length,
       notices_total: noticesMarked.noticesWithStatus.length,
       notices_new: noticesMarked.newNoticesCount,
       scored: scoreResult.scoredCount,
@@ -278,12 +343,20 @@ async function getLayer1Status(input) {
   const outRoot = input && input.out_root ? String(input.out_root) : defaultOutRoot();
   const state = await loadLayer1State({ outRoot });
   const activeCycle = await loadActiveCycle({ outRoot });
+  const unresolved = await getUnresolvedDecisionSummary(outRoot);
   return {
     use_case: "eojn_v1",
     timezone: TZ,
     out_root: outRoot,
     watermarks: state.watermarks || {},
     last_successful_run: state.last_successful_run || null,
+    summary: {
+      last_successful_ingest: state.last_successful_run || null,
+      current_watermarks: state.watermarks || {},
+      unresolved_decision_count: unresolved.count,
+      unresolved_oldest_publish_date: unresolved.oldest_publish_date,
+      unresolved_newest_publish_date: unresolved.newest_publish_date
+    },
     active_cycle: activeCycle || null,
     totals: {
       processed_tenders: Object.keys(state.processed_tenders || {}).length,

@@ -17,6 +17,13 @@ function isoStartOfDay(ymd) {
   return `${ymd}T00:00:00`;
 }
 
+function shiftYmd(ymd, deltaDays) {
+  const m = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) throw new Error(`Invalid YMD: ${ymd}`);
+  const utc = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return ymdInTZ(new Date(utc + Number(deltaDays || 0) * 24 * 60 * 60 * 1000));
+}
+
 function encodeFilter(filterExpr) {
   return encodeURIComponent(JSON.stringify(filterExpr));
 }
@@ -105,6 +112,7 @@ module.exports = {
   TZ,
   ymdInTZ,
   isoStartOfDay,
+  shiftYmd,
   encodeFilter,
   fetchGridJson
 };

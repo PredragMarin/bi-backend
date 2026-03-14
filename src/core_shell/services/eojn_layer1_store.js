@@ -78,7 +78,18 @@ async function saveLayer1State({ outRoot, state }) {
 async function loadActiveCycle({ outRoot } = {}) {
   const root = path.resolve(String(outRoot || defaultOutRoot()));
   const existing = await readJsonSafe(activeCycleFilePath(root), null);
-  if (existing && existing.run_date_ymd) return existing;
+  if (existing && existing.run_date_ymd) {
+    const layer1RunDate = String(existing && existing.layer1_run && existing.layer1_run.run_date_ymd ? existing.layer1_run.run_date_ymd : "").trim();
+    if (layer1RunDate && layer1RunDate !== String(existing.run_date_ymd).trim()) {
+      return {
+        ...existing,
+        run_date_ymd: layer1RunDate,
+        out_dir: outDirForDate(root, layer1RunDate),
+        updated_at: new Date().toISOString()
+      };
+    }
+    return existing;
+  }
   const l1 = await readJsonSafe(stateFilePath(root), defaultState());
   const runDate = String(l1 && l1.last_successful_run && l1.last_successful_run.run_date_ymd ? l1.last_successful_run.run_date_ymd : "").trim();
   if (!runDate) return null;

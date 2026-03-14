@@ -72,6 +72,26 @@ function scoreBody(row, rules) {
   };
 }
 
+function scoreInstitutionContextBoost(row, rules, cpvDivision) {
+  const contextText = [makeNameText(row), makeBodyText(row)].filter(Boolean).join(" | ");
+  const hasInstitution = includesAny(contextText, rules && rules.context_boost_terms);
+  const hasScopeSignal = includesAny(contextText, rules && rules.context_boost_scope_terms);
+  const allowedDivisions = Array.isArray(rules && rules.context_boost_cpv_divisions)
+    ? rules.context_boost_cpv_divisions.map(String)
+    : [];
+  const allowedDivision = allowedDivisions.includes(String(cpvDivision || ""));
+  const cpvCode = parseCpvCode(row.CPVExtended);
+  const allowedPrefixes = Array.isArray(rules && rules.context_boost_cpv_prefixes)
+    ? rules.context_boost_cpv_prefixes.map(String)
+    : [];
+  const allowedPrefix = allowedPrefixes.some((prefix) => cpvCode.startsWith(prefix));
+  const score = hasInstitution && hasScopeSignal && allowedDivision
+    ? Number(rules && rules.context_boost_score || 0)
+    : 0;
+  const active = (hasInstitution && hasScopeSignal && allowedDivision) || (allowedPrefix && hasScopeSignal);
+  return { active, score: active ? Number(rules && rules.context_boost_score || 0) : 0 };
+}
+
 function scoreCpv(row, rules) {
   const division = parseCpvDivision(row.CPVExtended);
   const code = parseCpvCode(row.CPVExtended);
@@ -156,6 +176,7 @@ function buildReasons(parts) {
   if (parts.cpv.division) reasons.push(`cpv_division:${parts.cpv.division}`);
   if (parts.cpv.matched_prefix) reasons.push(`cpv_prefix:${parts.cpv.matched_prefix}`);
   if (parts.body.band !== "default") reasons.push(`body_band:${parts.body.band}`);
+  if (parts.body_context_boost > 0) reasons.push(`body_context_boost:${parts.body_context_boost.toFixed(2)}`);
   if (parts.domain.id !== "other") reasons.push(`domain:${parts.domain.id}`);
   if (parts.intent.id !== "generic") reasons.push(`intent:${parts.intent.id}`);
   if (parts.domain.term_matches.length) reasons.push(`domain_terms:${parts.domain.term_matches.slice(0, 4).join("|")}`);
@@ -179,6 +200,7 @@ async function scoreRows({ moduleDir, rows }) {
   const scored = (rows || []).map((row) => {
     const cpvPart = scoreCpv(row, cpvRules);
     const bodyPart = scoreBody(row, bodyRules);
+    const bodyContextBoost = scoreInstitutionContextBoost(row, bodyRules, cpvPart.division);
     const negativePart = scoreNegativeSemantics(row, negativeRules);
     const semanticText = [makeNameText(row), makeCpvText(row), row.ProcedureType].filter(Boolean).join(" | ");
     const cpvCode = cpvPart.code;
@@ -200,7 +222,7 @@ async function scoreRows({ moduleDir, rows }) {
     });
 
     const pairKey = `${domainPart.id}:${intentPart.id}`;
-    const businessFit = Number(
+    let businessFit = Number(
       Object.prototype.hasOwnProperty.call(semanticMatrix.business_fit || {}, pairKey)
         ? semanticMatrix.business_fit[pairKey]
         : semanticMatrix.default_business_fit || 0.2
@@ -208,17 +230,34 @@ async function scoreRows({ moduleDir, rows }) {
     const allowedL2 = Array.isArray(semanticMatrix.allowed_l2_pairs) && semanticMatrix.allowed_l2_pairs.includes(pairKey);
     const contractTypePart = scoreContractType(row, contractTypeRules, intentPart.id);
 
+    if (bodyContextBoost.active) {
+      const fitOverrides = bodyRules && bodyRules.context_boost_business_fit_overrides
+        ? bodyRules.context_boost_business_fit_overrides
+        : {};
+      const overrideFit = Number(
+        Object.prototype.hasOwnProperty.call(fitOverrides, intentPart.id)
+          ? fitOverrides[intentPart.id]
+          : fitOverrides.generic || 0
+      );
+      if (overrideFit > 0) {
+        businessFit = Math.max(businessFit, overrideFit);
+      }
+    }
+
     let nameScore = Math.max(domainPart.score, intentPart.score * 0.9);
     if (businessFit >= 0.8) nameScore = Math.max(nameScore, 0.8);
 
     let finalScore =
       (Number(weights.cpv || 0.45) * cpvPart.score) +
-      (Number(weights.body || 0.25) * bodyPart.score) +
+      (Number(weights.body || 0.25) * Math.min(1, bodyPart.score + bodyContextBoost.score)) +
       (Number(weights.name || 0.3) * nameScore);
 
     finalScore += (contractTypePart.score - 0.3) * 0.15;
     finalScore = finalScore * businessFit;
-    finalScore -= negativePart.penalty;
+    const negativePenaltyScale = bodyContextBoost.active
+      ? Number(bodyRules && bodyRules.context_boost_negative_penalty_scale || 1)
+      : 1;
+    finalScore -= (negativePart.penalty * negativePenaltyScale);
     finalScore = Math.max(0, Math.min(1, Number(finalScore.toFixed(3))));
 
     const hardRejected = negativePart.hard;
@@ -227,6 +266,7 @@ async function scoreRows({ moduleDir, rows }) {
     const reasons = buildReasons({
       cpv: cpvPart,
       body: bodyPart,
+      body_context_boost: bodyContextBoost.score,
       domain: domainPart,
       intent: intentPart,
       negatives: negativePart
@@ -251,6 +291,7 @@ async function scoreRows({ moduleDir, rows }) {
         score_breakdown: {
           cpv: cpvPart.score,
           body: bodyPart.score,
+          body_context_boost: bodyContextBoost.score,
           name: Number(nameScore.toFixed(3)),
           contract_type: contractTypePart.score,
           business_fit: businessFit,

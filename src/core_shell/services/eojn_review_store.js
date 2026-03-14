@@ -65,6 +65,47 @@ async function getReviewDecisionsForRun({ outRoot, runDateYmd }) {
   return out;
 }
 
+async function getLatestReviewDecisionByTender({ outRoot, tenderId }) {
+  const wanted = Number(tenderId || 0);
+  if (!Number.isFinite(wanted) || wanted <= 0) return null;
+  const state = await loadReviewState({ outRoot });
+  let latest = null;
+  for (const value of Object.values(state.decisions || {})) {
+    if (Number(value && value.tender_id) !== wanted) continue;
+    if (!latest) {
+      latest = value;
+      continue;
+    }
+    const currentTs = Date.parse(String(value && value.updated_at || ""));
+    const latestTs = Date.parse(String(latest && latest.updated_at || ""));
+    if ((Number.isFinite(currentTs) ? currentTs : 0) > (Number.isFinite(latestTs) ? latestTs : 0)) {
+      latest = value;
+    }
+  }
+  return latest;
+}
+
+async function getLatestReviewDecisionsByTender({ outRoot }) {
+  const state = await loadReviewState({ outRoot });
+  const out = {};
+  for (const value of Object.values(state.decisions || {})) {
+    const tenderId = Number(value && value.tender_id);
+    if (!Number.isFinite(tenderId) || tenderId <= 0) continue;
+    const key = String(tenderId);
+    const prev = out[key] || null;
+    if (!prev) {
+      out[key] = value;
+      continue;
+    }
+    const currentTs = Date.parse(String(value && value.updated_at || ""));
+    const prevTs = Date.parse(String(prev && prev.updated_at || ""));
+    if ((Number.isFinite(currentTs) ? currentTs : 0) > (Number.isFinite(prevTs) ? prevTs : 0)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 async function saveReviewDecision({ outRoot, runDateYmd, tenderId, decision }) {
   const state = await loadReviewState({ outRoot });
   const key = reviewKey(runDateYmd, tenderId);
@@ -84,6 +125,8 @@ module.exports = {
   defaultOutRoot,
   getReviewDecision,
   getReviewDecisionsForRun,
+  getLatestReviewDecisionByTender,
+  getLatestReviewDecisionsByTender,
   loadReviewState,
   saveReviewDecision
 };

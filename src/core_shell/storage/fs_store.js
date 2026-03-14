@@ -24,11 +24,33 @@ async function writeJsonAtomic(filePath, value) {
   const text = JSON.stringify(value, null, 2);
   await fsp.writeFile(tmp, text, "utf8");
   try {
-    await fsp.unlink(filePath);
-  } catch (_) {
-    // no-op
+    try {
+      await fsp.rename(tmp, filePath);
+      return;
+    } catch (err) {
+      if (err && (err.code === "EEXIST" || err.code === "EPERM")) {
+        try {
+          await fsp.unlink(filePath);
+        } catch (_) {
+          // no-op
+        }
+        await fsp.rename(tmp, filePath);
+        return;
+      }
+      if (err && err.code === "ENOENT") {
+        await ensureDir(path.dirname(filePath));
+        await fsp.writeFile(filePath, text, "utf8");
+        return;
+      }
+      throw err;
+    }
+  } finally {
+    try {
+      await fsp.unlink(tmp);
+    } catch (_) {
+      // tmp may already be moved or absent
+    }
   }
-  await fsp.rename(tmp, filePath);
 }
 
 function createFsStorage() {
