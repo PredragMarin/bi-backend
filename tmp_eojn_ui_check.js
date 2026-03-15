@@ -230,8 +230,8 @@
             max_items: Number(maxItems.value || 15),
             retry_count: Number(retryCount.value || 1),
             item_timeout_ms: Number(timeoutMs.value || 300000),
-            human_delay_min_ms: Number(jitterMinMs.value || 10000),
-            human_delay_max_ms: Number(jitterMaxMs.value || 15000),
+            human_delay_min_ms: Number(jitterMinMs.value || 0),
+            human_delay_max_ms: Number(jitterMaxMs.value || 5000),
             simulated_step_delay_ms: Number(delayMs.value || 800),
             enable_download: Boolean(enableDownload.checked),
             force_reprocess: false
@@ -426,8 +426,8 @@
             tender_ids: [Number(selectedTenderId)],
             retry_count: Number(retryCount.value || 1),
             item_timeout_ms: Number(timeoutMs.value || 300000),
-            human_delay_min_ms: Number(jitterMinMs.value || 10000),
-            human_delay_max_ms: Number(jitterMaxMs.value || 15000),
+            human_delay_min_ms: Number(jitterMinMs.value || 0),
+            human_delay_max_ms: Number(jitterMaxMs.value || 5000),
             simulated_step_delay_ms: Number(delayMs.value || 800),
             enable_download: Boolean(enableDownload.checked),
             force_reprocess: true

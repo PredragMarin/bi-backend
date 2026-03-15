@@ -63,6 +63,10 @@ function normalizeText(input) {
     .trim();
 }
 
+function normalizeCompact(input) {
+  return normalizeText(input).replace(/[^a-z0-9]/g, "");
+}
+
 function isNumericLike(v) {
   if (!v) return false;
   const s = normalizeText(v).replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
@@ -75,6 +79,54 @@ function hasLetters(v) {
 
 function uniq(arr) {
   return Array.from(new Set(arr));
+}
+
+function isUnitLike(raw, uomSet) {
+  const norm = normalizeText(raw);
+  const compact = normalizeCompact(raw);
+  if (!norm) return false;
+  if (uomSet.has(norm)) return true;
+
+  const meterFamily =
+    compact === "m" ||
+    compact === "m1" ||
+    compact.startsWith("met");
+  if (meterFamily) return true;
+
+  const squareMeterFamily =
+    compact === "m2" ||
+    compact === "mq" ||
+    compact.startsWith("mkv");
+  if (squareMeterFamily) return true;
+
+  const cubicMeterFamily =
+    compact === "m3" ||
+    compact.startsWith("mkub");
+  if (cubicMeterFamily) return true;
+
+  const literFamily =
+    compact === "l" ||
+    compact === "lt" ||
+    compact.startsWith("lit");
+  if (literFamily) return true;
+
+  const completeFamily =
+    compact === "kpl" ||
+    compact === "kmpl" ||
+    compact.startsWith("komp") ||
+    compact.startsWith("kompl") ||
+    compact.startsWith("komplet");
+  if (completeFamily) return true;
+
+  if (/^m([.'l]|1)*$/.test(norm)) return true;
+  if (/^m[.\s']*2$/.test(norm)) return true;
+  if (/^m[.\s']*3$/.test(norm)) return true;
+  if (/^m[.\s]*kv/.test(norm)) return true;
+  if (/^m[.\s]*q$/.test(norm)) return true;
+  if (/^lit(ar|ra)?$/.test(compact)) return true;
+  if (/^komplet(a|i|no)?$/.test(compact)) return true;
+  if (/^komp(l|let|leta)?$/.test(compact)) return true;
+  return false;
 }
 
 function escapePsSingleQuoted(s) {
@@ -210,26 +262,24 @@ function detectDescriptionColumn(rows) {
   return bestCol;
 }
 
-function detectAnchorColumn(rows, descCol, uomSet) {
+function detectUomColumn(rows, uomSet) {
   if (!rows || rows.length < 2) return null;
   const colCount = rows[0].length;
   let bestCol = null;
   let bestScore = -1e9;
 
   for (let c = 0; c < colCount; c++) {
-    if (c === descCol) continue;
-    let anchorLike = 0;
+    let uomHits = 0;
     let nonEmpty = 0;
     for (let r = 1; r < rows.length; r++) {
       const raw = String(rows[r][c] || "").trim();
       if (!raw) continue;
       nonEmpty += 1;
-      const norm = normalizeText(raw);
-      if (isNumericLike(raw) || uomSet.has(norm)) anchorLike += 1;
+      if (isUnitLike(raw, uomSet)) uomHits += 1;
     }
     if (!nonEmpty) continue;
-    const sparsityPenalty = Math.abs(nonEmpty - anchorLike) * 0.2;
-    const score = anchorLike - sparsityPenalty;
+    const sparsityPenalty = Math.abs(nonEmpty - uomHits) * 0.2;
+    const score = uomHits * 3 - sparsityPenalty;
     if (score > bestScore) {
       bestScore = score;
       bestCol = c;
@@ -238,15 +288,92 @@ function detectAnchorColumn(rows, descCol, uomSet) {
   return bestCol;
 }
 
-function collectAnchorRows(rows, anchorCol, uomSet) {
+function collectUomRows(rows, uomCol, uomSet) {
   const anchors = [];
+  if (uomCol === null || uomCol === undefined) return anchors;
   for (let r = 1; r < rows.length; r++) {
-    const raw = String(rows[r][anchorCol] || "").trim();
+    const raw = String(rows[r][uomCol] || "").trim();
     if (!raw) continue;
-    const norm = normalizeText(raw);
-    if (isNumericLike(raw) || uomSet.has(norm)) anchors.push(r);
+    if (isUnitLike(raw, uomSet)) anchors.push(r);
   }
   return uniq(anchors).sort((a, b) => a - b);
+}
+
+function hasNumericInRow(row) {
+  return (row || []).some((cell) => isNumericLike(String(cell || "").trim()));
+}
+
+function detectDescriptionColumnForUomAnchors(rows, uomRows, uomCol) {
+  if (!rows || rows.length < 2 || !uomRows.length) return null;
+  const colCount = rows[0].length;
+  let bestCol = null;
+  let bestScore = -1e9;
+
+  for (let c = 0; c < colCount; c++) {
+    if (c === uomCol) continue;
+    let textHits = 0;
+    let textChars = 0;
+    let numericPenalty = 0;
+
+    for (const anchorRow of uomRows) {
+      for (let offset = -2; offset <= 2; offset++) {
+        const r = anchorRow + offset;
+        if (r < 1 || r >= rows.length) continue;
+        const v = String(rows[r][c] || "").trim();
+        if (!v) continue;
+        if (isNumericLike(v)) {
+          numericPenalty += 2;
+          continue;
+        }
+        if (hasLetters(v)) {
+          const weight = offset === 0 ? 3 : (Math.abs(offset) === 1 ? 2 : 1);
+          textHits += weight;
+          textChars += Math.min(v.length, 120);
+        }
+      }
+    }
+
+    const score = textHits * 4 + textChars * 0.05 - numericPenalty;
+    if (score > bestScore) {
+      bestScore = score;
+      bestCol = c;
+    }
+  }
+
+  return bestCol;
+}
+
+function assignDescriptionRowsToAnchors(rows, descCol, uomRows) {
+  const assigned = new Map();
+  for (const anchor of uomRows) assigned.set(anchor, []);
+  if (descCol === null || descCol === undefined) return assigned;
+
+  for (let r = 1; r < rows.length; r++) {
+    const text = String(rows[r][descCol] || "").trim();
+    if (!text || isNumericLike(text) || text.length < 3) continue;
+
+    let bestAnchor = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const anchor of uomRows) {
+      const dist = Math.abs(anchor - r);
+      if (dist < bestDistance) {
+        bestDistance = dist;
+        bestAnchor = anchor;
+      } else if (dist === bestDistance && bestAnchor !== null && anchor > bestAnchor) {
+        bestAnchor = anchor;
+      }
+    }
+
+    if (bestAnchor !== null && bestDistance <= 3) {
+      assigned.get(bestAnchor).push({ row: r, text });
+    }
+  }
+
+  for (const [anchor, arr] of assigned.entries()) {
+    arr.sort((a, b) => a.row - b.row);
+    assigned.set(anchor, arr);
+  }
+  return assigned;
 }
 
 function scanBlockKeywords(textNorm, keywordsNorm) {
@@ -280,11 +407,12 @@ function extractCandidateTerms(blocks, keywordsNorm) {
 }
 
 function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
-  const descCol = detectDescriptionColumn(rows);
-  if (descCol === null) {
+  const uomCol = detectUomColumn(rows, uomSet);
+  const uomRows = collectUomRows(rows, uomCol, uomSet);
+  if (uomCol === null || uomRows.length < 2) {
     return {
       sheet: sheetName,
-      mode: "empty",
+      mode: "non_bill_sheet",
       desc_col: null,
       anchor_col: null,
       item_count: 0,
@@ -297,34 +425,34 @@ function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
     };
   }
 
-  const anchorCol = detectAnchorColumn(rows, descCol, uomSet);
-  let anchors = [];
-  if (anchorCol !== null) anchors = collectAnchorRows(rows, anchorCol, uomSet);
+  const descCol = detectDescriptionColumnForUomAnchors(rows, uomRows, uomCol);
+  if (descCol === null) {
+    return {
+      sheet: sheetName,
+      mode: "uom_without_desc",
+      desc_col: null,
+      anchor_col: uomCol + 1,
+      item_count: 0,
+      hit_items: 0,
+      incidence: 0,
+      intensity: 0,
+      total_keyword_hits: 0,
+      keyword_frequency: {},
+      candidate_terms_top: []
+    };
+  }
 
-  const mode = anchors.length >= 2 ? "anchor_interval" : "row_fallback";
+  const assignedDesc = assignDescriptionRowsToAnchors(rows, descCol, uomRows);
   const blocks = [];
 
-  if (mode === "anchor_interval") {
-    for (let i = 0; i < anchors.length; i++) {
-      const start = anchors[i];
-      const end = i < anchors.length - 1 ? anchors[i + 1] - 1 : rows.length - 1;
-      if (end < start) continue;
-
-      const parts = [];
-      for (let r = start; r <= end; r++) {
-        const v = String(rows[r][descCol] || "").trim();
-        if (v) parts.push(v);
-      }
-      const text = parts.join(" ").trim();
-      if (!text || text.length < 3) continue;
-      blocks.push({ start_row: start + 1, end_row: end + 1, text });
-    }
-  } else {
-    for (let r = 1; r < rows.length; r++) {
-      const v = String(rows[r][descCol] || "").trim();
-      if (!v || isNumericLike(v) || v.length < 3) continue;
-      blocks.push({ start_row: r + 1, end_row: r + 1, text: v });
-    }
+  for (const anchor of uomRows) {
+    const descParts = assignedDesc.get(anchor) || [];
+    const text = descParts.map((x) => x.text).join(" ").trim();
+    if (!text || text.length < 3) continue;
+    if (!hasNumericInRow(rows[anchor] || [])) continue;
+    const startRow = descParts.length ? Math.min(anchor, descParts[0].row) : anchor;
+    const endRow = descParts.length ? Math.max(anchor, descParts[descParts.length - 1].row) : anchor;
+    blocks.push({ start_row: startRow + 1, end_row: endRow + 1, text });
   }
 
   let itemCount = 0;
@@ -349,9 +477,9 @@ function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
 
   return {
     sheet: sheetName,
-    mode,
+    mode: "uom_anchor_rows_v2",
     desc_col: descCol + 1,
-    anchor_col: anchorCol === null ? null : anchorCol + 1,
+    anchor_col: uomCol + 1,
     item_count: itemCount,
     hit_items: hitItems,
     incidence,
@@ -403,7 +531,7 @@ function analyzeWorkbookData(workbook, opts = {}) {
   const label = chooseLabel(incidence, maxSheet ? maxSheet.incidence : 0, maxSheet ? maxSheet.hit_items : 0);
 
   return {
-    model: "anchor_interval_items_v1",
+    model: "uom_anchor_items_v2",
     total_items: totalItems,
     hit_items: hitItems,
     incidence,

@@ -164,10 +164,10 @@ function normalizeStartOptions(opts) {
   const cap = Number(input.max_items === undefined ? 15 : input.max_items);
   const retry = Number(input.retry_count === undefined ? 1 : input.retry_count);
   const itemTimeoutMs = Number(input.item_timeout_ms === undefined ? 300000 : input.item_timeout_ms);
-  const delayMin = Number(input.human_delay_min_ms === undefined ? 10000 : input.human_delay_min_ms);
-  const delayMax = Number(input.human_delay_max_ms === undefined ? 15000 : input.human_delay_max_ms);
-  const minMs = Number.isFinite(delayMin) && delayMin >= 0 ? Math.floor(delayMin) : 10000;
-  const maxMs = Number.isFinite(delayMax) && delayMax >= minMs ? Math.floor(delayMax) : Math.max(minMs, 15000);
+  const delayMin = Number(input.human_delay_min_ms === undefined ? 0 : input.human_delay_min_ms);
+  const delayMax = Number(input.human_delay_max_ms === undefined ? 5000 : input.human_delay_max_ms);
+  const minMs = Number.isFinite(delayMin) && delayMin >= 0 ? Math.floor(delayMin) : 0;
+  const maxMs = Number.isFinite(delayMax) && delayMax >= minMs ? Math.floor(delayMax) : Math.max(minMs, 5000);
   const tenderIds = Array.isArray(input.tender_ids)
     ? input.tender_ids.map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0)
     : [];
