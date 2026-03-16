@@ -13,6 +13,10 @@ const {
   loadLatestLayer2Result
 } = require("../../core_shell/services/eojn_layer2_store");
 const {
+  loadCanonicalStateArtifacts,
+  mergeCanonicalStateArtifacts
+} = require("../../core_shell/services/eojn_layer1_store");
+const {
   getReviewDecisionsForRun,
   getLatestReviewDecisionsByTender
 } = require("../../core_shell/services/eojn_review_store");
@@ -159,6 +163,29 @@ async function buildResultByTender(runDir) {
   return map;
 }
 
+function buildNoticesByTenderFromHistory(noticeHistoryRows) {
+  const map = new Map();
+  for (const n of noticeHistoryRows || []) {
+    const tenderId = Number(n && n.TenderId);
+    if (!Number.isFinite(tenderId)) continue;
+    if (!map.has(tenderId)) map.set(tenderId, []);
+    map.get(tenderId).push({
+      id: null,
+      tender_id: tenderId,
+      publish_date: n.PublishDate || "",
+      doc_short: "",
+      doc_name: n.DocumentTypeName || "",
+      notice_number: n.NoticeNumber || "",
+      modification_description: n.ModificationDescription || "",
+      document_type_id: n.DocumentTypeId || null
+    });
+  }
+  for (const [key, arr] of map.entries()) {
+    map.set(key, arr.sort((a, b) => parseIsoTs(b.publish_date) - parseIsoTs(a.publish_date)));
+  }
+  return map;
+}
+
 function normalizeStartOptions(opts) {
   const input = opts && typeof opts === "object" ? opts : {};
   const cap = Number(input.max_items === undefined ? 15 : input.max_items);
@@ -190,6 +217,125 @@ function filterQueueByTenderIds(queueRows, tenderIds) {
   return Array.isArray(tenderIds) && tenderIds.length
     ? queueRows.filter((row) => tenderIds.includes(Number(row && row.Id)))
     : queueRows;
+}
+
+function canonicalLatestRowToQueueRow(row) {
+  return {
+    Id: Number(row && row.TenderId),
+    ReferenceNumber: row && row.Reference ? String(row.Reference) : "",
+    Name: row && row.Name ? String(row.Name) : "",
+    topProgram: row && row.L1TopProgram ? String(row.L1TopProgram) : "",
+    topScore: Number(row && row.L1Score || 0),
+    SourceRunDate: row && row.SourceRunDate ? String(row.SourceRunDate) : ""
+  };
+}
+
+function canonicalNoticeHistoryRowToNoticeRow(row) {
+  return {
+    TenderId: Number(row && row.TenderId),
+    PublishDate: row && row.PublishDate ? String(row.PublishDate) : "",
+    DocumentTypeId: Number(row && row.DocumentTypeId || 0),
+    DocumentTypeShortName: "",
+    DocumentTypeName: row && row.DocumentTypeName ? String(row.DocumentTypeName) : "",
+    NoticeNumber: row && row.NoticeNumber ? String(row.NoticeNumber) : "",
+    ModificationDescription: row && row.ModificationDescription ? String(row.ModificationDescription) : ""
+  };
+}
+
+function shouldProcessCanonicalLatestRow(row) {
+  const status = String(row && row.L2Status ? row.L2Status : "PENDING").trim().toUpperCase();
+  return !status || status === "PENDING" || status === "FAILED" || status === "TIMEOUT" || status === "EXTRACT_FAILED" || status === "LOGIN_FAILED" || status === "CONFIG_FAILED";
+}
+
+async function buildCanonicalStartRows({ outRoot, cfg }) {
+  const canonical = await loadCanonicalStateArtifacts({ outRoot });
+  const latestRows = Array.isArray(canonical.tender_latest_rows) ? canonical.tender_latest_rows : [];
+  const noticeHistoryRows = Array.isArray(canonical.tender_notice_history_rows) ? canonical.tender_notice_history_rows : [];
+  const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
+
+  let queueRows = latestRows
+    .map(canonicalLatestRowToQueueRow)
+    .filter((row) => Number.isFinite(Number(row && row.Id)) && Number(row.Id) > 0);
+  queueRows = filterQueueByTenderIds(queueRows, cfg.tender_ids);
+
+  let skippedReviewed = 0;
+  if (!cfg.force_reprocess) {
+    const latestByTender = new Map(latestRows.map((row) => [Number(row && row.TenderId), row]));
+    const filtered = [];
+    for (const row of queueRows) {
+      const tenderId = Number(row && row.Id);
+      const review = latestReviewByTender[String(tenderId)] || null;
+      if (review && String(review.decision_code || "").trim()) {
+        skippedReviewed += 1;
+        continue;
+      }
+      const latest = latestByTender.get(tenderId) || null;
+      if (latest && !shouldProcessCanonicalLatestRow(latest)) {
+        continue;
+      }
+      filtered.push(row);
+    }
+    queueRows = filtered;
+  }
+
+  const noticesByTender = new Map();
+  for (const row of noticeHistoryRows) {
+    const tenderId = Number(row && row.TenderId);
+    if (!Number.isFinite(tenderId)) continue;
+    if (!noticesByTender.has(tenderId)) noticesByTender.set(tenderId, []);
+    noticesByTender.get(tenderId).push(canonicalNoticeHistoryRowToNoticeRow(row));
+  }
+  for (const [key, arr] of noticesByTender.entries()) {
+    noticesByTender.set(key, arr.sort((a, b) => parseIsoTs(b.PublishDate || b.NoticePublishDate) - parseIsoTs(a.PublishDate || a.NoticePublishDate)));
+  }
+
+  return {
+    queueRows,
+    skippedReviewed,
+    noticesByTender
+  };
+}
+
+function applyLayer2ResultsToLatestRows(latestRows, results) {
+  const currentRows = Array.isArray(latestRows) ? latestRows : [];
+  const resultMap = new Map(
+    (Array.isArray(results) ? results : [])
+      .filter((row) => Number.isFinite(Number(row && row.tender_id)))
+      .map((row) => [Number(row.tender_id), row])
+  );
+  return currentRows
+    .filter((row) => resultMap.has(Number(row && row.TenderId)))
+    .map((row) => {
+      const result = resultMap.get(Number(row && row.TenderId));
+      const hitItems = Number(result && result.hit_items || 0);
+      const keywordHits = Number(result && result.total_keyword_hits || 0);
+      return {
+        ...row,
+        L2Status: String(result && result.status || row.L2Status || "PENDING").trim(),
+        L2Label: String(result && result.label || row.L2Label || "").trim(),
+        L2Incidence: result && result.incidence !== undefined ? Number(result.incidence || 0) : row.L2Incidence,
+        L2ItemCount: result && result.total_items !== undefined ? Number(result.total_items || 0) : row.L2ItemCount,
+        L2HitItems: result && result.hit_items !== undefined ? Number(result.hit_items || 0) : row.L2HitItems,
+        L2Intensity: hitItems > 0 ? Number((keywordHits / hitItems).toFixed(4)) : row.L2Intensity,
+        L2MaxSheet: String(result && result.max_sheet || row.L2MaxSheet || "").trim(),
+        LifecycleGate: String(result && result.watchlist_gate || row.LifecycleGate || "").trim(),
+        UpdatedAt: new Date().toISOString()
+      };
+    });
+}
+
+async function syncCanonicalLatestAfterLayer2({ outRoot, results }) {
+  const canonical = await loadCanonicalStateArtifacts({ outRoot });
+  const latestRows = Array.isArray(canonical.tender_latest_rows) ? canonical.tender_latest_rows : [];
+  const updatedLatestRows = applyLayer2ResultsToLatestRows(latestRows, results);
+  if (!updatedLatestRows.length) return 0;
+  await mergeCanonicalStateArtifacts({
+    outRoot,
+    tenderLatestRows: updatedLatestRows,
+    tenderNoticeHistoryRows: [],
+    reviewDecisionHistoryRows: []
+  });
+  return updatedLatestRows.length;
 }
 
 function resolveReviewForTender(reviewDecisionsForRun, latestReviewByTender, runDateYmd, tenderId) {
@@ -735,6 +881,8 @@ async function processTender({
         incidence: Number(analysis.incidence || 0),
         total_items: Number(analysis.total_items || 0),
         hit_items: Number(analysis.hit_items || 0),
+        total_keyword_hits: Number(analysis.total_keyword_hits || 0),
+        max_sheet: String(analysis.max_sheet || ""),
         notice_summary: noticeSummary,
         tender_notices: tenderNotices,
         watchlist_gate: noticeSummary.watchlist_gate
@@ -769,25 +917,37 @@ async function processTender({
 
 async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
   const runDateYmd = path.basename(runDir).replace(/_/g, "-");
-  const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
-  const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
-  const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
-  const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, latestReviewByTender, runDateYmd, cfg.force_reprocess);
-  const selected = reviewFiltered.rows.slice(0, cfg.max_items);
+  const skipReviewFilter = Boolean(cfg.skip_review_filter);
+  let selected = [];
+  let skippedReviewed = 0;
+  if (skipReviewFilter) {
+    selected = (Array.isArray(queueRows) ? queueRows : []).slice(0, cfg.max_items);
+    skippedReviewed = Number(cfg.review_skipped_count || 0);
+  } else {
+    const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
+    const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
+    const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
+    const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, latestReviewByTender, runDateYmd, cfg.force_reprocess);
+    selected = reviewFiltered.rows.slice(0, cfg.max_items);
+    skippedReviewed = reviewFiltered.skipped_reviewed;
+  }
   const total = selected.length;
   const results = [];
   const moduleDir = __dirname;
-  let noticesRows = [];
-  try {
-    const noticesPath = path.join(runDir, "notices_raw.json");
-    if (fs.existsSync(noticesPath)) {
-      const loaded = await readJson(noticesPath);
-      noticesRows = Array.isArray(loaded) ? loaded : [];
+  let noticesByTender = cfg.notices_by_tender instanceof Map ? cfg.notices_by_tender : null;
+  if (!noticesByTender) {
+    let noticesRows = [];
+    try {
+      const noticesPath = path.join(runDir, "notices_raw.json");
+      if (fs.existsSync(noticesPath)) {
+        const loaded = await readJson(noticesPath);
+        noticesRows = Array.isArray(loaded) ? loaded : [];
+      }
+    } catch (_) {
+      noticesRows = [];
     }
-  } catch (_) {
-    noticesRows = [];
+    noticesByTender = buildNoticesByTender(noticesRows);
   }
-  const noticesByTender = buildNoticesByTender(noticesRows);
   let done = 0;
   let skipped = 0;
   let failed = 0;
@@ -803,7 +963,7 @@ async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
     total,
     done: 0,
     skipped: 0,
-    reviewed: reviewFiltered.skipped_reviewed,
+    reviewed: skippedReviewed,
     failed: 0,
     progress_pct: 0,
     current_tender_id: null,
@@ -838,7 +998,7 @@ async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
       current_index: idx,
       done,
       skipped,
-      reviewed: reviewFiltered.skipped_reviewed,
+      reviewed: skippedReviewed,
       failed,
       current_tender_id: null,
       message: `Processed ${idx}/${total} (done=${done}, skipped=${skipped}, failed=${failed})`
@@ -868,12 +1028,17 @@ async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
     runId,
     result: outputPayload
   });
+  try {
+    await syncCanonicalLatestAfterLayer2({ outRoot, results });
+  } catch (_) {
+    // Keep Layer 2 result persisted even if canonical latest sync fails.
+  }
 
   await updateStatus(outRoot, {
     active: false,
     completed_at: new Date().toISOString(),
     phase: "DONE",
-    message: `Layer 2 run done (${done}/${total}, skipped=${skipped}, reviewed=${reviewFiltered.skipped_reviewed}, failed=${failed})`,
+    message: `Layer 2 run done (${done}/${total}, skipped=${skipped}, reviewed=${skippedReviewed}, failed=${failed})`,
     current_tender_id: null,
     output_file: outputFile,
     current_index: total
@@ -903,25 +1068,37 @@ async function startLayer2Run(opts) {
   }
 
   const runDir = await resolveRunDirForLayer2(outRoot, cfg.run_date_ymd);
-  const queuePath = path.join(runDir, "layer2_queue.json");
-  let queueRows;
-  try {
-    queueRows = await readJson(queuePath);
-  } catch (err) {
-    if (err && err.code === "ENOENT") {
-      throw new Error(`Missing layer2_queue.json in ${runDir}. Run Layer 1 first for that date.`);
+  let queueRows = [];
+  let skippedReviewed = 0;
+  let noticesByTender = null;
+  let queueSource = "legacy_queue";
+  if (!cfg.run_date_ymd) {
+    const canonicalStart = await buildCanonicalStartRows({ outRoot, cfg });
+    queueRows = canonicalStart.queueRows;
+    skippedReviewed = canonicalStart.skippedReviewed;
+    noticesByTender = canonicalStart.noticesByTender;
+    queueSource = "canonical_state";
+  } else {
+    const queuePath = path.join(runDir, "layer2_queue.json");
+    try {
+      queueRows = await readJson(queuePath);
+    } catch (err) {
+      if (err && err.code === "ENOENT") {
+        throw new Error(`Missing layer2_queue.json in ${runDir}. Run Layer 1 first for that date.`);
+      }
+      throw err;
     }
-    throw err;
+    if (!Array.isArray(queueRows)) {
+      throw new Error(`Invalid layer2_queue.json in ${runDir}`);
+    }
+    const runDateYmd = path.basename(runDir).replace(/_/g, "-");
+    const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
+    const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
+    const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
+    const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, latestReviewByTender, runDateYmd, cfg.force_reprocess);
+    queueRows = reviewFiltered.rows;
+    skippedReviewed = reviewFiltered.skipped_reviewed;
   }
-  if (!Array.isArray(queueRows)) {
-    throw new Error(`Invalid layer2_queue.json in ${runDir}`);
-  }
-  const runDateYmd = path.basename(runDir).replace(/_/g, "-");
-  const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
-  const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
-  const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
-  const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, latestReviewByTender, runDateYmd, cfg.force_reprocess);
-  const filteredQueue = reviewFiltered.rows;
 
   const runId = crypto.randomUUID();
   activeRun = { runId, outRoot };
@@ -934,12 +1111,12 @@ async function startLayer2Run(opts) {
       started_at: new Date().toISOString(),
       completed_at: null,
       phase: "STARTING",
-      message: "Layer 2 run is starting...",
+      message: `Layer 2 run is starting from ${queueSource}...`,
       current_index: 0,
-      total: Math.min(filteredQueue.length, cfg.max_items),
+      total: Math.min(queueRows.length, cfg.max_items),
       done: 0,
       skipped: 0,
-      reviewed: reviewFiltered.skipped_reviewed,
+      reviewed: skippedReviewed,
       failed: 0,
       progress_pct: 0,
       current_tender_id: null,
@@ -970,7 +1147,12 @@ async function startLayer2Run(opts) {
     outRoot,
     runDir,
     queueRows,
-    cfg,
+    cfg: {
+      ...cfg,
+      skip_review_filter: !cfg.run_date_ymd,
+      review_skipped_count: skippedReviewed,
+      notices_by_tender: noticesByTender
+    },
     runId
   }).finally(() => {
     activeRun = null;
@@ -981,9 +1163,10 @@ async function startLayer2Run(opts) {
     started: true,
     run_id: runId,
     run_dir: runDir,
-    queue_total: filteredQueue.length,
-    queue_selected: Math.min(filteredQueue.length, cfg.max_items),
-    queue_skipped_reviewed: reviewFiltered.skipped_reviewed,
+    queue_total: queueRows.length,
+    queue_selected: Math.min(queueRows.length, cfg.max_items),
+    queue_skipped_reviewed: skippedReviewed,
+    queue_source: queueSource,
     config: {
       retry_count: cfg.retry_count,
       item_timeout_ms: cfg.item_timeout_ms,
@@ -1004,8 +1187,94 @@ async function getLayer2RunStatus(opts) {
 
 async function getLayer2ViewData(opts) {
   const outRoot = opts && opts.out_root ? String(opts.out_root) : defaultOutRoot();
-  const runDir = await resolveRunDirForLayer2(outRoot, opts && opts.run_date_ymd ? String(opts.run_date_ymd) : "");
+  const requestedRunDateYmd = opts && opts.run_date_ymd ? String(opts.run_date_ymd) : "";
+  if (!requestedRunDateYmd) {
+    const canonical = await loadCanonicalStateArtifacts({ outRoot });
+    const latestRows = Array.isArray(canonical.tender_latest_rows) ? canonical.tender_latest_rows : [];
+    const noticeHistoryRows = Array.isArray(canonical.tender_notice_history_rows) ? canonical.tender_notice_history_rows : [];
+    const noticesByTender = buildNoticesByTenderFromHistory(noticeHistoryRows);
+    const rows = latestRows.map((r) => {
+      const tenderId = Number(r && r.TenderId);
+      const notices = noticesByTender.get(tenderId) || [];
+      const lifecycle = summarizeTenderNotices(notices.map((n) => ({
+        TenderId: n.tender_id,
+        PublishDate: n.publish_date,
+        DocumentTypeId: n.document_type_id,
+        DocumentTypeShortName: n.doc_short
+      })));
+      return {
+        tender_id: tenderId,
+        reference_number: r.Reference || "",
+        name: r.Name || "",
+        top_program: r.L1TopProgram || "",
+        top_score: Number(r.L1Score || 0),
+        reasons: [],
+        watchlist_gate: r.LifecycleGate || lifecycle.watchlist_gate || "",
+        lifecycle,
+        layer2_status: r.L2Status || "PENDING",
+        layer2_label: r.L2Label || "",
+        layer2_incidence: r.L2Incidence === null || r.L2Incidence === undefined ? null : Number(r.L2Incidence),
+        review_decision: r.Decision || "",
+        review_reason_code: r.ReasonCode || "",
+        review_reason_note: "",
+        review_updated_at: r.DecisionUpdatedAt || "",
+        notices,
+        source_run_date: r.SourceRunDate || ""
+      };
+    });
+    return {
+      run_dir: "",
+      run_date_ymd: "",
+      queue_total: rows.length,
+      source: "canonical_state",
+      rows
+    };
+  }
+  const runDir = await resolveRunDirForLayer2(outRoot, requestedRunDateYmd);
   const runDateYmd = path.basename(runDir).replace(/_/g, "-");
+  const tenderLatestPath = path.join(runDir, "tender_latest.json");
+  const tenderNoticeHistoryPath = path.join(runDir, "tender_notice_history.json");
+  if (fs.existsSync(tenderLatestPath) && fs.existsSync(tenderNoticeHistoryPath)) {
+    const latestRows = await readJson(tenderLatestPath);
+    const noticeHistoryRows = await readJson(tenderNoticeHistoryPath);
+    const noticesByTender = buildNoticesByTenderFromHistory(Array.isArray(noticeHistoryRows) ? noticeHistoryRows : []);
+    const rows = (Array.isArray(latestRows) ? latestRows : []).map((r) => {
+      const tenderId = Number(r && r.TenderId);
+      const notices = noticesByTender.get(tenderId) || [];
+      const lifecycle = summarizeTenderNotices(notices.map((n) => ({
+        TenderId: n.tender_id,
+        PublishDate: n.publish_date,
+        DocumentTypeId: n.document_type_id,
+        DocumentTypeShortName: n.doc_short
+      })));
+      return {
+        tender_id: tenderId,
+        reference_number: r.Reference || "",
+        name: r.Name || "",
+        top_program: r.L1TopProgram || "",
+        top_score: Number(r.L1Score || 0),
+        reasons: [],
+        watchlist_gate: r.LifecycleGate || lifecycle.watchlist_gate || "",
+        lifecycle,
+        layer2_status: r.L2Status || "PENDING",
+        layer2_label: r.L2Label || "",
+        layer2_incidence: r.L2Incidence === null || r.L2Incidence === undefined ? null : Number(r.L2Incidence),
+        review_decision: r.Decision || "",
+        review_reason_code: r.ReasonCode || "",
+        review_reason_note: "",
+        review_updated_at: r.DecisionUpdatedAt || "",
+        notices,
+        source_run_date: r.SourceRunDate || ""
+      };
+    });
+    return {
+      run_dir: runDir,
+      run_date_ymd: runDateYmd,
+      queue_total: rows.length,
+      source: "run_canonical",
+      rows
+    };
+  }
   const queuePath = path.join(runDir, "layer2_queue.json");
   const noticesPath = path.join(runDir, "notices_raw.json");
   const queueRows = fs.existsSync(queuePath) ? await readJson(queuePath) : [];
@@ -1045,7 +1314,8 @@ async function getLayer2ViewData(opts) {
         doc_name: n.DocumentTypeName || "",
         notice_number: n.NoticeNumber || "",
         modification_description: n.ModificationDescription || ""
-      }))
+      })),
+      source_run_date: runDateYmd
     };
   });
 
@@ -1053,6 +1323,7 @@ async function getLayer2ViewData(opts) {
     run_dir: runDir,
     run_date_ymd: runDateYmd,
     queue_total: rows.length,
+    source: "legacy_queue",
     rows
   };
 }

@@ -1,0 +1,49 @@
+{
+  "contract_id": "eojn_worklist_view_config_contract_v1",
+  "version": "1.0.0",
+  "description": "Editable view configuration for canonical EOJN worklist/watchlist UI.",
+  "storage_model": {
+    "artifact_name": "worklist_view_config.json",
+    "record_granularity": "single config document",
+    "primary_key": ["view_id"],
+    "update_rule": "replace full document"
+  },
+  "required_fields": [
+    { "name": "view_id", "type": "string" },
+    { "name": "default_columns", "type": "array" },
+    { "name": "column_order", "type": "array" },
+    { "name": "pinned_columns", "type": "array" },
+    { "name": "hidden_columns", "type": "array" }
+  ],
+  "optional_fields": [
+    { "name": "default_filters", "type": "object" },
+    { "name": "watchlist_default_filter", "type": "object" },
+    { "name": "notes", "type": "string" }
+  ],
+  "recommended_defaults": {
+    "view_id": "canonical_worklist_v1",
+    "default_columns": [
+      "TenderId",
+      "PublishDate",
+      "Reference",
+      "Name",
+      "ContractingBody",
+      "ProcedureType",
+      "L1Score",
+      "L2Label",
+      "L2Incidence",
+      "Decision",
+      "LifecycleGate",
+      "LastNoticeTypeName",
+      "DueDate"
+    ],
+    "pinned_columns": ["TenderId", "Reference", "Name"],
+    "hidden_columns": [
+      "L1TopProgram",
+      "L1ScopeClass",
+      "L1IntentClass",
+      "L2Model",
+      "SourceRunDate"
+    ]
+  }
+}

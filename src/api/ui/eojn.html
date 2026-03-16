@@ -8,53 +8,64 @@
     :root { --bg:#f3f4f6; --fg:#111827; --muted:#6b7280; --card:#fff; --line:#d1d5db; --soft:#e5e7eb; --primary:#0f766e; --secondary:#334155; --accent:#0f4c81; --pick:#ecfeff; --inactive:#f8fafc; --code:#0b1020; }
     * { box-sizing:border-box; }
     body { margin:0; font-family: Georgia, "Times New Roman", serif; background:linear-gradient(180deg,#f8fafc 0%,var(--bg) 100%); color:var(--fg); }
-    .wrap { max-width:1480px; margin:24px auto 40px; padding:0 16px; display:grid; gap:16px; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; box-shadow:0 8px 24px rgba(15,23,42,.05); }
-    .top-grid { display:grid; grid-template-columns:1.1fr .9fr; gap:16px; }
-    .detail-grid { display:grid; grid-template-columns:.95fr 1.05fr; gap:16px; }
-    .summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:12px; }
-    .stat { border:1px solid var(--soft); border-radius:12px; padding:12px; background:linear-gradient(180deg,#fff 0%,#f8fafc 100%); }
+    .wrap { max-width:1480px; margin:16px auto 24px; padding:0 12px; display:grid; gap:12px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; box-shadow:0 8px 24px rgba(15,23,42,.05); }
+    .hero { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .hero-links { white-space:nowrap; font-size:13px; }
+    .top-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:12px; align-items:start; }
+    .detail-grid { display:grid; grid-template-columns:.92fr 1.08fr; gap:12px; align-items:start; }
+    .summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px; }
+    .stat { border:1px solid var(--soft); border-radius:10px; padding:10px; background:linear-gradient(180deg,#fff 0%,#f8fafc 100%); min-height:72px; }
     .stat-label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
     .stat-value { font-size:20px; font-weight:700; margin-top:4px; }
     .stat-sub { margin-top:6px; font-size:12px; color:var(--muted); }
-    h1,h2,h3,h4 { margin:0 0 8px; }
-    h1 { font-size:28px; }
-    h2 { font-size:20px; }
+    h1,h2,h3,h4 { margin:0 0 6px; }
+    h1 { font-size:24px; line-height:1.1; }
+    h2 { font-size:18px; }
     h3 { font-size:16px; }
-    p { margin:6px 0; }
+    p { margin:4px 0; }
     .muted { color:var(--muted); }
     .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-    .controls { margin-top:12px; }
+    .controls { margin-top:8px; }
     label { font-weight:600; font-size:13px; }
-    input,select,textarea { padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--fg); font:inherit; }
-    textarea { min-height:90px; width:100%; resize:vertical; }
+    input,select,textarea { padding:6px 8px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--fg); font:inherit; }
+    textarea { min-height:72px; width:100%; resize:vertical; }
     input[type="date"] { width:170px; }
-    button { border:0; border-radius:10px; padding:10px 14px; color:#fff; cursor:pointer; font:inherit; }
+    button { border:0; border-radius:9px; padding:8px 12px; color:#fff; cursor:pointer; font:inherit; }
     .primary { background:var(--primary); } .secondary { background:var(--secondary); } .ghost { background:#fff; color:var(--secondary); border:1px solid var(--line); }
-    .progress-track { width:100%; height:18px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
+    .progress-track { width:100%; height:14px; border-radius:999px; background:#e5e7eb; overflow:hidden; }
     .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--primary),#16a34a); transition:width .2s ease; }
-    .status-line { margin-top:8px; font-weight:600; } .status-note { margin-top:6px; font-size:12px; color:var(--muted); }
-    .table-wrap { max-height:480px; overflow:auto; border:1px solid var(--line); border-radius:12px; background:#fff; }
+    .status-line { margin-top:6px; font-weight:600; font-size:13px; } .status-note { margin-top:4px; font-size:12px; color:var(--muted); }
+    .table-wrap { max-height:460px; overflow:auto; border:1px solid var(--line); border-radius:10px; background:#fff; }
     table { width:100%; border-collapse:collapse; }
-    th,td { border-bottom:1px solid var(--soft); padding:8px; font-size:12px; text-align:left; vertical-align:top; }
+    th,td { border-bottom:1px solid var(--soft); padding:7px; font-size:12px; text-align:left; vertical-align:top; }
     th { position:sticky; top:0; background:#eef2ff; z-index:1; }
     tr.pick { background:var(--pick); } tr.inactive { background:var(--inactive); opacity:.66; }
     .tender-link { color:var(--accent); text-decoration:none; font-weight:700; } .tender-link:hover { text-decoration:underline; }
     .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#e2e8f0; font-size:11px; font-weight:700; }
     .pill.watch { background:#dcfce7; color:#166534; } .pill.reject { background:#fee2e2; color:#b91c1c; } .pill.hold { background:#fef3c7; color:#92400e; } .pill.pending { background:#e0f2fe; color:#075985; }
-    pre { background:var(--code); color:#dbeafe; border-radius:10px; padding:12px; overflow:auto; margin:0; white-space:pre-wrap; word-break:break-word; }
+    pre { background:var(--code); color:#dbeafe; border-radius:10px; padding:10px; overflow:auto; margin:0; white-space:pre-wrap; word-break:break-word; }
     details summary { cursor:pointer; font-weight:700; list-style:none; }
     details summary::-webkit-details-marker { display:none; }
-    .summary-box { margin-top:10px; border:1px solid var(--soft); border-radius:12px; padding:12px; background:#f8fafc; }
+    .summary-box { margin-top:8px; border:1px solid var(--soft); border-radius:10px; padding:8px; background:#f8fafc; }
+    .compact-pre { max-height:120px; overflow:auto; }
+    .tight-title { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+    .inline-note { margin-top:6px; font-size:12px; color:var(--muted); }
+    .inline-details { border:1px solid var(--soft); border-radius:10px; padding:6px 8px; background:#f8fafc; }
+    .inline-details summary { font-size:13px; }
     @media (max-width:1100px) { .top-grid,.detail-grid,.summary-grid { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>EOJN Worklist</h1>
-      <p class="muted">One canonical worklist for L1 selection, L2 outcome, review decision and notices lifecycle.</p>
-      <p><a href="/ui/epr">Open EPR UI</a> | <a href="/ui/sms">Open SMS UI</a></p>
+      <div class="hero">
+        <div>
+          <h1>EOJN Worklist</h1>
+          <p class="muted">One canonical worklist for L1 selection, L2 outcome, review decision and notices lifecycle.</p>
+        </div>
+        <div class="hero-links"><a href="/ui/epr">Open EPR UI</a> | <a href="/ui/sms">Open SMS UI</a></div>
+      </div>
     </div>
 
     <section class="top-grid">
@@ -72,26 +83,29 @@
           <button class="primary" id="btnRun">Run Layer 1</button>
           <button class="ghost" id="btnRefreshWorklist">Refresh Worklist</button>
         </div>
-        <p id="activeCycleLine" class="muted">Active cycle: n/a</p>
+        <div id="activeCycleLine" class="inline-note">Active cycle: n/a</div>
       </div>
 
       <div class="card">
         <h2>Layer 2 Monitor</h2>
         <div class="row controls">
-          <label for="l2RunDate">Run date</label><input id="l2RunDate" type="date" value="" />
-          <label for="maxItems">Max items</label><input id="maxItems" type="number" min="1" value="15" />
-          <label for="retryCount">Retries</label><input id="retryCount" type="number" min="0" value="1" />
-          <label for="timeoutMs">Item timeout</label><input id="timeoutMs" type="number" min="5000" value="300000" />
-          <label for="enableDownload">Enable download</label><input id="enableDownload" type="checkbox" checked />
-        </div>
-        <div class="row controls">
-          <label for="jitterMinMs">Jitter min</label><input id="jitterMinMs" type="number" min="0" value="0" />
-          <label for="jitterMaxMs">Jitter max</label><input id="jitterMaxMs" type="number" min="0" value="5000" />
-          <label for="delayMs">Step delay</label><input id="delayMs" type="number" min="0" value="800" />
           <button class="primary" id="btnL2Start">Start Layer 2</button>
           <button class="secondary" id="btnL2Refresh">Refresh Layer 2 Status</button>
+          <details class="inline-details">
+            <summary>Options</summary>
+            <div class="row controls" style="margin-top:8px;">
+              <label for="l2RunDate">Run date</label><input id="l2RunDate" type="date" value="" />
+              <label for="maxItems">Max items</label><input id="maxItems" type="number" min="1" value="15" />
+              <label for="retryCount">Retries</label><input id="retryCount" type="number" min="0" value="1" />
+              <label for="timeoutMs">Item timeout</label><input id="timeoutMs" type="number" min="5000" value="300000" />
+              <label for="enableDownload">Enable download</label><input id="enableDownload" type="checkbox" checked />
+              <label for="jitterMinMs">Jitter min</label><input id="jitterMinMs" type="number" min="0" value="0" />
+              <label for="jitterMaxMs">Jitter max</label><input id="jitterMaxMs" type="number" min="0" value="5000" />
+              <label for="delayMs">Step delay</label><input id="delayMs" type="number" min="0" value="800" />
+            </div>
+          </details>
         </div>
-        <div class="progress-wrap">
+        <div class="progress-wrap" style="margin-top:8px;">
           <div class="progress-track"><div class="progress-fill" id="l2Progress"></div></div>
           <div class="status-line" id="l2StatusLine">Idle</div>
           <div class="status-note">Auto-refresh runs every 2 seconds while Layer 2 is active.</div>
@@ -101,9 +115,9 @@
 
     <section class="card">
       <h2>Main Worklist</h2>
-      <p class="muted">Canonical latest-state view. Click a tender row to inspect notices and save operator decision.</p>
+      <p class="muted">Canonical latest-state view built from EOJN latest/history artifacts. Click a tender row to inspect notices and save operator decision.</p>
       <div class="row controls">
-        <label for="filterDecision">Decision</label><select id="filterDecision"><option value="all">all</option><option value="unresolved">unresolved</option><option value="WATCH">WATCH</option><option value="REJECT">REJECT</option><option value="HOLD">HOLD</option></select>
+        <label for="filterDecision">Decision</label><select id="filterDecision"><option value="all">all</option><option value="watchlist">watchlist only</option><option value="unresolved">unresolved</option><option value="WATCH">WATCH</option><option value="REJECT">REJECT</option><option value="HOLD">HOLD</option></select>
         <label for="filterLayer2">L2 status</label><select id="filterLayer2"><option value="all">all</option><option value="DONE">DONE</option><option value="PENDING">PENDING</option><option value="NEMA_TROSKOVNIK">NEMA_TROSKOVNIK</option><option value="FAILED">FAILED</option><option value="TIMEOUT">TIMEOUT</option></select>
         <label for="filterText">Search</label><input id="filterText" type="text" placeholder="TenderId, reference, name, decision" />
         <label for="showInactiveRows">Show inactive</label><input id="showInactiveRows" type="checkbox" />
@@ -117,13 +131,12 @@
 
     <section class="detail-grid">
       <div class="card">
-        <h2>Detail Panel</h2>
+        <div class="tight-title"><h2>Detail Panel</h2><button class="secondary" id="btnReviewLoad">Load Review</button></div>
         <p id="reviewTenderLine">No tender selected.</p>
         <p class="muted" id="reviewSavedLine"></p>
-        <div class="summary-box"><strong>Review summary</strong><pre id="reviewSummaryOut" style="margin-top:8px;">{}</pre></div>
-        <div class="controls row" style="margin-top:12px;"><label for="reviewDecision">Decision</label><select id="reviewDecision"><option value="HOLD">HOLD</option><option value="WATCH">WATCH</option><option value="REJECT">REJECT</option></select><label for="reviewReason">Reason</label><select id="reviewReason"></select></div>
-        <div style="margin-top:10px;"><label for="reviewNote">Note</label><textarea id="reviewNote" placeholder="Short operator note"></textarea></div>
-        <div class="row controls"><button class="primary" id="btnReviewSave">Save Review</button><button class="secondary" id="btnReviewLoad">Load Review</button></div>
+        <div class="summary-box"><strong>Review summary</strong><pre id="reviewSummaryOut" class="compact-pre" style="margin-top:6px;">{}</pre></div>
+        <div class="controls row"><label for="reviewDecision">Decision</label><select id="reviewDecision"><option value="HOLD">HOLD</option><option value="WATCH">WATCH</option><option value="REJECT">REJECT</option></select><label for="reviewReason">Reason</label><select id="reviewReason"></select><button class="primary" id="btnReviewSave">Save Review</button></div>
+        <div style="margin-top:8px;"><label for="reviewNote">Note</label><textarea id="reviewNote" placeholder="Short operator note"></textarea></div>
       </div>
       <div class="card">
         <h2>Notices Timeline</h2>
@@ -432,6 +445,15 @@
       reviewSummaryOut.textContent = JSON.stringify({ run_date_ymd: currentRunDateYmd || null, queue_total: l2ViewRows.length, reviewed, pending, decisions: decisionCounts, top_reason_codes: topReasons }, null, 2);
     }
 
+    function getSelectedRow() {
+      return l2ViewRows.find((x) => Number(x.tender_id) === Number(selectedTenderId)) || null;
+    }
+
+    function getSelectedRunDateYmd() {
+      const row = getSelectedRow();
+      return String((row && row.source_run_date) || currentRunDateYmd || "").trim();
+    }
+
     async function loadReviewCatalog() {
       const data = await fetchJson("/api/eojn/v1/layer2/review/catalog");
       const rows = Array.isArray(data && data.reason_catalog) ? data.reason_catalog : [];
@@ -448,7 +470,8 @@
     async function loadSelectedReview() {
       if (!selectedTenderId) return;
       try {
-        const data = await fetchJson(`/api/eojn/v1/layer2/review?run_date_ymd=${encodeURIComponent(currentRunDateYmd)}&tender_id=${encodeURIComponent(selectedTenderId)}&_ts=${Date.now()}`);
+        const reviewRunDate = getSelectedRunDateYmd();
+        const data = await fetchJson(`/api/eojn/v1/layer2/review?run_date_ymd=${encodeURIComponent(reviewRunDate)}&tender_id=${encodeURIComponent(selectedTenderId)}&_ts=${Date.now()}`);
         const decision = data && data.decision ? data.decision : null;
         if (decision) {
           reviewDecision.value = String(decision.decision_code || "HOLD");
@@ -469,8 +492,9 @@
         const inactive = String(r.watchlist_gate || "") === "CLOSED_NO_ACTION" || String(r.layer2_status || "") === "NEMA_TROSKOVNIK";
         if (!showInactiveRows.checked && inactive) return false;
         const decision = String(r.review_decision || "").trim();
+        if (decisionFilter === "watchlist" && decision !== "WATCH") return false;
         if (decisionFilter === "unresolved" && decision) return false;
-        if (decisionFilter !== "all" && decisionFilter !== "unresolved" && decision !== decisionFilter) return false;
+        if (decisionFilter !== "all" && decisionFilter !== "unresolved" && decisionFilter !== "watchlist" && decision !== decisionFilter) return false;
         const l2 = String(r.layer2_status || "PENDING");
         if (layer2Filter !== "all" && l2 !== layer2Filter) return false;
         if (q) {
@@ -527,10 +551,9 @@
 
     async function refreshLayer2View() {
       try {
-        const runDate = String(l2RunDate.value || "").trim();
-        const url = runDate ? `/api/eojn/v1/layer2/view?run_date_ymd=${encodeURIComponent(runDate)}&_ts=${Date.now()}` : `/api/eojn/v1/layer2/view?_ts=${Date.now()}`;
+        const url = `/api/eojn/v1/layer2/view?_ts=${Date.now()}`;
         const data = await fetchJson(url);
-        currentRunDateYmd = String(data && data.run_date_ymd ? data.run_date_ymd : runDate || "");
+        currentRunDateYmd = String(data && data.run_date_ymd ? data.run_date_ymd : "");
         l2ViewRows = Array.isArray(data && data.rows) ? data.rows : [];
         if (!l2ViewRows.some((x) => Number(x.tender_id) === Number(selectedTenderId))) selectedTenderId = 0;
         renderTenderTable();
@@ -552,11 +575,12 @@
     btnL2RerunSelected.onclick = async () => {
       if (!selectedTenderId) { show({ error: "No tender selected" }); return; }
       try {
+        const rerunDate = getSelectedRunDateYmd();
         const start = await fetchJson("/api/eojn/v1/layer2/start", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            run_date_ymd: String(currentRunDateYmd || "").trim() || undefined,
+            run_date_ymd: rerunDate || undefined,
             max_items: 1,
             tender_ids: [Number(selectedTenderId)],
             retry_count: Number(retryCount.value || 1),
@@ -578,10 +602,11 @@
     btnReviewSave.onclick = async () => {
       if (!selectedTenderId) { show({ error: "No tender selected" }); return; }
       try {
+        const reviewRunDate = getSelectedRunDateYmd();
         const data = await fetchJson("/api/eojn/v1/layer2/review", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ run_date_ymd: currentRunDateYmd, tender_id: Number(selectedTenderId), decision_code: String(reviewDecision.value || "HOLD"), reason_code: String(reviewReason.value || "OTHER"), reason_note: String(reviewNote.value || "") })
+          body: JSON.stringify({ run_date_ymd: reviewRunDate, tender_id: Number(selectedTenderId), decision_code: String(reviewDecision.value || "HOLD"), reason_code: String(reviewReason.value || "OTHER"), reason_note: String(reviewNote.value || "") })
         });
         show(data);
         await refreshLayer2View();

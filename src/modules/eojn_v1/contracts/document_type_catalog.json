@@ -1,0 +1,35 @@
+{
+  "catalog_id": "eojn_document_type_catalog_v1",
+  "version": "1.0.0",
+  "description": "Reference catalog for EOJN notice/document types.",
+  "items": [
+    { "DocumentTypeId": 3, "DocumentTypeName": "Prethodna informacijska obavijest", "event_class": "prior_information", "affects_latest_state": true, "watch_action": "none", "lifecycle_transition": "informational" },
+    { "DocumentTypeId": 7, "DocumentTypeName": "Obavijest o nadmetanju", "event_class": "tender_opened", "affects_latest_state": true, "watch_action": "open_or_refresh", "lifecycle_transition": "open" },
+    { "DocumentTypeId": 8, "DocumentTypeName": "Obavijest o nadmetanju - sektorski naručitelj", "event_class": "tender_opened", "affects_latest_state": true, "watch_action": "open_or_refresh", "lifecycle_transition": "open" },
+    { "DocumentTypeId": 9, "DocumentTypeName": "Izmjena - Obavijest o izmjenama ili dodatnim informacijama", "event_class": "tender_amended", "affects_latest_state": true, "watch_action": "refresh_if_watched", "lifecycle_transition": "amended" },
+    { "DocumentTypeId": 11, "DocumentTypeName": "Obavijest o dodjeli ugovora - Rezultati postupka nabave", "event_class": "contract_awarded", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "awarded" },
+    { "DocumentTypeId": 12, "DocumentTypeName": "Obavijest o dodjeli ugovora - Rezultati postupka nabave - sektorski", "event_class": "contract_awarded", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "awarded" },
+    { "DocumentTypeId": 14, "DocumentTypeName": "Rezultati projektnog natječaja", "event_class": "competition_result", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "awarded" },
+    { "DocumentTypeId": 15, "DocumentTypeName": "Obavijest o izmjeni ugovora", "event_class": "contract_modified", "affects_latest_state": true, "watch_action": "refresh_if_watched", "lifecycle_transition": "modified" },
+    { "DocumentTypeId": 16, "DocumentTypeName": "Obavijest za društvene i druge posebne usluge", "event_class": "special_services_opened", "affects_latest_state": true, "watch_action": "open_or_refresh", "lifecycle_transition": "open" },
+    { "DocumentTypeId": 17, "DocumentTypeName": "Obavijest za društvene i druge posebne usluge - sektorski naručitelj", "event_class": "special_services_opened", "affects_latest_state": true, "watch_action": "open_or_refresh", "lifecycle_transition": "open" },
+    { "DocumentTypeId": 21, "DocumentTypeName": "Obavijest o dodjeli ugovora (društvene i druge posebne usluge)", "event_class": "contract_awarded", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "awarded" },
+    { "DocumentTypeId": 22, "DocumentTypeName": "Obavijest o dodjeli ugovora (društvene i druge posebne usluge) sekt. nar.", "event_class": "contract_awarded", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "awarded" },
+    { "DocumentTypeId": 23, "DocumentTypeName": "Obavijest za dobrovoljnu ex ante transparentnost", "event_class": "ex_ante_transparency", "affects_latest_state": true, "watch_action": "open_or_refresh", "lifecycle_transition": "open" },
+    { "DocumentTypeId": 25, "DocumentTypeName": "Obavijest o nadmetanju - obrana i sigurnost", "event_class": "tender_opened", "affects_latest_state": true, "watch_action": "open_or_refresh", "lifecycle_transition": "open" },
+    { "DocumentTypeId": 26, "DocumentTypeName": "Obavijest o dodjeli ugovora - Rezultati postupka nabave - obrana i sigurnost", "event_class": "contract_awarded", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "awarded" },
+    { "DocumentTypeId": 129, "DocumentTypeName": "Obavijest o žalbenom postupku", "event_class": "appeal_event", "affects_latest_state": true, "watch_action": "flag_for_manual_review", "lifecycle_transition": "under_appeal" },
+    { "DocumentTypeId": 204, "DocumentTypeName": "Obavijest o dodjeli ugovora sklopljenih na temelju okvirnog sporazuma / dinamičkog sustava nabave", "event_class": "framework_award", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "awarded" },
+    { "DocumentTypeId": 205, "DocumentTypeName": "Obavijest o dodjeli ugovora sklopljenih na temelju okvirnog sporazuma / dinamičkog sustava nabave (sektorski naručitelj)", "event_class": "framework_award", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "awarded" },
+    { "DocumentTypeId": 209, "DocumentTypeName": "Obavijest o dodjeli ugovora - Rezultati postupka nabave (Prekid DSN)", "event_class": "dsn_interrupted", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "closed_no_action" },
+    { "DocumentTypeId": 287, "DocumentTypeName": "Obavijest o dodjeli ugovora sklopljenih na temelju okvirnog sporazuma - obrana i sigurnost", "event_class": "framework_award", "affects_latest_state": true, "watch_action": "close_or_track_outcome", "lifecycle_transition": "awarded" },
+    { "DocumentTypeId": 364, "DocumentTypeName": "Javni poziv (jednostavna nabava)", "event_class": "tender_opened", "affects_latest_state": true, "watch_action": "open_or_refresh", "lifecycle_transition": "open" }
+  ],
+  "unknown_type_policy": {
+    "ingest_behavior": "keep_raw_and_mark_unknown",
+    "default_event_class": "unknown_notice",
+    "default_watch_action": "flag_for_manual_review",
+    "default_lifecycle_transition": "unknown",
+    "requires_review": true
+  }
+}

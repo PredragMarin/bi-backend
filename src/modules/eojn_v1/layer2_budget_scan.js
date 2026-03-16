@@ -173,11 +173,31 @@ foreach($ws in $wb.Worksheets){
   $used = $ws.UsedRange
   $rows = [Math]::Min([int]$used.Rows.Count, $maxRows)
   $cols = [Math]::Min([int]$used.Columns.Count, $maxCols)
+  $range = $ws.Range($ws.Cells.Item(1,1), $ws.Cells.Item($rows,$cols))
+  $matrix = $range.Value2
   $sheetRows = @()
   for($r=1; $r -le $rows; $r++){
     $row = @()
     for($c=1; $c -le $cols; $c++){
-      $row += [string]$ws.Cells.Item($r,$c).Text
+      $cellValue = $null
+      try {
+        if($rows -eq 1 -and $cols -eq 1){
+          $cellValue = $matrix
+        } else {
+          $cellValue = $matrix[$r,$c]
+        }
+      } catch {
+        try {
+          $cellValue = $range.Item($r,$c).Value2
+        } catch {
+          $cellValue = $ws.Cells.Item($r,$c).Value2
+        }
+      }
+      if($null -eq $cellValue){
+        $row += ''
+      } else {
+        $row += [string]$cellValue
+      }
     }
     $sheetRows += ,$row
   }
@@ -347,25 +367,25 @@ function assignDescriptionRowsToAnchors(rows, descCol, uomRows) {
   const assigned = new Map();
   for (const anchor of uomRows) assigned.set(anchor, []);
   if (descCol === null || descCol === undefined) return assigned;
+  if (!Array.isArray(uomRows) || uomRows.length === 0) return assigned;
+
+  const edgeLimit = 10;
+  const windows = uomRows.map((anchor, index) => {
+    const prev = index > 0 ? uomRows[index - 1] : null;
+    const next = index < uomRows.length - 1 ? uomRows[index + 1] : null;
+    const start = prev === null ? Math.max(1, anchor - edgeLimit) : prev + 1;
+    const end = next === null ? Math.min(rows.length - 1, anchor + edgeLimit) : next - 1;
+    return { anchor, start, end };
+  });
 
   for (let r = 1; r < rows.length; r++) {
     const text = String(rows[r][descCol] || "").trim();
     if (!text || isNumericLike(text) || text.length < 3) continue;
-
-    let bestAnchor = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (const anchor of uomRows) {
-      const dist = Math.abs(anchor - r);
-      if (dist < bestDistance) {
-        bestDistance = dist;
-        bestAnchor = anchor;
-      } else if (dist === bestDistance && bestAnchor !== null && anchor > bestAnchor) {
-        bestAnchor = anchor;
+    for (const win of windows) {
+      if (r >= win.start && r <= win.end) {
+        assigned.get(win.anchor).push({ row: r, text });
+        break;
       }
-    }
-
-    if (bestAnchor !== null && bestDistance <= 3) {
-      assigned.get(bestAnchor).push({ row: r, text });
     }
   }
 
@@ -444,6 +464,7 @@ function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
 
   const assignedDesc = assignDescriptionRowsToAnchors(rows, descCol, uomRows);
   const blocks = [];
+  const anchorRowsOut = [];
 
   for (const anchor of uomRows) {
     const descParts = assignedDesc.get(anchor) || [];
@@ -452,6 +473,12 @@ function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
     if (!hasNumericInRow(rows[anchor] || [])) continue;
     const startRow = descParts.length ? Math.min(anchor, descParts[0].row) : anchor;
     const endRow = descParts.length ? Math.max(anchor, descParts[descParts.length - 1].row) : anchor;
+    anchorRowsOut.push({
+      row: anchor + 1,
+      uom: String(rows[anchor][uomCol] || "").trim(),
+      start_row: startRow + 1,
+      end_row: endRow + 1
+    });
     blocks.push({ start_row: startRow + 1, end_row: endRow + 1, text });
   }
 
@@ -486,6 +513,7 @@ function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
     intensity,
     total_keyword_hits: totalHits,
     keyword_frequency: keywordFreq,
+    anchor_rows: anchorRowsOut,
     candidate_terms_top: extractCandidateTerms(blocks, keywordsNorm)
   };
 }

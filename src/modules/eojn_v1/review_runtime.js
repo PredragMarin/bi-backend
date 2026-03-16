@@ -7,7 +7,11 @@ const {
   getLatestReviewDecisionByTender,
   saveReviewDecision
 } = require("../../core_shell/services/eojn_review_store");
-const { loadActiveCycle } = require("../../core_shell/services/eojn_layer1_store");
+const {
+  loadActiveCycle,
+  loadCanonicalStateArtifacts,
+  mergeCanonicalStateArtifacts
+} = require("../../core_shell/services/eojn_layer1_store");
 
 const REVIEW_REASON_CATALOG = [
   { code: "IN_SCOPE", label: "U interesnom scopeu" },
@@ -81,6 +85,37 @@ async function saveOperatorReview(input) {
       source: "operator_ui"
     }
   });
+
+  try {
+    const canonical = await loadCanonicalStateArtifacts({ outRoot });
+    const latestRows = Array.isArray(canonical.tender_latest_rows) ? canonical.tender_latest_rows : [];
+    const target = latestRows.find((row) => Number(row && row.TenderId) === tenderId);
+    const updatedLatestRows = target ? [{
+      ...target,
+      Decision: decisionCode,
+      ReasonCode: reasonCode,
+      DecisionUpdatedAt: String(saved.updated_at || "").trim(),
+      WatchFlag: decisionCode === "WATCH",
+      UpdatedAt: new Date().toISOString()
+    }] : [];
+    const reviewHistoryRows = [{
+      TenderId: tenderId,
+      RunDateYmd: runDateYmd,
+      Decision: decisionCode,
+      ReasonCode: reasonCode,
+      ReasonNote: reasonNote,
+      SavedAt: String(saved.updated_at || "").trim(),
+      Source: String(saved.source || "").trim() || "operator_ui"
+    }];
+    await mergeCanonicalStateArtifacts({
+      outRoot,
+      tenderLatestRows: updatedLatestRows,
+      tenderNoticeHistoryRows: [],
+      reviewDecisionHistoryRows: reviewHistoryRows
+    });
+  } catch (_) {
+    // Keep review saved even if canonical latest/history sync fails.
+  }
 
   return {
     ok: true,

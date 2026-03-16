@@ -17,10 +17,19 @@ const {
   appendEventLog,
   loadLayer1RunView,
   loadLayer1RawArtifacts,
-  writeLayer1DerivedArtifacts
+  writeLayer1DerivedArtifacts,
+  writeCanonicalArtifacts,
+  ensureWorklistViewConfig,
+  mergeCanonicalStateArtifacts
 } = require("../../core_shell/services/eojn_layer1_store");
-const { loadReviewState } = require("../../core_shell/services/eojn_review_store");
+const {
+  loadReviewState,
+  getLatestReviewDecisionsByTender
+} = require("../../core_shell/services/eojn_review_store");
 const { ymdInTZ, TZ } = require("./adapters/public_feed_common");
+const procedureTypeCatalog = require("./contracts/procedure_type_catalog.json");
+const documentTypeCatalog = require("./contracts/document_type_catalog.json");
+const worklistViewConfigContract = require("./contracts/worklist_view_config_contract.json");
 
 function parseDateToYmd(value) {
   const raw = String(value || "").trim();
@@ -103,6 +112,207 @@ function dedupeNotices(rows) {
     if (!map.has(key)) map.set(key, row);
   }
   return Array.from(map.values());
+}
+
+function procedureCatalogMap() {
+  return new Map((procedureTypeCatalog.items || []).map((x) => [Number(x.ProcedureTypeId), x]));
+}
+
+function documentCatalogMap() {
+  return new Map((documentTypeCatalog.items || []).map((x) => [Number(x.DocumentTypeId), x]));
+}
+
+function resolveNoticeRowKey(row) {
+  return String(row && row._eojn_ingest && row._eojn_ingest.dedup_key ? row._eojn_ingest.dedup_key : resolveNoticeKey(row));
+}
+
+function listLayer2ResultFiles(runDir) {
+  try {
+    return fs.readdirSync(runDir)
+      .filter((name) => /^layer2_monitor_result_.*\.json$/i.test(name))
+      .map((name) => path.join(runDir, name))
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  } catch (_) {
+    return [];
+  }
+}
+
+function buildLayer2ResultMap(runDir) {
+  const out = new Map();
+  for (const file of listLayer2ResultFiles(runDir)) {
+    try {
+      const payload = JSON.parse(fs.readFileSync(file, "utf8"));
+      const results = Array.isArray(payload && payload.results) ? payload.results : [];
+      for (const r of results) {
+        const tenderId = Number(r && r.tender_id);
+        if (!Number.isFinite(tenderId) || out.has(tenderId)) continue;
+        out.set(tenderId, r);
+      }
+    } catch (_) {
+      // ignore malformed result file and continue with older/newer ones
+    }
+  }
+  return out;
+}
+
+function buildNoticeHistoryRows({ noticesRows, runDateYmd }) {
+  const docMap = documentCatalogMap();
+  const unknownPolicy = documentTypeCatalog.unknown_type_policy || {};
+  return (Array.isArray(noticesRows) ? noticesRows : []).map((row) => {
+    const tenderId = Number(row && (row.TenderId || row.TenderID || row.ProcurementId));
+    const docId = Number(row && row.DocumentTypeId);
+    const ref = docMap.get(docId) || null;
+    return {
+      TenderId: Number.isFinite(tenderId) ? tenderId : null,
+      NoticeKey: resolveNoticeRowKey(row),
+      DocumentTypeId: Number.isFinite(docId) ? docId : null,
+      DocumentTypeName: String(row && row.DocumentTypeName || "").trim(),
+      PublishDate: String(row && (row.PublishDate || row.NoticePublishDate || "")).trim(),
+      NoticeNumber: String(row && row.NoticeNumber || "").trim(),
+      EventClass: ref ? String(ref.event_class || "") : String(unknownPolicy.default_event_class || "unknown_notice"),
+      AffectsLatestState: ref ? Boolean(ref.affects_latest_state) : true,
+      ModificationDescription: String(row && row.ModificationDescription || "").trim(),
+      SourceRunDate: runDateYmd,
+      RecordedAt: new Date().toISOString()
+    };
+  }).filter((row) => Number.isFinite(row.TenderId));
+}
+
+function buildReviewHistoryRows({ latestReviewByTender, tenderIds }) {
+  const allowed = new Set((tenderIds || []).map((x) => String(Number(x))));
+  return Object.values(latestReviewByTender || {})
+    .filter((row) => allowed.has(String(Number(row && row.tender_id))))
+    .map((row) => ({
+      TenderId: Number(row.tender_id),
+      RunDateYmd: String(row.run_date_ymd || "").trim(),
+      Decision: String(row.decision_code || "").trim(),
+      ReasonCode: String(row.reason_code || "").trim(),
+      ReasonNote: String(row.reason_note || "").trim(),
+      SavedAt: String(row.updated_at || "").trim(),
+      Source: String(row.source || "").trim() || "operator_ui"
+    }));
+}
+
+function buildCanonicalBaseRows({ scoredRows }) {
+  return (Array.isArray(scoredRows) ? scoredRows : [])
+    .filter((row) => {
+      const eojn = row && row._eojn ? row._eojn : {};
+      return Boolean(eojn.shortlist || eojn.candidate);
+    })
+    .sort((a, b) => Number((b && b._eojn && b._eojn.topScore) || 0) - Number((a && a._eojn && a._eojn.topScore) || 0));
+}
+
+function buildTenderLatestRows({
+  baseRows,
+  noticeHistoryRows,
+  latestReviewByTender,
+  latestLayer2ByTender,
+  runDateYmd
+}) {
+  const procMap = procedureCatalogMap();
+  const byTenderNotices = new Map();
+  for (const row of noticeHistoryRows) {
+    const key = Number(row.TenderId);
+    if (!byTenderNotices.has(key)) byTenderNotices.set(key, []);
+    byTenderNotices.get(key).push(row);
+  }
+  for (const rows of byTenderNotices.values()) {
+    rows.sort((a, b) => String(a.PublishDate || "").localeCompare(String(b.PublishDate || "")));
+  }
+
+  return (Array.isArray(baseRows) ? baseRows : []).map((row) => {
+    const tenderId = Number(row && row.Id);
+    const notices = byTenderNotices.get(tenderId) || [];
+    const latestNotice = notices.slice(-1)[0] || null;
+    const firstNotice = notices[0] || null;
+    const review = latestReviewByTender[String(tenderId)] || null;
+    const l2 = latestLayer2ByTender.get(tenderId) || null;
+    const procTypeId = Number(row && row.ProcedureTypeId);
+    const procRef = procMap.get(procTypeId) || null;
+    const eojn = row && row._eojn ? row._eojn : {};
+    const scopeClass = String(eojn.scope_class || "").trim();
+    const scopeParts = scopeClass ? scopeClass.split(":") : [];
+    return {
+      TenderId: tenderId,
+      Reference: String(row && row.ReferenceNumber || "").trim(),
+      Name: String(row && row.Name || "").trim(),
+      ProcedureTypeId: Number.isFinite(procTypeId) ? procTypeId : null,
+      ProcedureType: String(row && row.ProcedureType || "").trim(),
+      ProcedureClass: procRef ? String(procRef.procedure_class || "") : "unknown",
+      TypeContract: String(row && row.TypeContract || "").trim(),
+      CPVExtended: String(row && row.CPVExtended || "").trim(),
+      ContractingBody: String(row && row.ContractingBody || row.BusinessEntityName || "").trim(),
+      PublishDate: String(row && row.NoticePublishDate || "").trim(),
+      DueDate: String(row && (row.SubmissionDeadlineDate || row.SubmissionDeadline || "")).trim(),
+      EstimatedValue: row && row.EstimatedValue !== undefined ? Number(row.EstimatedValue || 0) : null,
+      CurrencyCode: String(row && row.CurrencyCode || "").trim(),
+      NutsCode: String(row && row.NutsCode || "").trim(),
+      L1Status: eojn.shortlist ? "SHORTLISTED" : "SCORED",
+      L1Score: Number(eojn.topScore || 0),
+      L1TopProgram: String(eojn.topProgram || "").trim(),
+      L1ScopeClass: scopeClass,
+      L1IntentClass: scopeParts.length > 1 ? String(scopeParts[1] || "").trim() : "",
+      L2Status: l2 ? String(l2.status || "").trim() : "PENDING",
+      L2Label: l2 ? String(l2.label || "").trim() : "",
+      L2Incidence: l2 ? Number(l2.incidence || 0) : null,
+      L2ItemCount: l2 ? Number(l2.total_items || 0) : null,
+      L2HitItems: l2 ? Number(l2.hit_items || 0) : null,
+      L2Intensity: l2 && l2.hit_items ? Number(((Number(l2.total_keyword_hits || 0)) / Number(l2.hit_items || 1)).toFixed(4)) : null,
+      L2MaxSheet: l2 ? String(l2.max_sheet || "").trim() : "",
+      Decision: review ? String(review.decision_code || "").trim() : "",
+      ReasonCode: review ? String(review.reason_code || "").trim() : "",
+      DecisionUpdatedAt: review ? String(review.updated_at || "").trim() : "",
+      LifecycleGate: l2 ? String(l2.watchlist_gate || "").trim() : "",
+      WatchFlag: review ? String(review.decision_code || "").trim() === "WATCH" : false,
+      AlertFlag: false,
+      FirstSeenAt: firstNotice ? String(firstNotice.PublishDate || "").trim() : String(row && row.NoticePublishDate || "").trim(),
+      LastSeenAt: latestNotice ? String(latestNotice.PublishDate || "").trim() : String(row && row.NoticePublishDate || "").trim(),
+      LastNoticeTypeId: latestNotice ? Number(latestNotice.DocumentTypeId || 0) : null,
+      LastNoticeTypeName: latestNotice ? String(latestNotice.DocumentTypeName || "").trim() : "",
+      LastNoticePublishedAt: latestNotice ? String(latestNotice.PublishDate || "").trim() : "",
+      UpdatedAt: new Date().toISOString(),
+      SourceRunDate: runDateYmd
+    };
+  });
+}
+
+async function buildCanonicalArtifacts({
+  outRoot,
+  outDir,
+  runDateYmd,
+  scoredRows,
+  noticesRows
+}) {
+  const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
+  const latestLayer2ByTender = buildLayer2ResultMap(outDir);
+  const baseRows = buildCanonicalBaseRows({ scoredRows });
+  const tenderIds = baseRows.map((row) => Number(row && row.Id)).filter(Number.isFinite);
+  const tenderNoticeHistoryRows = buildNoticeHistoryRows({ noticesRows, runDateYmd })
+    .filter((row) => tenderIds.includes(Number(row.TenderId)));
+  const reviewDecisionHistoryRows = buildReviewHistoryRows({ latestReviewByTender, tenderIds });
+  const tenderLatestRows = buildTenderLatestRows({
+    baseRows,
+    noticeHistoryRows: tenderNoticeHistoryRows,
+    latestReviewByTender,
+    latestLayer2ByTender,
+    runDateYmd
+  });
+  return {
+    tenderLatestRows,
+    tenderNoticeHistoryRows,
+    reviewDecisionHistoryRows
+  };
+}
+
+async function ensureDefaultWorklistConfig(outRoot) {
+  const recommended = worklistViewConfigContract.recommended_defaults || {};
+  return ensureWorklistViewConfig({
+    outRoot,
+    config: {
+      ...recommended,
+      notes: "Editable default worklist/watchlist column visibility and ordering for EOJN canonical worklist."
+    }
+  });
 }
 
 function buildTenderFingerprint(row) {
@@ -303,6 +513,27 @@ async function runLayer1(payload) {
       layer2QueueRows: scoreResult.layer2Queue,
       manifest
     });
+    const canonical = await buildCanonicalArtifacts({
+      outRoot,
+      outDir: writeInfo.outDir,
+      runDateYmd,
+      scoredRows: scoreResult.scored,
+      noticesRows: noticesMarked.noticesWithStatus
+    });
+    await writeCanonicalArtifacts({
+      outRoot,
+      runDateYmd,
+      tenderLatestRows: canonical.tenderLatestRows,
+      tenderNoticeHistoryRows: canonical.tenderNoticeHistoryRows,
+      reviewDecisionHistoryRows: canonical.reviewDecisionHistoryRows
+    });
+    await mergeCanonicalStateArtifacts({
+      outRoot,
+      tenderLatestRows: canonical.tenderLatestRows,
+      tenderNoticeHistoryRows: canonical.tenderNoticeHistoryRows,
+      reviewDecisionHistoryRows: canonical.reviewDecisionHistoryRows
+    });
+    await ensureDefaultWorklistConfig(outRoot);
     await appendEventLog({
       outDir: writeInfo.outDir,
       event: { ts: completedAt, type: "LAYER1_RUN_OK", run: runMeta }
@@ -443,6 +674,27 @@ async function recomputeLayer1FromStoredRaw(input) {
     layer2QueueRows: scoreResult.layer2Queue,
     manifest: nextManifest
   });
+  const canonical = await buildCanonicalArtifacts({
+    outRoot,
+    outDir: writeInfo.outDir,
+    runDateYmd,
+    scoredRows: scoreResult.scored,
+    noticesRows: loaded.noticesRows
+  });
+  await writeCanonicalArtifacts({
+    outRoot,
+    runDateYmd,
+    tenderLatestRows: canonical.tenderLatestRows,
+    tenderNoticeHistoryRows: canonical.tenderNoticeHistoryRows,
+    reviewDecisionHistoryRows: canonical.reviewDecisionHistoryRows
+  });
+  await mergeCanonicalStateArtifacts({
+    outRoot,
+    tenderLatestRows: canonical.tenderLatestRows,
+    tenderNoticeHistoryRows: canonical.tenderNoticeHistoryRows,
+    reviewDecisionHistoryRows: canonical.reviewDecisionHistoryRows
+  });
+  await ensureDefaultWorklistConfig(outRoot);
   await appendEventLog({
     outDir: writeInfo.outDir,
     event: {

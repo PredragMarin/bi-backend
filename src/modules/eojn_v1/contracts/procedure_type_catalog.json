@@ -1,0 +1,25 @@
+{
+  "catalog_id": "eojn_procedure_type_catalog_v1",
+  "version": "1.0.0",
+  "description": "Reference catalog for EOJN procurement procedure types.",
+  "items": [
+    { "ProcedureTypeId": 1, "ProcedureType": "Otvoreni postupak", "procedure_class": "public_competitive", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 2, "ProcedureType": "Ograničeni postupak", "procedure_class": "public_competitive", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 3, "ProcedureType": "Natjecateljski postupak uz pregovore", "procedure_class": "negotiated_competitive", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 6, "ProcedureType": "Pregovarački postupak bez prethodne objave poziva na nadmetanje", "procedure_class": "negotiated_non_public", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 7, "ProcedureType": "Pregovarački postupak s prethodnim pozivom na nadmetanje", "procedure_class": "negotiated_competitive", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 11, "ProcedureType": "Nabava izuzeta od primjene ZJN", "procedure_class": "excluded_procurement", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 20, "ProcedureType": "Otvoreni postupak za projektni natječaj", "procedure_class": "design_competition", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 22, "ProcedureType": "Prethodna obavijest", "procedure_class": "prior_information", "is_known": true, "opens_tender": false },
+    { "ProcedureTypeId": 52, "ProcedureType": "Jednostavna nabava - e-Dostava s pozivom odabranim GS", "procedure_class": "simple_selected_suppliers", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 53, "ProcedureType": "Jednostavna nabava - e-Dostava s javnom objavom poziva", "procedure_class": "simple_public_call", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 54, "ProcedureType": "Jednostavna nabava obnova - e-Dostava s pozivom odabranim GS", "procedure_class": "reconstruction_selected_suppliers", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 55, "ProcedureType": "Nabava obnova - Javni poziv", "procedure_class": "reconstruction_public_call", "is_known": true, "opens_tender": true },
+    { "ProcedureTypeId": 56, "ProcedureType": "Nabava obnova - Poziv odabranim GS", "procedure_class": "reconstruction_selected_suppliers", "is_known": true, "opens_tender": true }
+  ],
+  "unknown_type_policy": {
+    "ingest_behavior": "keep_raw_and_mark_unknown",
+    "default_procedure_class": "unknown",
+    "requires_review": true
+  }
+}

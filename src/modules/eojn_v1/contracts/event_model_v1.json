@@ -1,0 +1,38 @@
+{
+  "model_id": "eojn_event_model_v1",
+  "version": "1.0.0",
+  "description": "Business event model for mapping EOJN procedure and notice types into lifecycle transitions and watchlist actions.",
+  "latest_state_rules": {
+    "latest_record_key": ["TenderId"],
+    "notice_history_key": ["TenderId", "NoticeKey"],
+    "review_history_key": ["TenderId", "SavedAt"],
+    "latest_notice_resolution": "max PublishDate, then latest RecordedAt",
+    "latest_review_resolution": "max SavedAt",
+    "first_seen_resolution": "min PublishDate over tender events",
+    "last_seen_resolution": "max PublishDate over tender events"
+  },
+  "lifecycle_states": [
+    "open",
+    "amended",
+    "awarded",
+    "modified",
+    "under_appeal",
+    "closed_no_action",
+    "informational",
+    "unknown"
+  ],
+  "watch_actions": [
+    "none",
+    "open_or_refresh",
+    "refresh_if_watched",
+    "close_or_track_outcome",
+    "flag_for_manual_review"
+  ],
+  "contracts": {
+    "procedure_type_catalog": "contracts/procedure_type_catalog.json",
+    "document_type_catalog": "contracts/document_type_catalog.json",
+    "tender_latest_contract": "contracts/tender_latest_contract.json",
+    "tender_notice_history_contract": "contracts/tender_notice_history_contract.json",
+    "review_decision_history_contract": "contracts/review_decision_history_contract.json"
+  }
+}

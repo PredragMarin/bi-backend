@@ -1,0 +1,23 @@
+{
+  "contract_id": "eojn_review_decision_history_contract_v1",
+  "version": "1.0.0",
+  "description": "Operator review decision history for EOJN tenders.",
+  "storage_model": {
+    "artifact_name": "review_decision_history.json",
+    "record_granularity": "one row per saved review decision",
+    "primary_key": ["TenderId", "SavedAt"],
+    "append_rule": "append-only history with latest decision resolved by max SavedAt"
+  },
+  "required_fields": [
+    { "name": "TenderId", "type": "number", "source": "review_store" },
+    { "name": "RunDateYmd", "type": "string", "source": "review_store" },
+    { "name": "Decision", "type": "string", "source": "review_store" },
+    { "name": "ReasonCode", "type": "string", "source": "review_store" },
+    { "name": "SavedAt", "type": "string", "source": "review_store" }
+  ],
+  "optional_fields": [
+    { "name": "ReasonNote", "type": "string", "source": "review_store" },
+    { "name": "Source", "type": "string", "source": "derived", "notes": "exact_run or latest_tender fallback" },
+    { "name": "Actor", "type": "string", "source": "future" }
+  ]
+}

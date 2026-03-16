@@ -57,6 +57,14 @@
   "contracts": {
     "layer1_run_contract": "contracts/layer1_run_contract.json",
     "validation_entry": "validate_layer1_request.js",
+    "data_contract_validation_entry": "validate_data_contracts.js",
+    "event_model": "contracts/event_model_v1.json",
+    "procedure_type_catalog": "contracts/procedure_type_catalog.json",
+    "document_type_catalog": "contracts/document_type_catalog.json",
+    "tender_latest_contract": "contracts/tender_latest_contract.json",
+    "tender_notice_history_contract": "contracts/tender_notice_history_contract.json",
+    "review_decision_history_contract": "contracts/review_decision_history_contract.json",
+    "worklist_view_config_contract": "contracts/worklist_view_config_contract.json",
     "layer1_semantic_rules": [
       "l1_cpv_rules_v1.json",
       "l1_contract_type_rules_v1.json",

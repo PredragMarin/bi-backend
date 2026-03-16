@@ -35,6 +35,22 @@ function activeCycleFilePath(outRoot) {
   return path.join(outRoot, "_state", "active_cycle.json");
 }
 
+function worklistViewConfigFilePath(outRoot) {
+  return path.join(outRoot, "_state", "worklist_view_config.json");
+}
+
+function tenderLatestIndexFilePath(outRoot) {
+  return path.join(outRoot, "_state", "tender_latest_index.json");
+}
+
+function tenderNoticeHistoryIndexFilePath(outRoot) {
+  return path.join(outRoot, "_state", "tender_notice_history_index.json");
+}
+
+function reviewDecisionHistoryIndexFilePath(outRoot) {
+  return path.join(outRoot, "_state", "review_decision_history_index.json");
+}
+
 function defaultState() {
   return {
     version: STATE_VERSION,
@@ -213,6 +229,129 @@ async function writeLayer1DerivedArtifacts({
   return { outDir };
 }
 
+async function writeCanonicalArtifacts({
+  outRoot,
+  runDateYmd,
+  tenderLatestRows,
+  tenderNoticeHistoryRows,
+  reviewDecisionHistoryRows
+}) {
+  const root = path.resolve(String(outRoot || defaultOutRoot()));
+  const outDir = outDirForDate(root, runDateYmd);
+  await fsp.mkdir(outDir, { recursive: true });
+  await Promise.all([
+    writeJsonAtomic(path.join(outDir, "tender_latest.json"), tenderLatestRows || []),
+    writeJsonAtomic(path.join(outDir, "tender_notice_history.json"), tenderNoticeHistoryRows || []),
+    writeJsonAtomic(path.join(outDir, "review_decision_history.json"), reviewDecisionHistoryRows || [])
+  ]);
+  return { outDir };
+}
+
+async function ensureWorklistViewConfig({ outRoot, config }) {
+  const root = path.resolve(String(outRoot || defaultOutRoot()));
+  const file = worklistViewConfigFilePath(root);
+  const existing = await readJsonSafe(file, null);
+  if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+    return existing;
+  }
+  const payload = config && typeof config === "object" ? config : {};
+  await writeJsonAtomic(file, payload);
+  return payload;
+}
+
+function parseTs(value) {
+  const ts = Date.parse(String(value || ""));
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function pickPreferredLatest(prev, next) {
+  if (!prev) return next;
+  const prevLastSeen = parseTs(prev && prev.LastSeenAt);
+  const nextLastSeen = parseTs(next && next.LastSeenAt);
+  if (nextLastSeen !== prevLastSeen) return nextLastSeen > prevLastSeen ? next : prev;
+  const prevSource = parseTs(String(prev && prev.SourceRunDate || "").trim());
+  const nextSource = parseTs(String(next && next.SourceRunDate || "").trim());
+  if (nextSource !== prevSource) return nextSource > prevSource ? next : prev;
+  return parseTs(next && next.UpdatedAt) >= parseTs(prev && prev.UpdatedAt) ? next : prev;
+}
+
+async function mergeCanonicalStateArtifacts({
+  outRoot,
+  tenderLatestRows,
+  tenderNoticeHistoryRows,
+  reviewDecisionHistoryRows
+}) {
+  const root = path.resolve(String(outRoot || defaultOutRoot()));
+  const existingLatest = await readJsonSafe(tenderLatestIndexFilePath(root), []);
+  const existingNoticeHistory = await readJsonSafe(tenderNoticeHistoryIndexFilePath(root), []);
+  const existingReviewHistory = await readJsonSafe(reviewDecisionHistoryIndexFilePath(root), []);
+
+  const latestMap = new Map();
+  for (const row of Array.isArray(existingLatest) ? existingLatest : []) {
+    const tenderId = Number(row && row.TenderId);
+    if (!Number.isFinite(tenderId)) continue;
+    latestMap.set(tenderId, row);
+  }
+  for (const row of Array.isArray(tenderLatestRows) ? tenderLatestRows : []) {
+    const tenderId = Number(row && row.TenderId);
+    if (!Number.isFinite(tenderId)) continue;
+    latestMap.set(tenderId, pickPreferredLatest(latestMap.get(tenderId) || null, row));
+  }
+
+  const noticeMap = new Map();
+  for (const row of Array.isArray(existingNoticeHistory) ? existingNoticeHistory : []) {
+    const key = `${Number(row && row.TenderId)}|${String(row && row.NoticeKey || "")}`;
+    noticeMap.set(key, row);
+  }
+  for (const row of Array.isArray(tenderNoticeHistoryRows) ? tenderNoticeHistoryRows : []) {
+    const key = `${Number(row && row.TenderId)}|${String(row && row.NoticeKey || "")}`;
+    const prev = noticeMap.get(key) || null;
+    if (!prev || parseTs(row && row.RecordedAt) >= parseTs(prev && prev.RecordedAt)) {
+      noticeMap.set(key, row);
+    }
+  }
+
+  const reviewMap = new Map();
+  for (const row of Array.isArray(existingReviewHistory) ? existingReviewHistory : []) {
+    const key = `${Number(row && row.TenderId)}|${String(row && row.SavedAt || "")}`;
+    reviewMap.set(key, row);
+  }
+  for (const row of Array.isArray(reviewDecisionHistoryRows) ? reviewDecisionHistoryRows : []) {
+    const key = `${Number(row && row.TenderId)}|${String(row && row.SavedAt || "")}`;
+    reviewMap.set(key, row);
+  }
+
+  const latestRowsOut = Array.from(latestMap.values()).sort((a, b) => parseTs(b && b.LastSeenAt) - parseTs(a && a.LastSeenAt));
+  const noticeRowsOut = Array.from(noticeMap.values()).sort((a, b) => parseTs(b && b.PublishDate) - parseTs(a && a.PublishDate));
+  const reviewRowsOut = Array.from(reviewMap.values()).sort((a, b) => parseTs(b && b.SavedAt) - parseTs(a && a.SavedAt));
+
+  await Promise.all([
+    writeJsonAtomic(tenderLatestIndexFilePath(root), latestRowsOut),
+    writeJsonAtomic(tenderNoticeHistoryIndexFilePath(root), noticeRowsOut),
+    writeJsonAtomic(reviewDecisionHistoryIndexFilePath(root), reviewRowsOut)
+  ]);
+
+  return {
+    tender_latest_count: latestRowsOut.length,
+    tender_notice_history_count: noticeRowsOut.length,
+    review_decision_history_count: reviewRowsOut.length
+  };
+}
+
+async function loadCanonicalStateArtifacts({ outRoot } = {}) {
+  const root = path.resolve(String(outRoot || defaultOutRoot()));
+  const [tenderLatestRows, tenderNoticeHistoryRows, reviewDecisionHistoryRows] = await Promise.all([
+    readJsonSafe(tenderLatestIndexFilePath(root), []),
+    readJsonSafe(tenderNoticeHistoryIndexFilePath(root), []),
+    readJsonSafe(reviewDecisionHistoryIndexFilePath(root), [])
+  ]);
+  return {
+    tender_latest_rows: Array.isArray(tenderLatestRows) ? tenderLatestRows : [],
+    tender_notice_history_rows: Array.isArray(tenderNoticeHistoryRows) ? tenderNoticeHistoryRows : [],
+    review_decision_history_rows: Array.isArray(reviewDecisionHistoryRows) ? reviewDecisionHistoryRows : []
+  };
+}
+
 module.exports = {
   defaultOutRoot,
   loadLayer1State,
@@ -223,5 +362,9 @@ module.exports = {
   appendEventLog,
   loadLayer1RunView,
   loadLayer1RawArtifacts,
-  writeLayer1DerivedArtifacts
+  writeLayer1DerivedArtifacts,
+  writeCanonicalArtifacts,
+  ensureWorklistViewConfig,
+  mergeCanonicalStateArtifacts,
+  loadCanonicalStateArtifacts
 };

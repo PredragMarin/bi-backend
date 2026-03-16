@@ -1,0 +1,53 @@
+{
+  "contract_id": "eojn_tender_latest_contract_v1",
+  "version": "1.0.0",
+  "description": "Canonical latest-state EOJN tender record created after a procurement passes Layer 1.",
+  "storage_model": {
+    "artifact_name": "tender_latest.json",
+    "record_granularity": "one row per TenderId",
+    "primary_key": ["TenderId"],
+    "update_rule": "upsert latest-state by TenderId"
+  },
+  "required_fields": [
+    { "name": "TenderId", "type": "number", "source": "procurements_raw.Id" },
+    { "name": "Reference", "type": "string", "source": "procurements_raw.ReferenceNumber" },
+    { "name": "Name", "type": "string", "source": "procurements_raw.Name" },
+    { "name": "ProcedureTypeId", "type": "number", "source": "procurements_raw.ProcedureTypeId" },
+    { "name": "ProcedureType", "type": "string", "source": "procurements_raw.ProcedureType" },
+    { "name": "TypeContract", "type": "string", "source": "procurements_raw.TypeContract" },
+    { "name": "CPVExtended", "type": "string", "source": "procurements_raw.CPVExtended" },
+    { "name": "ContractingBody", "type": "string", "source": "procurements_raw.ContractingBody" },
+    { "name": "PublishDate", "type": "string", "source": "procurements_raw.NoticePublishDate" },
+    { "name": "DueDate", "type": "string", "source": "procurements_raw.SubmissionDeadlineDate" },
+    { "name": "L1Status", "type": "string", "source": "derived.layer1" },
+    { "name": "L1Score", "type": "number", "source": "derived.layer1" },
+    { "name": "L1TopProgram", "type": "string", "source": "derived.layer1" },
+    { "name": "L1ScopeClass", "type": "string", "source": "derived.layer1" },
+    { "name": "L1IntentClass", "type": "string", "source": "derived.layer1" },
+    { "name": "L2Status", "type": "string", "source": "derived.layer2" },
+    { "name": "L2Label", "type": "string", "source": "derived.layer2" },
+    { "name": "L2Incidence", "type": "number", "source": "derived.layer2" },
+    { "name": "Decision", "type": "string", "source": "derived.review_latest" },
+    { "name": "ReasonCode", "type": "string", "source": "derived.review_latest" },
+    { "name": "LifecycleGate", "type": "string", "source": "derived.lifecycle" },
+    { "name": "WatchFlag", "type": "boolean", "source": "derived.watchlist" },
+    { "name": "FirstSeenAt", "type": "string", "source": "derived.timeline" },
+    { "name": "LastSeenAt", "type": "string", "source": "derived.timeline" },
+    { "name": "LastNoticeTypeId", "type": "number", "source": "derived.notice_latest" },
+    { "name": "LastNoticeTypeName", "type": "string", "source": "derived.notice_latest" },
+    { "name": "LastNoticePublishedAt", "type": "string", "source": "derived.notice_latest" },
+    { "name": "UpdatedAt", "type": "string", "source": "system" }
+  ],
+  "optional_fields": [
+    { "name": "EstimatedValue", "type": "number", "source": "procurements_raw.EstimatedValue" },
+    { "name": "CurrencyCode", "type": "string", "source": "procurements_raw.CurrencyCode" },
+    { "name": "NutsCode", "type": "string", "source": "procurements_raw.NutsCode" },
+    { "name": "L2ItemCount", "type": "number", "source": "derived.layer2" },
+    { "name": "L2HitItems", "type": "number", "source": "derived.layer2" },
+    { "name": "L2Intensity", "type": "number", "source": "derived.layer2" },
+    { "name": "L2MaxSheet", "type": "string", "source": "derived.layer2" },
+    { "name": "DecisionUpdatedAt", "type": "string", "source": "derived.review_latest" },
+    { "name": "AlertFlag", "type": "boolean", "source": "derived.alerts" },
+    { "name": "SourceRunDate", "type": "string", "source": "system" }
+  ]
+}

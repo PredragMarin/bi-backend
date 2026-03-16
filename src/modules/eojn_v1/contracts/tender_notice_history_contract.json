@@ -1,0 +1,27 @@
+{
+  "contract_id": "eojn_tender_notice_history_contract_v1",
+  "version": "1.0.0",
+  "description": "EOJN notice/event history keyed by TenderId and notice identity.",
+  "storage_model": {
+    "artifact_name": "tender_notice_history.json",
+    "record_granularity": "one row per notice event",
+    "primary_key": ["TenderId", "NoticeKey"],
+    "append_rule": "append then dedup by TenderId+NoticeKey"
+  },
+  "required_fields": [
+    { "name": "TenderId", "type": "number", "source": "notices_raw.TenderId" },
+    { "name": "NoticeKey", "type": "string", "source": "notices_raw.notice_key" },
+    { "name": "DocumentTypeId", "type": "number", "source": "notices_raw.DocumentTypeId" },
+    { "name": "DocumentTypeName", "type": "string", "source": "notices_raw.DocumentTypeName" },
+    { "name": "PublishDate", "type": "string", "source": "notices_raw.PublishDate" },
+    { "name": "NoticeNumber", "type": "string", "source": "notices_raw.NoticeNumber" },
+    { "name": "EventClass", "type": "string", "source": "derived.notice_catalog" },
+    { "name": "AffectsLatestState", "type": "boolean", "source": "derived.notice_catalog" },
+    { "name": "RecordedAt", "type": "string", "source": "system" }
+  ],
+  "optional_fields": [
+    { "name": "ModificationDescription", "type": "string", "source": "notices_raw.ModificationDescription" },
+    { "name": "SourceRunDate", "type": "string", "source": "system" },
+    { "name": "SourceOutDir", "type": "string", "source": "system" }
+  ]
+}
