@@ -10,6 +10,7 @@ const CONTRACT_FILES = [
   "contracts/worklist_view_config_contract.json",
   "contracts/procedure_type_catalog.json",
   "contracts/document_type_catalog.json",
+  "contracts/layer2_use_case_profiles.json",
   "contracts/event_model_v1.json"
 ];
 
@@ -31,7 +32,7 @@ function assertArray(value, fieldName, filePath) {
 function validateContract(filePath) {
   const data = readJsonObject(filePath);
   const base = path.basename(filePath);
-  if (base === "procedure_type_catalog.json" || base === "document_type_catalog.json") {
+  if (base === "procedure_type_catalog.json" || base === "document_type_catalog.json" || base === "layer2_use_case_profiles.json") {
     for (const field of ["version", "description", "items"]) {
       if (!Object.prototype.hasOwnProperty.call(data, field)) {
         throw new Error(`Missing ${field} in ${filePath}`);

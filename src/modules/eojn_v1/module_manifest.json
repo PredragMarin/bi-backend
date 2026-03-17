@@ -32,9 +32,9 @@
         "name": "eojn_budget",
         "role": "raw_fact",
         "provenance": "EOJN",
-        "format": "xlsx",
+        "format": "spreadsheet_or_document",
         "required": false,
-        "notes": "Tender budget (Layer 2 evidence scan)."
+        "notes": "Tender budget candidates for Layer 2 evidence scan. Spreadsheet auto-ingest: xls/xlsx/ods. Document manual review: doc/docx."
       }
     ]
   },
@@ -61,6 +61,7 @@
     "event_model": "contracts/event_model_v1.json",
     "procedure_type_catalog": "contracts/procedure_type_catalog.json",
     "document_type_catalog": "contracts/document_type_catalog.json",
+    "layer2_use_case_profiles": "contracts/layer2_use_case_profiles.json",
     "tender_latest_contract": "contracts/tender_latest_contract.json",
     "tender_notice_history_contract": "contracts/tender_notice_history_contract.json",
     "review_decision_history_contract": "contracts/review_decision_history_contract.json",

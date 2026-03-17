@@ -4,7 +4,7 @@ const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
 const crypto = require("crypto");
-const { spawnSync, spawn } = require("child_process");
+const { spawnSync } = require("child_process");
 const {
   defaultOutRoot,
   loadLayer2Status,
@@ -21,7 +21,11 @@ const {
   getLatestReviewDecisionsByTender
 } = require("../../core_shell/services/eojn_review_store");
 const { loadActiveCycle, saveActiveCycle } = require("../../core_shell/services/eojn_layer1_store");
-const { resolveEojnConfigPath } = require("./secret_provider");
+const { writeJsonAtomic } = require("../../core_shell/storage/fs_store");
+const { resolveEojnConfigPath } = require("../../core_shell/services/eojn_config_service");
+const { downloadBudgetFilesForTender } = require("../../core_shell/services/eojn_budget_download_service");
+const { isSupportedWorkbookFile } = require("../../core_shell/services/workbook_ingest_service");
+const { analyzeBudgetFile } = require("./layer2_budget_scan");
 
 let activeRun = null;
 const STALE_ACTIVE_MS = 5 * 60 * 1000;
@@ -395,120 +399,37 @@ function runNodeScript(scriptPath, args, timeoutMs) {
   return out;
 }
 
-function summarizeScriptOutput(stdout, stderr) {
-  const merged = String(stderr || stdout || "");
-  const head = merged.slice(0, 300);
-  const tail = merged.length > 900 ? merged.slice(-900) : merged;
-  return `${head}${merged.length > 900 ? "\n...\n" : "\n"}${tail}` || "";
-}
+async function runPromiseMonitored(factory, timeoutMs, hooks) {
+  let heartbeatHandle = null;
+  let timeoutHandle = null;
+  const startedAt = Date.now();
 
-async function runNodeScriptMonitored(scriptPath, args, timeoutMs, hooks) {
-  return await new Promise((resolve, reject) => {
-    const child = spawn("node", [scriptPath, ...args], {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
-    });
-    let stdout = "";
-    let stderr = "";
-    let finished = false;
-    let timeoutHandle = null;
-    let heartbeatHandle = null;
-    let stdoutRemainder = "";
-    let stderrRemainder = "";
-
-    const finish = (fn, value) => {
-      if (finished) return;
-      finished = true;
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-      if (heartbeatHandle) clearInterval(heartbeatHandle);
-      fn(value);
-    };
-
-    const emitLine = (kind, line) => {
-      if (!hooks || typeof hooks.onLine !== "function") return;
-      Promise.resolve(hooks.onLine({ kind, line })).catch(() => {});
-    };
-
-    const flushChunk = (kind, chunk, remainder) => {
-      const merged = remainder + String(chunk || "");
-      const parts = merged.split(/\r?\n/);
-      const rest = parts.pop() || "";
-      for (const part of parts) {
-        const line = String(part || "").trim();
-        if (line) emitLine(kind, line);
-      }
-      return rest;
-    };
-
-    child.stdout.on("data", (chunk) => {
-      const text = String(chunk || "");
-      stdout += text;
-      stdoutRemainder = flushChunk("stdout", text, stdoutRemainder);
-    });
-    child.stderr.on("data", (chunk) => {
-      const text = String(chunk || "");
-      stderr += text;
-      stderrRemainder = flushChunk("stderr", text, stderrRemainder);
-    });
-    child.on("error", (err) => finish(reject, err));
-    child.on("close", (code) => {
-      if (stdoutRemainder.trim()) emitLine("stdout", stdoutRemainder.trim());
-      if (stderrRemainder.trim()) emitLine("stderr", stderrRemainder.trim());
-      if (code !== 0) {
-        const e = new Error(summarizeScriptOutput(stdout, stderr) || `Exit code ${code}`);
-        e.code = "SCRIPT_FAILED";
-        return finish(reject, e);
-      }
-      return finish(resolve, { status: code, stdout, stderr });
-    });
-
-    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
-      timeoutHandle = setTimeout(() => {
-        try { child.kill(); } catch (_) {}
-        const e = new Error(`Timed out after ${timeoutMs}ms`);
-        e.code = "TIMEOUT";
-        finish(reject, e);
-      }, timeoutMs);
-    }
+  try {
+    const promise = Promise.resolve().then(factory);
+    const monitored = Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? Promise.race([
+          promise,
+          new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+              const err = new Error(`Timed out after ${timeoutMs}ms`);
+              err.code = "TIMEOUT";
+              reject(err);
+            }, timeoutMs);
+          })
+        ])
+      : promise;
 
     if (hooks && typeof hooks.onHeartbeat === "function") {
-      const startedAt = Date.now();
       const hbMs = Number(hooks.heartbeatMs) > 0 ? Number(hooks.heartbeatMs) : 4000;
       heartbeatHandle = setInterval(() => {
         Promise.resolve(hooks.onHeartbeat({ elapsedMs: Date.now() - startedAt })).catch(() => {});
       }, hbMs);
     }
-  });
-}
 
-function findLatestBatchReport(outRoot) {
-  const devRoot = path.join(outRoot, "_dev_budget_pw");
-  if (!fs.existsSync(devRoot)) return null;
-  const dirs = fs.readdirSync(devRoot, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
-    .sort()
-    .reverse();
-  for (const d of dirs) {
-    const p = path.join(devRoot, d, "batch_report.json");
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
-}
-
-function readDownloaderFailureReason({ outRoot, tenderId }) {
-  try {
-    const reportPath = findLatestBatchReport(outRoot);
-    if (!reportPath) return "";
-    const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
-    const rows = Array.isArray(report && report.tenders) ? report.tenders : [];
-    const hit = rows.find((r) => Number(r && r.tenderId) === Number(tenderId));
-    if (!hit) return "";
-    const errors = Array.isArray(hit.errors) ? hit.errors.filter(Boolean).map(String) : [];
-    if (!errors.length) return "";
-    return errors.join("|");
-  } catch (_) {
-    return "";
+    return await monitored;
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    if (heartbeatHandle) clearInterval(heartbeatHandle);
   }
 }
 
@@ -579,8 +500,23 @@ function extractNestedZipTree(rootDir, maxDepth = 4) {
   return extractedDirs;
 }
 
+function isSpreadsheetBudgetFile(filePath) {
+  return isSupportedWorkbookFile(filePath) && !/^\~\$/.test(path.basename(filePath));
+}
+
+function isManualReviewBudgetFile(filePath) {
+  return /\.(docx|doc)$/i.test(filePath);
+}
+
+function isBudgetCandidateFile(filePath) {
+  return isSpreadsheetBudgetFile(filePath) || isManualReviewBudgetFile(filePath);
+}
+
 function extScore(filePath) {
-  return /\.xlsx$/i.test(filePath) ? 2 : /\.xls$/i.test(filePath) ? 1 : 0;
+  if (/\.xlsx$/i.test(filePath)) return 3;
+  if (/\.ods$/i.test(filePath)) return 2;
+  if (/\.xls$/i.test(filePath)) return 1;
+  return 0;
 }
 
 function pickBestBudgetFile(files) {
@@ -594,8 +530,8 @@ function pickBestBudgetFile(files) {
   })[0] || null;
 }
 
-function findBudgetFilesForTender({ outRoot, runDir, tenderId }) {
-  const matcher = (p) => /\.(xlsx|xls)$/i.test(p) && !/^\~\$/.test(path.basename(p));
+function findBudgetCandidateFilesForTender({ outRoot, runDir, tenderId }) {
+  const matcher = (p) => isBudgetCandidateFile(p);
   const tenderFolder = path.join(runDir, `tender_${tenderId}`);
   const inRun = findFilesRecursive(tenderFolder, matcher, []);
 
@@ -644,64 +580,46 @@ async function extractBudgetArchivesForTender({ outRoot, runDir, tenderId }) {
   return extracted;
 }
 
-async function tryDownloadBudgetForTender({ outRoot, moduleDir, tenderId, configPath, timeoutMs, onProgress }) {
+async function tryDownloadBudgetForTender({ outRoot, runDir, tenderId, configPath, timeoutMs, onProgress }) {
   const resolvedConfigPath = resolveEojnConfigPath({ configPathOverride: configPath });
-  const downloader = path.join(moduleDir, "dev_pw_download_budget.js");
-  try {
-    await runNodeScriptMonitored(
-      downloader,
-      [`--config=${resolvedConfigPath}`, `--tender=${tenderId}`, "--fresh=0", "--headed=0"],
-      timeoutMs,
-      {
-        heartbeatMs: 4000,
-        onHeartbeat: ({ elapsedMs }) => onProgress && onProgress({
-          stage: "download_wait",
-          message: `Downloading tender ${tenderId}... ${Math.round(elapsedMs / 1000)}s`
-        }),
-        onLine: ({ line }) => {
-          if (!onProgress) return;
-          if (/Opening:/i.test(line)) {
-            onProgress({ stage: "contacting_eojn", message: `Contacting EOJN for tender ${tenderId}` });
-            return;
-          }
-          if (/budget candidates:/i.test(line)) {
-            onProgress({ stage: "budget_links_found", message: `Budget links discovered for tender ${tenderId}` });
-            return;
-          }
-          if (/Tender .* downloading /i.test(line)) {
-            onProgress({
-              stage: "downloading_budget",
-              message: line.replace(/^\[EOJN\]\[PW\]\[[A-Z]+\]\s*/, "")
-            });
-            return;
-          }
-          if (/BATCH DONE/i.test(line)) {
-            onProgress({ stage: "download_done", message: `Download phase finished for tender ${tenderId}` });
-          }
-        }
-      }
-    );
-  } catch (err) {
-    const reason = readDownloaderFailureReason({ outRoot, tenderId });
-    if (reason) {
-      const e = new Error(`DOWNLOADER_${reason}`);
-      e.code = "DOWNLOADER_FAILED";
-      throw e;
+  const targetOutRoot = path.join(outRoot, "_dev_budget_pw", path.basename(path.resolve(runDir)));
+  const { tender } = await runPromiseMonitored(
+    () => downloadBudgetFilesForTender({
+      tenderId,
+      configPath: resolvedConfigPath,
+      outRoot: targetOutRoot,
+      fresh: false,
+      headed: false,
+      onProgress
+    }),
+    timeoutMs,
+    {
+      heartbeatMs: 4000,
+      onHeartbeat: ({ elapsedMs }) => onProgress && onProgress({
+        stage: "download_wait",
+        message: `Downloading tender ${tenderId}... ${Math.round(elapsedMs / 1000)}s`
+      })
     }
-    throw err;
+  );
+  if (!tender) {
+    throw new Error("DOWNLOADER_FAILED");
+  }
+  if (!tender.ok) {
+    const errors = Array.isArray(tender.errors) ? tender.errors.filter(Boolean).join("|") : "";
+    throw new Error(errors ? `DOWNLOADER_${errors}` : "DOWNLOADER_FAILED");
   }
 }
 
-async function runBudgetAnalyzer({ moduleDir, budgetFile, outFile, timeoutMs, onProgress }) {
-  const scanner = path.join(moduleDir, "layer2_budget_scan.js");
-  await runNodeScriptMonitored(scanner, [`--file=${budgetFile}`, `--out=${outFile}`], timeoutMs, {
+async function runBudgetAnalyzer({ budgetFile, outFile, timeoutMs, onProgress }) {
+  const analysis = await runPromiseMonitored(() => analyzeBudgetFile(budgetFile), timeoutMs, {
     heartbeatMs: 4000,
     onHeartbeat: ({ elapsedMs }) => onProgress && onProgress({
       stage: "analyzing_incidence",
       message: `Calculating incidence for ${path.basename(budgetFile)}... ${Math.round(elapsedMs / 1000)}s`
     })
   });
-  return readJson(outFile);
+  await writeJsonAtomic(outFile, analysis);
+  return analysis;
 }
 
 function randomIntInclusive(min, max) {
@@ -748,10 +666,11 @@ async function updateStatus(outRoot, patch) {
 function classifyFailure(err) {
   const msg = String((err && err.message) || err || "");
   if ((err && err.code === "TIMEOUT") || /timed out/i.test(msg)) return "TIMEOUT";
-  if (/PowerShell JSON parse failed|PowerShell Excel extraction failed|JSON parse failed/i.test(msg)) return "EXTRACT_FAILED";
+  if (/Unsupported workbook format|Unsupported workbook file type|EXCEL extract failed|JSON parse failed/i.test(msg)) return "EXTRACT_FAILED";
   if (/Missing EOJN credentials file|EOJN_SECRET_FILE|EOJN_CONFIG_PATH|EOJN config file not found/i.test(msg)) return "CONFIG_FAILED";
   if (/LOGIN_FAILED|STILL_LOGIN_WALL|DOWNLOADER_LOGIN_FAILED/i.test(msg)) return "LOGIN_FAILED";
   if (/NO_BUDGET_LINKS|DOWNLOADER_NO_BUDGET_LINKS/i.test(msg)) return "NEMA_TROSKOVNIK";
+  if (/BUDGET_PRESENT_MANUAL_REVIEW/i.test(msg)) return "BUDGET_PRESENT_MANUAL_REVIEW";
   if (/NO_BUDGET_FILE/i.test(msg)) return "NO_BUDGET_FILE";
   return "FAILED";
 }
@@ -809,8 +728,8 @@ async function processTender({
       });
 
       await extractBudgetArchivesForTender({ outRoot, runDir, tenderId });
-      let files = findBudgetFilesForTender({ outRoot, runDir, tenderId });
-      if (!files.length && enableDownload) {
+      let candidateFiles = findBudgetCandidateFilesForTender({ outRoot, runDir, tenderId });
+      if (!candidateFiles.length && enableDownload) {
         await updateStatus(outRoot, {
           phase: "RUNNING",
           subphase: "CONTACTING_EOJN",
@@ -820,7 +739,7 @@ async function processTender({
         });
         await tryDownloadBudgetForTender({
           outRoot,
-          moduleDir,
+          runDir,
           tenderId,
           configPath,
           timeoutMs: itemTimeoutMs,
@@ -835,13 +754,35 @@ async function processTender({
           }
         });
         await extractBudgetArchivesForTender({ outRoot, runDir, tenderId });
-        files = findBudgetFilesForTender({ outRoot, runDir, tenderId });
+        candidateFiles = findBudgetCandidateFilesForTender({ outRoot, runDir, tenderId });
       }
-      if (!files.length) {
+      if (!candidateFiles.length) {
         throw new Error("NO_BUDGET_FILE");
       }
 
-      const budgetFile = pickBestBudgetFile(files);
+      const spreadsheetFiles = candidateFiles.filter((filePath) => isSpreadsheetBudgetFile(filePath));
+      const manualReviewFiles = candidateFiles.filter((filePath) => isManualReviewBudgetFile(filePath));
+      if (!spreadsheetFiles.length && manualReviewFiles.length) {
+        return {
+          tender_id: tenderId,
+          reference_number: row.ReferenceNumber || "",
+          name: row.Name || "",
+          status: "BUDGET_PRESENT_MANUAL_REVIEW",
+          analyzed_at: new Date().toISOString(),
+          attempts: a,
+          budget_file: "",
+          analysis_file: "",
+          manual_review_files: manualReviewFiles,
+          notice_summary: noticeSummary,
+          tender_notices: tenderNotices,
+          watchlist_gate: noticeSummary.watchlist_gate
+        };
+      }
+      if (!spreadsheetFiles.length) {
+        throw new Error("NO_BUDGET_FILE");
+      }
+
+      const budgetFile = pickBestBudgetFile(spreadsheetFiles);
       const analysisOut = path.join(runDir, `layer2_analysis_${runId}_${tenderId}.json`);
 
       await updateStatus(outRoot, {
@@ -853,7 +794,6 @@ async function processTender({
       });
 
       const analysis = await runBudgetAnalyzer({
-        moduleDir,
         budgetFile,
         outFile: analysisOut,
         timeoutMs: itemTimeoutMs,
@@ -877,6 +817,8 @@ async function processTender({
         attempts: a,
         budget_file: budgetFile,
         analysis_file: analysisOut,
+        candidate_files: candidateFiles,
+        manual_review_files: manualReviewFiles,
         label: analysis.label || "",
         incidence: Number(analysis.incidence || 0),
         total_items: Number(analysis.total_items || 0),
@@ -991,7 +933,7 @@ async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
     });
     results.push(item);
     if (item.status === "DONE") done += 1;
-    else if (item.status === "NEMA_TROSKOVNIK") skipped += 1;
+    else if (item.status === "NEMA_TROSKOVNIK" || item.status === "BUDGET_PRESENT_MANUAL_REVIEW") skipped += 1;
     else failed += 1;
 
     await updateStatus(outRoot, {

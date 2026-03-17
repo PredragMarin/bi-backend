@@ -3,7 +3,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { scoreRows } = require("./layer1_score");
+const { scoreRows } = require("./legacy/layer1_score");
 const { validateLayer1Request } = require("./validate_layer1_request");
 const { fetchProcurementsPublic } = require("./adapters/fetch_procurements_public");
 const { fetchNoticesPublic } = require("./adapters/fetch_notices_public");

@@ -3,8 +3,10 @@
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
-const os = require("os");
-const { spawnSync } = require("child_process");
+const {
+  extractWorkbookMatrix,
+  isSupportedWorkbookFile
+} = require("../../core_shell/services/workbook_ingest_service");
 
 const DEFAULT_KEYWORDS = [
   "inox",
@@ -129,111 +131,6 @@ function isUnitLike(raw, uomSet) {
   return false;
 }
 
-function escapePsSingleQuoted(s) {
-  return String(s).replace(/'/g, "''");
-}
-
-function sanitizeJsonText(input) {
-  return String(input || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
-}
-
-function parseJsonWithFallback(rawText, sourceLabel) {
-  const text = String(rawText || "").trim();
-  if (!text) {
-    throw new Error(`PowerShell Excel extraction returned empty JSON: ${sourceLabel}`);
-  }
-  try {
-    return JSON.parse(text);
-  } catch (_) {
-    const sanitized = sanitizeJsonText(text);
-    try {
-      return JSON.parse(sanitized);
-    } catch (err2) {
-      throw new Error(`PowerShell JSON parse failed (${sourceLabel}): ${err2.message}`);
-    }
-  }
-}
-
-function runPowerShellWorkbookExtract(filePath, maxRows = 6000, maxCols = 80) {
-  const safePath = escapePsSingleQuoted(filePath);
-  const outJsonPath = path.join(os.tmpdir(), `eojn_l2_extract_${process.pid}_${Date.now()}_${Math.random().toString(16).slice(2)}.json`);
-  const safeOutPath = escapePsSingleQuoted(outJsonPath);
-  const command = `
-$ErrorActionPreference='Stop'
-$path='${safePath}'
-$outPath='${safeOutPath}'
-$maxRows=${Number(maxRows)}
-$maxCols=${Number(maxCols)}
-$excel = New-Object -ComObject Excel.Application
-$excel.Visible = $false
-$excel.DisplayAlerts = $false
-$wb = $excel.Workbooks.Open($path, 0, $true)
-$out = @()
-foreach($ws in $wb.Worksheets){
-  $used = $ws.UsedRange
-  $rows = [Math]::Min([int]$used.Rows.Count, $maxRows)
-  $cols = [Math]::Min([int]$used.Columns.Count, $maxCols)
-  $range = $ws.Range($ws.Cells.Item(1,1), $ws.Cells.Item($rows,$cols))
-  $matrix = $range.Value2
-  $sheetRows = @()
-  for($r=1; $r -le $rows; $r++){
-    $row = @()
-    for($c=1; $c -le $cols; $c++){
-      $cellValue = $null
-      try {
-        if($rows -eq 1 -and $cols -eq 1){
-          $cellValue = $matrix
-        } else {
-          $cellValue = $matrix[$r,$c]
-        }
-      } catch {
-        try {
-          $cellValue = $range.Item($r,$c).Value2
-        } catch {
-          $cellValue = $ws.Cells.Item($r,$c).Value2
-        }
-      }
-      if($null -eq $cellValue){
-        $row += ''
-      } else {
-        $row += [string]$cellValue
-      }
-    }
-    $sheetRows += ,$row
-  }
-  $out += [PSCustomObject]@{
-    name = $ws.Name
-    rows = $sheetRows
-    row_count = $rows
-    col_count = $cols
-  }
-}
-$wb.Close($false)
-$excel.Quit()
-[void][System.Runtime.Interopservices.Marshal]::ReleaseComObject($wb)
-[void][System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel)
-[gc]::Collect(); [gc]::WaitForPendingFinalizers()
-$json = (@{ sheets = $out } | ConvertTo-Json -Depth 10 -Compress)
-[System.IO.File]::WriteAllText($outPath, $json, [System.Text.Encoding]::UTF8)
-Write-Output $outPath
-`;
-  const result = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command], {
-    encoding: "utf8",
-    maxBuffer: 50 * 1024 * 1024
-  });
-  if (result.status !== 0) {
-    throw new Error(`PowerShell Excel extraction failed: ${result.stderr || result.stdout}`);
-  }
-  const reportedPath = String(result.stdout || "").trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] || outJsonPath;
-  let raw = "";
-  try {
-    raw = fs.readFileSync(reportedPath, "utf8");
-    return parseJsonWithFallback(raw, path.basename(reportedPath));
-  } finally {
-    try { fs.unlinkSync(reportedPath); } catch (_) {}
-  }
-}
-
 function validateExtractData(data) {
   return !!(data && Array.isArray(data.sheets));
 }
@@ -241,14 +138,10 @@ function validateExtractData(data) {
 function extractWorkbookData(filePath, opts = {}) {
   const maxRows = Number(opts.maxRows || 6000);
   const maxCols = Number(opts.maxCols || 80);
-  const raw = runPowerShellWorkbookExtract(filePath, maxRows, maxCols);
-  return {
-    source_file: filePath,
-    extracted_at: new Date().toISOString(),
-    max_rows: maxRows,
-    max_cols: maxCols,
-    sheets: Array.isArray(raw.sheets) ? raw.sheets : []
-  };
+  if (!isSupportedWorkbookFile(filePath)) {
+    throw new Error(`Unsupported workbook format for Node ingest: ${path.extname(String(filePath || "")) || "(none)"}`);
+  }
+  return extractWorkbookMatrix({ filePath, maxRows, maxCols });
 }
 
 function detectDescriptionColumn(rows) {
@@ -396,27 +289,23 @@ function assignDescriptionRowsToAnchors(rows, descCol, uomRows) {
   return assigned;
 }
 
-function scanBlockKeywords(textNorm, keywordsNorm) {
-  let hit = 0;
+function scanTerms(textNorm, termsNorm) {
   const matched = [];
-  for (const kw of keywordsNorm) {
-    if (textNorm.includes(kw)) {
-      hit += 1;
-      matched.push(kw);
-    }
+  for (const term of termsNorm) {
+    if (textNorm.includes(term)) matched.push(term);
   }
-  return { hit, matched };
+  return matched;
 }
 
-function extractCandidateTerms(blocks, keywordsNorm) {
+function extractCandidateTerms(blocks, excludedTermsNorm) {
   const counts = new Map();
-  const kwSet = new Set(keywordsNorm);
+  const excludedSet = new Set(excludedTermsNorm);
   for (const b of blocks) {
     const words = normalizeText(b.text)
       .split(/[^a-z0-9]+/g)
       .filter((w) => w && w.length >= 4 && !DEFAULT_STOP.has(w));
     for (const w of words) {
-      if (kwSet.has(w)) continue;
+      if (excludedSet.has(w)) continue;
       counts.set(w, (counts.get(w) || 0) + 1);
     }
   }
@@ -426,7 +315,7 @@ function extractCandidateTerms(blocks, keywordsNorm) {
     .map(([term, count]) => ({ term, count }));
 }
 
-function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
+function extractSheet(rows, sheetName, uomSet) {
   const uomCol = detectUomColumn(rows, uomSet);
   const uomRows = collectUomRows(rows, uomCol, uomSet);
   if (uomCol === null || uomRows.length < 2) {
@@ -435,12 +324,9 @@ function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
       mode: "non_bill_sheet",
       desc_col: null,
       anchor_col: null,
+      blocks: [],
+      anchor_rows: [],
       item_count: 0,
-      hit_items: 0,
-      incidence: 0,
-      intensity: 0,
-      total_keyword_hits: 0,
-      keyword_frequency: {},
       candidate_terms_top: []
     };
   }
@@ -452,12 +338,9 @@ function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
       mode: "uom_without_desc",
       desc_col: null,
       anchor_col: uomCol + 1,
+      blocks: [],
+      anchor_rows: [],
       item_count: 0,
-      hit_items: 0,
-      incidence: 0,
-      intensity: 0,
-      total_keyword_hits: 0,
-      keyword_frequency: {},
       candidate_terms_top: []
     };
   }
@@ -482,93 +365,148 @@ function analyzeSheet(rows, sheetName, keywordsNorm, uomSet) {
     blocks.push({ start_row: startRow + 1, end_row: endRow + 1, text });
   }
 
-  let itemCount = 0;
-  let hitItems = 0;
-  let totalHits = 0;
-  const keywordFreq = {};
-
-  for (const b of blocks) {
-    const norm = normalizeText(b.text);
-    if (!norm) continue;
-    itemCount += 1;
-    const k = scanBlockKeywords(norm, keywordsNorm);
-    if (k.hit > 0) {
-      hitItems += 1;
-      totalHits += k.hit;
-      for (const w of k.matched) keywordFreq[w] = (keywordFreq[w] || 0) + 1;
-    }
-  }
-
-  const incidence = itemCount > 0 ? Number((hitItems / itemCount).toFixed(4)) : 0;
-  const intensity = hitItems > 0 ? Number((totalHits / hitItems).toFixed(4)) : 0;
-
   return {
     sheet: sheetName,
     mode: "uom_anchor_rows_v2",
     desc_col: descCol + 1,
     anchor_col: uomCol + 1,
-    item_count: itemCount,
-    hit_items: hitItems,
-    incidence,
-    intensity,
-    total_keyword_hits: totalHits,
-    keyword_frequency: keywordFreq,
+    blocks,
+    item_count: blocks.length,
     anchor_rows: anchorRowsOut,
-    candidate_terms_top: extractCandidateTerms(blocks, keywordsNorm)
+    candidate_terms_top: []
   };
 }
 
-function chooseLabel(globalIncidence, maxSheetIncidence, maxSheetHits) {
-  if (maxSheetIncidence >= 0.3 && maxSheetHits >= 8) return "HIGH_INTEREST";
-  if (globalIncidence >= 0.15 || maxSheetIncidence >= 0.15) return "REVIEW";
+function chooseLabel(globalIncidence, maxSheetIncidence, maxSheetHits, rules = {}) {
+  const high = rules.high_interest || {};
+  const review = rules.review || {};
+  if (
+    maxSheetIncidence >= Number(high.max_sheet_incidence_gte || 0.3) &&
+    maxSheetHits >= Number(high.max_sheet_hits_gte || 8)
+  ) return "HIGH_INTEREST";
+  if (
+    globalIncidence >= Number(review.global_incidence_gte || 0.15) ||
+    maxSheetIncidence >= Number(review.max_sheet_incidence_gte || 0.15)
+  ) return "REVIEW";
   return "LOW_INTEREST";
 }
 
-function mergeKeywordFiles(moduleDir) {
-  const files = ["keywords_p1.json", "keywords_p2.json", "keywords_p3.json", "keywords_p4.json"];
-  const merged = [];
-  for (const f of files) {
-    const p = path.join(moduleDir, f);
-    if (!fs.existsSync(p)) continue;
-    try {
-      const arr = JSON.parse(fs.readFileSync(p, "utf8").replace(/^\uFEFF/, ""));
-      if (Array.isArray(arr)) merged.push(...arr.map((x) => String(x)));
-    } catch {
-      // Ignore malformed optional file.
-    }
+function loadUseCaseProfiles(moduleDir) {
+  const p = path.join(moduleDir, "contracts", "layer2_use_case_profiles.json");
+  if (!fs.existsSync(p)) return [];
+  const json = JSON.parse(fs.readFileSync(p, "utf8").replace(/^\uFEFF/, ""));
+  const items = Array.isArray(json && json.items) ? json.items : [];
+  return items.map((item) => ({
+    id: String(item && item.id || "").trim(),
+    label: String(item && item.label || "").trim(),
+    scoring_mode: String(item && item.scoring_mode || "strong_only").trim(),
+    strong_keywords: uniq((Array.isArray(item && item.strong_keywords) ? item.strong_keywords : []).map(normalizeText).filter(Boolean)),
+    support_keywords: uniq((Array.isArray(item && item.support_keywords) ? item.support_keywords : []).map(normalizeText).filter(Boolean)),
+    label_rules: item && item.label_rules ? item.label_rules : {}
+  })).filter((item) => item.id && item.strong_keywords.length);
+}
+
+function evaluateBlocksForProfile(blocks, profile) {
+  const strongTerms = Array.isArray(profile && profile.strong_keywords) ? profile.strong_keywords : [];
+  const supportTerms = Array.isArray(profile && profile.support_keywords) ? profile.support_keywords : [];
+  const excludedTerms = uniq([...strongTerms, ...supportTerms]);
+  let itemCount = 0;
+  let hitItems = 0;
+  let totalHits = 0;
+  const keywordFreq = {};
+  for (const block of blocks || []) {
+    const norm = normalizeText(block.text);
+    if (!norm) continue;
+    itemCount += 1;
+    const strongMatched = scanTerms(norm, strongTerms);
+    const supportMatched = scanTerms(norm, supportTerms);
+    const matched = String(profile && profile.scoring_mode || "strong_only") === "strong_only"
+      ? strongMatched
+      : uniq([...strongMatched, ...supportMatched]);
+    if (!matched.length) continue;
+    hitItems += 1;
+    totalHits += matched.length;
+    for (const term of matched) keywordFreq[term] = (keywordFreq[term] || 0) + 1;
   }
-  return uniq(merged);
+  return {
+    item_count: itemCount,
+    hit_items: hitItems,
+    incidence: itemCount > 0 ? Number((hitItems / itemCount).toFixed(4)) : 0,
+    intensity: hitItems > 0 ? Number((totalHits / hitItems).toFixed(4)) : 0,
+    total_keyword_hits: totalHits,
+    keyword_frequency: keywordFreq,
+    candidate_terms_top: extractCandidateTerms(blocks || [], excludedTerms)
+  };
 }
 
 function analyzeWorkbookData(workbook, opts = {}) {
-  const rawKeywords = opts.keywords && opts.keywords.length ? opts.keywords : DEFAULT_KEYWORDS;
-  const keywordsNorm = uniq(rawKeywords.map(normalizeText).filter(Boolean));
+  const useCaseProfiles = Array.isArray(opts.use_case_profiles) && opts.use_case_profiles.length
+    ? opts.use_case_profiles
+    : [{
+        id: "target_fitout",
+        label: "Default target fitout",
+        scoring_mode: "strong_only",
+        strong_keywords: uniq(DEFAULT_KEYWORDS.map(normalizeText).filter(Boolean)),
+        support_keywords: [],
+        label_rules: {}
+      }];
+  const primaryProfileId = String(opts.primary_profile_id || useCaseProfiles[0].id || "target_fitout").trim();
   const uomSet = new Set((opts.uom || DEFAULT_UOM).map(normalizeText));
+  const extractedSheets = workbook.sheets.map((s) => extractSheet(s.rows || [], s.name || "Sheet", uomSet));
 
-  const sheetResults = workbook.sheets.map((s) =>
-    analyzeSheet(s.rows || [], s.name || "Sheet", keywordsNorm, uomSet)
-  );
+  const profiles = useCaseProfiles.map((profile) => {
+    const sheetResults = extractedSheets.map((sheet) => {
+      const scored = evaluateBlocksForProfile(sheet.blocks || [], profile);
+      return {
+        sheet: sheet.sheet,
+        mode: sheet.mode,
+        desc_col: sheet.desc_col,
+        anchor_col: sheet.anchor_col,
+        item_count: scored.item_count,
+        hit_items: scored.hit_items,
+        incidence: scored.incidence,
+        intensity: scored.intensity,
+        total_keyword_hits: scored.total_keyword_hits,
+        keyword_frequency: scored.keyword_frequency,
+        anchor_rows: sheet.anchor_rows || [],
+        candidate_terms_top: scored.candidate_terms_top
+      };
+    });
+    const totalItems = sheetResults.reduce((acc, s) => acc + s.item_count, 0);
+    const hitItems = sheetResults.reduce((acc, s) => acc + s.hit_items, 0);
+    const totalKeywordHits = sheetResults.reduce((acc, s) => acc + s.total_keyword_hits, 0);
+    const incidence = totalItems > 0 ? Number((hitItems / totalItems).toFixed(4)) : 0;
+    const intensity = hitItems > 0 ? Number((totalKeywordHits / hitItems).toFixed(4)) : 0;
+    const maxSheet = [...sheetResults].sort((a, b) => b.incidence - a.incidence)[0] || null;
+    return {
+      profile_id: profile.id,
+      label_name: profile.label,
+      total_items: totalItems,
+      hit_items: hitItems,
+      incidence,
+      intensity,
+      total_keyword_hits: totalKeywordHits,
+      max_sheet: maxSheet ? maxSheet.sheet : null,
+      max_sheet_incidence: maxSheet ? maxSheet.incidence : 0,
+      label: chooseLabel(incidence, maxSheet ? maxSheet.incidence : 0, maxSheet ? maxSheet.hit_items : 0, profile.label_rules || {}),
+      sheets: sheetResults.sort((a, b) => b.incidence - a.incidence)
+    };
+  });
 
-  const totalItems = sheetResults.reduce((acc, s) => acc + s.item_count, 0);
-  const hitItems = sheetResults.reduce((acc, s) => acc + s.hit_items, 0);
-  const totalKeywordHits = sheetResults.reduce((acc, s) => acc + s.total_keyword_hits, 0);
-  const incidence = totalItems > 0 ? Number((hitItems / totalItems).toFixed(4)) : 0;
-  const intensity = hitItems > 0 ? Number((totalKeywordHits / hitItems).toFixed(4)) : 0;
-  const maxSheet = [...sheetResults].sort((a, b) => b.incidence - a.incidence)[0] || null;
-
-  const label = chooseLabel(incidence, maxSheet ? maxSheet.incidence : 0, maxSheet ? maxSheet.hit_items : 0);
-
+  const primary = profiles.find((p) => p.profile_id === primaryProfileId) || profiles[0];
   return {
     model: "uom_anchor_items_v2",
-    total_items: totalItems,
-    hit_items: hitItems,
-    incidence,
-    intensity,
-    total_keyword_hits: totalKeywordHits,
-    max_sheet: maxSheet ? maxSheet.sheet : null,
-    max_sheet_incidence: maxSheet ? maxSheet.incidence : 0,
-    label,
-    sheets: sheetResults.sort((a, b) => b.incidence - a.incidence)
+    primary_profile_id: primary ? primary.profile_id : primaryProfileId,
+    total_items: primary ? primary.total_items : 0,
+    hit_items: primary ? primary.hit_items : 0,
+    incidence: primary ? primary.incidence : 0,
+    intensity: primary ? primary.intensity : 0,
+    total_keyword_hits: primary ? primary.total_keyword_hits : 0,
+    max_sheet: primary ? primary.max_sheet : null,
+    max_sheet_incidence: primary ? primary.max_sheet_incidence : 0,
+    label: primary ? primary.label : "LOW_INTEREST",
+    sheets: primary ? primary.sheets : [],
+    profiles
   };
 }
 
@@ -638,14 +576,16 @@ async function main() {
   }
 
   const moduleDir = __dirname;
-  let keywords = mergeKeywordFiles(moduleDir);
-  if (!keywords.length) keywords = DEFAULT_KEYWORDS;
-
-  if (args.keywords_file) {
-    const kPath = path.resolve(String(args.keywords_file));
-    const fromFile = JSON.parse(fs.readFileSync(kPath, "utf8").replace(/^\uFEFF/, ""));
-    if (!Array.isArray(fromFile) || !fromFile.length) throw new Error("keywords_file must be a non-empty JSON array");
-    keywords = fromFile.map(String);
+  let useCaseProfiles = loadUseCaseProfiles(moduleDir);
+  if (!useCaseProfiles.length) {
+    useCaseProfiles = [{
+      id: "target_fitout",
+      label: "Default target fitout",
+      scoring_mode: "strong_only",
+      strong_keywords: uniq(DEFAULT_KEYWORDS.map(normalizeText).filter(Boolean)),
+      support_keywords: [],
+      label_rules: {}
+    }];
   }
 
   let extracted = null;
@@ -679,7 +619,11 @@ async function main() {
 
   const analysis = await analyzeBudgetFile(
     file || extracted.source_file || "extract_input",
-    { keywords, extracted }
+    {
+      extracted,
+      use_case_profiles: useCaseProfiles,
+      primary_profile_id: String(args.primary_profile || "target_fitout")
+    }
   );
 
   if (args.out) {

@@ -10,6 +10,7 @@
     "node-fetch": "^2.7.0",
     "odbc": "^2.4.9",
     "tough-cookie": "^6.0.0",
+    "playwright": "^1.58.2",
     "xlsx": "^0.18.5"
   },
   "description": "",
@@ -19,7 +20,5 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "devDependencies": {
-    "playwright": "^1.58.2"
-  }
+  "devDependencies": {}
 }

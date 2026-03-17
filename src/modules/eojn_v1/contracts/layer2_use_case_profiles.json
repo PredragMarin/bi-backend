@@ -1,0 +1,79 @@
+{
+  "catalog_id": "eojn_layer2_use_case_profiles_v1",
+  "version": "1.0.0",
+  "description": "Structured Layer 2 keyword profiles by EOJN use case.",
+  "default_primary_profile": "target_fitout",
+  "items": [
+    {
+      "id": "target_fitout",
+      "label": "Kitchen/Lab/Inox fitout",
+      "scoring_mode": "strong_only",
+      "strong_keywords": [
+        "inox",
+        "nehrdajuci",
+        "nehrdajući",
+        "aisi",
+        "aisi 304",
+        "aisi304",
+        "sudoper",
+        "napa",
+        "hauba",
+        "kuhinja",
+        "kuhinjski",
+        "gastro",
+        "konvektomat",
+        "konvekcijska pecnica",
+        "konvekcijska pećnica",
+        "perilica posuda",
+        "rashladna komora",
+        "hladnjaca",
+        "hladnjača",
+        "zamrzivac",
+        "zamrzivač",
+        "neutralni element",
+        "regal inox"
+      ],
+      "support_keywords": [
+        "radni stol",
+        "stol",
+        "polica",
+        "regal",
+        "hladnjak",
+        "zamrzavajuca komora",
+        "zamrzavajuća komora",
+        "+2",
+        "+4",
+        "-18",
+        "agregat",
+        "isparivac",
+        "isparivač",
+        "paneli"
+      ],
+      "label_rules": {
+        "high_interest": { "max_sheet_incidence_gte": 0.3, "max_sheet_hits_gte": 5 },
+        "review": { "global_incidence_gte": 0.08, "max_sheet_incidence_gte": 0.12 }
+      }
+    },
+    {
+      "id": "doors_joinery",
+      "label": "Doors/Joinery",
+      "scoring_mode": "strong_only",
+      "strong_keywords": [
+        "protuprovalna",
+        "protupozarna",
+        "protupožarna",
+        "ei30",
+        "ei60",
+        "sigurnosna vrata",
+        "ulazna vrata"
+      ],
+      "support_keywords": [
+        "vrata"
+      ],
+      "label_rules": {
+        "high_interest": { "max_sheet_incidence_gte": 0.25, "max_sheet_hits_gte": 5 },
+        "review": { "global_incidence_gte": 0.08, "max_sheet_incidence_gte": 0.12 }
+      }
+    }
+  ]
+}
