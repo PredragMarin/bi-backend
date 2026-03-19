@@ -42,6 +42,84 @@ const QUERY_ALLOWLIST = {
     `,
     timeoutMs: 15000,
     maxRows: 30000
+  },
+  V_DN_WINDOW: {
+    sql: `
+      SELECT *
+      FROM V_DN
+      WHERE termin_zac >= ? AND termin_zac < ?
+      ORDER BY termin_zac ASC, sifradn ASC;
+    `,
+    timeoutMs: 45000,
+    maxRows: 50000
+  },
+  V_DN_BY_DNID: {
+    sql: `
+      SELECT *
+      FROM V_DN
+      WHERE dnid = ?;
+    `,
+    timeoutMs: 10000,
+    maxRows: 20
+  },
+  V_DNOPR_WINDOW: {
+    sql: `
+      SELECT *
+      FROM V_DNOPR
+      WHERE datzac >= ? AND datzac < ?
+      ORDER BY datzac ASC, dnid ASC, oper ASC, dnoprid ASC;
+    `,
+    timeoutMs: 60000,
+    maxRows: 250000
+  },
+  V_DNOPR_BY_DNID: {
+    sql: `
+      SELECT *
+      FROM V_DNOPR
+      WHERE dnid = ?
+      ORDER BY datzac ASC, oper ASC, dnoprid ASC;
+    `,
+    timeoutMs: 20000,
+    maxRows: 5000
+  },
+  V_FEEDBACK_WINDOW: {
+    sql: `
+      SELECT *
+      FROM V_FEEDBACK
+      WHERE datum >= ? AND datum < ?
+      ORDER BY datum ASC, timecr ASC, dnid ASC, oper ASC;
+    `,
+    timeoutMs: 60000,
+    maxRows: 250000
+  },
+  V_FEEDBACK_BY_DNID: {
+    sql: `
+      SELECT *
+      FROM V_FEEDBACK
+      WHERE dnid = ?
+      ORDER BY timecr ASC, oper ASC, dnoprfid ASC;
+    `,
+    timeoutMs: 20000,
+    maxRows: 10000
+  },
+  ARTIKEL_BY_ARTIKEL: {
+    sql: `
+      SELECT artikel, naziv1, tehid, em
+      FROM ARTIKEL
+      WHERE artikel = ?;
+    `,
+    timeoutMs: 10000,
+    maxRows: 5
+  },
+  V_TEHOPR_VAR_BY_TEHID: {
+    sql: `
+      SELECT *
+      FROM V_TehOpr_Var
+      WHERE tehid = ?
+      ORDER BY oper ASC;
+    `,
+    timeoutMs: 15000,
+    maxRows: 200
   }
 };
 

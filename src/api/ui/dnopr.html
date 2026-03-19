@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lifecycle DN</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --card: #fffdf8;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --line: #d9ccb9;
+      --accent: #85552a;
+      --accent-2: #2f6a60;
+      --accent-3: #9f2d2d;
+      --soft: #f3e6d5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(133, 85, 42, 0.12), transparent 25%),
+        linear-gradient(180deg, #faf6ef 0%, var(--bg) 100%);
+    }
+    .wrap {
+      max-width: 1560px;
+      margin: 0;
+      padding: 18px 14px 28px;
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: 0 14px 34px rgba(61, 39, 12, 0.08);
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 14px;
+      align-items: start;
+    }
+    h1, h2, h3 { margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif; }
+    h1 { font-size: 26px; line-height: 1.02; }
+    h2 { font-size: 20px; }
+    h3 { font-size: 16px; }
+    p { margin: 4px 0; }
+    .muted { color: var(--muted); }
+    .hero-links { text-align: right; font-size: 13px; }
+    .hero-links a { color: var(--accent); text-decoration: none; }
+    .hero-links a:hover { text-decoration: underline; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px 10px;
+      background: linear-gradient(180deg, #fffdf8 0%, #f7f0e6 100%);
+      min-height: 66px;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .stat-value {
+      margin-top: 4px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .stat-sub {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      font-weight: 700;
+    }
+    input, select, button {
+      font: inherit;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      background: #fff;
+      color: var(--ink);
+    }
+    input[type="date"] { width: 168px; }
+    input[type="search"] { width: 240px; }
+    select { min-width: 170px; }
+    button {
+      cursor: pointer;
+      color: #fff;
+      font-weight: 700;
+      background: linear-gradient(180deg, #956334 0%, #7d4d21 100%);
+      border-color: #6b431c;
+    }
+    button.secondary {
+      background: linear-gradient(180deg, #3e7066 0%, #29574f 100%);
+      border-color: #234941;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 12px;
+      align-items: end;
+    }
+    .status-line {
+      margin-top: 8px;
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1.22fr .78fr;
+      gap: 14px;
+    }
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+    .section-side {
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .detail-layout {
+      display: grid;
+      grid-template-columns: 1.14fr .86fr;
+      gap: 14px;
+    }
+    .table-wrap {
+      max-height: 560px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fffdfa;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1120px;
+    }
+    th, td {
+      padding: 8px 9px;
+      border-bottom: 1px solid #eadfce;
+      font-size: 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f4e6d7;
+      user-select: none;
+      cursor: pointer;
+    }
+    tbody tr:hover td { background: #fdf4e7; }
+    tbody tr.selected td { background: #f8e2bc; }
+    tbody tr.summary-row td {
+      background: #f6ecdd;
+      font-weight: 700;
+      border-top: 2px solid #d7b98c;
+    }
+    .mono { font-family: Consolas, "Courier New", monospace; }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      background: #efe5d7;
+      white-space: nowrap;
+    }
+    .pill.good { background: #dcefe6; border-color: #9ec3b5; color: #23554b; }
+    .pill.warn { background: #fff0cf; border-color: #d9bd79; color: #8b5d15; }
+    .pill.bad { background: #f6dddd; border-color: #d4a0a0; color: #8f2d2d; }
+    .empty {
+      padding: 24px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      background: #fffaf4;
+      text-align: center;
+      color: var(--muted);
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: #fffaf2;
+    }
+    .metric .k {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .metric .v {
+      margin-top: 6px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .tag {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #efe6db;
+      border: 1px solid var(--line);
+    }
+    .note {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px dashed var(--line);
+      background: var(--soft);
+      font-size: 13px;
+    }
+    .hero.compact {
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+    @media (max-width: 1200px) {
+      .hero, .layout, .detail-layout, .stats { grid-template-columns: 1fr; }
+      .hero-links { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card hero compact">
+      <div>
+        <h1>Lifecycle DN modul</h1>
+        <div class="stats">
+          <div class="stat"><div class="stat-label">Radni nalozi</div><div class="stat-value" id="statOrders">0</div><div class="stat-sub" id="statOrdersSub">u windowu</div></div>
+          <div class="stat"><div class="stat-label">Operacije</div><div class="stat-value" id="statOps">0</div><div class="stat-sub" id="statOpsSub">V_DNOPR rows</div></div>
+          <div class="stat"><div class="stat-label">Ledger</div><div class="stat-value" id="statFeedback">0</div><div class="stat-sub" id="statFeedbackSub">V_FEEDBACK rows</div></div>
+          <div class="stat"><div class="stat-label">Artikli</div><div class="stat-value" id="statArticles">0</div><div class="stat-sub" id="statArticlesSub">Total Articles in WO</div></div>
+          <div class="stat"><div class="stat-label">Window</div><div class="stat-value" id="statWindow">-</div><div class="stat-sub" id="statWindowSub">today -90 / +90 default</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="hero-links"><a href="/ui/epr">EPR</a> | <a href="/ui/eojn">EOJN</a> | <a href="/ui/sms">SMS</a></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="toolbar">
+        <div>
+          <label for="fromDate">From</label>
+          <input id="fromDate" type="date" />
+        </div>
+        <div>
+          <label for="toDate">To</label>
+          <input id="toDate" type="date" />
+        </div>
+        <div>
+          <label for="admctrFilter">AdmCtr</label>
+          <select id="admctrFilter"><option value="ALL">ALL</option></select>
+        </div>
+        <div>
+          <label for="projektFilter">Projekt</label>
+          <select id="projektFilter"><option value="ALL">ALL</option></select>
+        </div>
+        <div>
+          <label for="statusFilter">Status</label>
+          <select id="statusFilter"><option value="ALL">ALL</option></select>
+        </div>
+        <div>
+          <label for="search">Search sifradn</label>
+          <input id="search" type="search" placeholder="26T04V02" />
+        </div>
+        <div>
+          <label for="sortKey">Sort</label>
+          <select id="sortKey">
+            <option value="termin_zac">Termin start</option>
+            <option value="sifradn">RN</option>
+            <option value="projekt">Projekt</option>
+            <option value="status_sifra">Status</option>
+            <option value="kolicina">Kol</option>
+            <option value="artikel_min">Artikal min</option>
+            <option value="artikel_ops">Art Ops</option>
+            <option value="planned_minutes_window">Planned min</option>
+            <option value="art_plan_variance_minutes">Art/Plan variance</option>
+            <option value="actual_minutes_window">Actual min</option>
+            <option value="last_feedback_at_window">Last feedback</option>
+          </select>
+        </div>
+        <div>
+          <label for="sortDir">Direction</label>
+          <select id="sortDir">
+            <option value="asc">Asc</option>
+            <option value="desc">Desc</option>
+          </select>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="loadBtn">Load window</button>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="defaultBtn" class="secondary">Default -90 / +90</button>
+        </div>
+      </div>
+      <div class="status-line" id="statusLine">Status: idle</div>
+    </section>
+
+    <section class="layout">
+      <div class="card">
+        <div class="section-head">
+          <h2>Work orders in window</h2>
+          <div class="section-side" id="ordersRatio">0 / 0</div>
+        </div>
+        <p class="muted">Glavni timeline pogled sortiramo po planiranom startu iz <span class="mono">V_DN.termin_zac</span>.</p>
+        <div class="table-wrap">
+          <table id="ordersTable">
+            <thead>
+              <tr>
+                <th data-key="termin_zac">Termin</th>
+                <th data-key="sifradn">RN</th>
+                <th data-key="projekt">Projekt</th>
+                <th data-key="status_sifra">Status</th>
+                <th data-key="admctr">AdmCtr</th>
+                <th data-key="artikel_sifra">Artikal</th>
+                <th data-key="artikel_naziv">Naziv artikla</th>
+                <th data-key="artikel_jm">JM</th>
+                <th data-key="kolicina">Kol</th>
+                <th data-key="artikel_ops">Art Ops</th>
+                <th data-key="artikel_min">Artikal min</th>
+                <th data-key="operation_count_window">Ops</th>
+                <th data-key="feedback_rows_window">Ledger</th>
+                <th data-key="planned_minutes_window">Plan min</th>
+                <th data-key="art_plan_variance_minutes">Art/Plan variance</th>
+                <th data-key="actual_minutes_window">Actual min</th>
+                <th data-key="last_feedback_at_window">Last feedback</th>
+              </tr>
+            </thead>
+            <tbody id="ordersBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Selected work order</h2>
+        <div id="detailBox" class="empty">Odaberite radni nalog iz liste. Detalj se tada dohvaća po <span class="mono">dnid</span> iz baze.</div>
+        <div id="facetTags" class="tag-list"></div>
+      </div>
+    </section>
+
+    <section class="detail-layout">
+      <div class="card">
+        <h2>Operacije po nalogu</h2>
+        <p class="muted">Prikaz koristi puni detail fetch iz <span class="mono">V_DNOPR</span> za odabrani <span class="mono">dnid</span>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Oper</th>
+                <th>Opis</th>
+                <th>Status</th>
+                <th>StdOper</th>
+                <th>DM</th>
+                <th>Artikal min</th>
+                <th>Plan min</th>
+                <th>Actual min</th>
+                <th>Variance</th>
+                <th>Next</th>
+              </tr>
+            </thead>
+            <tbody id="operationsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Ledger timeline</h2>
+        <p class="muted">Kronologija realizacije iz <span class="mono">V_FEEDBACK</span> za odabrani nalog.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>timecr</th>
+                <th>Oper</th>
+                <th>Opis</th>
+                <th>statusop</th>
+                <th>statusdn</th>
+                <th>casefstr</th>
+                <th>Worker</th>
+                <th>DM</th>
+                <th>datzac</th>
+                <th>datkon</th>
+              </tr>
+            </thead>
+            <tbody id="timelineBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      windowData: null,
+      filteredOrders: [],
+      selectedDnid: null,
+      detailByDnid: new Map()
+    };
+
+    const fromDateEl = document.getElementById("fromDate");
+    const toDateEl = document.getElementById("toDate");
+    const searchEl = document.getElementById("search");
+    const statusFilterEl = document.getElementById("statusFilter");
+    const projektFilterEl = document.getElementById("projektFilter");
+    const admctrFilterEl = document.getElementById("admctrFilter");
+    const sortKeyEl = document.getElementById("sortKey");
+    const sortDirEl = document.getElementById("sortDir");
+    const loadBtn = document.getElementById("loadBtn");
+    const defaultBtn = document.getElementById("defaultBtn");
+    const statusLineEl = document.getElementById("statusLine");
+    const ordersBodyEl = document.getElementById("ordersBody");
+    const ordersRatioEl = document.getElementById("ordersRatio");
+    const detailBoxEl = document.getElementById("detailBox");
+    const facetTagsEl = document.getElementById("facetTags");
+    const operationsBodyEl = document.getElementById("operationsBody");
+    const timelineBodyEl = document.getElementById("timelineBody");
+
+    function pad2(n) { return String(n).padStart(2, "0"); }
+    function toIsoDate(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`; }
+      function defaultWindow() {
+        const now = new Date();
+        const base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const from = new Date(base.getFullYear(), base.getMonth(), base.getDate() - 90);
+        const to = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 90);
+        fromDateEl.value = toIsoDate(from);
+        toDateEl.value = toIsoDate(to);
+      }
+
+    function pickStartDnid(rows) {
+      if (!rows.length) return null;
+      const today = toIsoDate(new Date());
+      const firstFutureOrToday = rows.find((row) => String(row.termin_zac || "").slice(0, 10) >= today);
+      if (firstFutureOrToday) return Number(firstFutureOrToday.dnid);
+      return Number(rows[rows.length - 1].dnid);
+    }
+
+    function esc(value) {
+      return String(value === null || value === undefined ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function fmtNum(value, digits = 2) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n.toFixed(digits) : "";
+    }
+
+    function statusPill(value) {
+      const v = String(value || "").trim() || "-";
+      let cls = "";
+      if (v === "KO" || v === "PF" || v === "T" || v === "t") cls = "good";
+      else if (v === "LA" || v === "PL" || v === "R") cls = "warn";
+      else if (v === "B") cls = "bad";
+      return `<span class="pill ${cls}">${esc(v)}</span>`;
+    }
+
+    function setStatus(message) {
+      statusLineEl.textContent = message;
+    }
+
+    function compareValues(a, b, key, dir) {
+      const av = a[key];
+      const bv = b[key];
+      let out = 0;
+      if (typeof av === "number" || typeof bv === "number") out = Number(av || 0) - Number(bv || 0);
+      else out = String(av || "").localeCompare(String(bv || ""));
+      return dir === "asc" ? out : -out;
+    }
+
+    function renderSummary() {
+      const data = state.windowData;
+      const rows = data ? (data.work_orders || []) : [];
+      document.getElementById("statOrders").textContent = String(rows.length);
+      document.getElementById("statOrdersSub").textContent = "filtered by V_DN window";
+      document.getElementById("statOps").textContent = String(data && data.meta ? data.meta.v_dnopr_rows : 0);
+      document.getElementById("statOpsSub").textContent = "rows in current window";
+      document.getElementById("statFeedback").textContent = String(data && data.meta ? data.meta.v_feedback_rows : 0);
+      document.getElementById("statFeedbackSub").textContent = "timeline rows in window";
+      const distinctArticles = new Set(rows.map((row) => String(row.artikel_sifra || "").trim()).filter(Boolean));
+      document.getElementById("statArticles").textContent = String(distinctArticles.size);
+      document.getElementById("statArticlesSub").textContent = "Total Articles in WO";
+      document.getElementById("statWindow").textContent = data ? `${data.window.from} -> ${data.window.to}` : "-";
+      document.getElementById("statWindowSub").textContent = "sliding timeline scope";
+      ordersRatioEl.textContent = `${state.filteredOrders.length} / ${rows.length}`;
+    }
+
+    function populateFacetSelect(selectEl, options, current) {
+      selectEl.innerHTML = `<option value="ALL">ALL</option>${(options || []).map((item) => `<option value="${esc(item.value)}">${esc(item.value)} (${item.count})</option>`).join("")}`;
+      if (Array.from(selectEl.options).some((opt) => opt.value === current)) selectEl.value = current;
+    }
+
+    function buildProjektOptions(rows, admctr) {
+      const counts = new Map();
+      rows.forEach((row) => {
+        if (admctr !== "ALL" && row.admctr !== admctr) return;
+        const value = String(row.projekt || "").trim() || "(blank)";
+        counts.set(value, (counts.get(value) || 0) + 1);
+      });
+      return Array.from(counts.entries())
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => a.value.localeCompare(b.value));
+    }
+
+    function refreshDependentFilters() {
+      if (!state.windowData) return;
+      const admctr = admctrFilterEl.value || "ALL";
+      const projektOptions = buildProjektOptions(state.windowData.work_orders || [], admctr);
+      const currentProjekt = projektFilterEl.value;
+      populateFacetSelect(projektFilterEl, projektOptions, currentProjekt);
+      if (!Array.from(projektFilterEl.options).some((opt) => opt.value === currentProjekt)) {
+        projektFilterEl.value = "ALL";
+      }
+    }
+
+    async function loadWindow() {
+      setStatus("Status: loading DB window...");
+      const url = `/api/dnopr/v1/window?from=${encodeURIComponent(fromDateEl.value)}&to=${encodeURIComponent(toDateEl.value)}`;
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      state.windowData = data;
+      state.detailByDnid.clear();
+      renderSummary();
+      populateFacetSelect(admctrFilterEl, data.facets.admctr_options, admctrFilterEl.value);
+      populateFacetSelect(statusFilterEl, data.facets.status_options, statusFilterEl.value);
+      refreshDependentFilters();
+      facetTagsEl.innerHTML = [
+        ...data.facets.status_options.slice(0, 12).map((item) => `<span class="tag">status ${esc(item.value)}: ${item.count}</span>`),
+        ...data.facets.admctr_options.slice(0, 8).map((item) => `<span class="tag">admctr ${esc(item.value)}: ${item.count}</span>`)
+      ].join("");
+      applyFilters();
+      setStatus(`Status: loaded ${data.work_orders.length} naloga, request ${data.audit.request_id}`);
+    }
+
+    function applyFilters() {
+      if (!state.windowData) return;
+      const rows = state.windowData.work_orders || [];
+      const search = String(searchEl.value || "").trim().toLowerCase();
+      const status = statusFilterEl.value;
+      const projekt = projektFilterEl.value;
+      const admctr = admctrFilterEl.value;
+      const sortKey = sortKeyEl.value;
+      const sortDir = sortDirEl.value;
+
+      state.filteredOrders = rows
+        .filter((row) => {
+          if (status !== "ALL" && row.status_sifra !== status) return false;
+          if (projekt !== "ALL" && row.projekt !== projekt) return false;
+          if (admctr !== "ALL" && row.admctr !== admctr) return false;
+          if (!search) return true;
+          return String(row.sifradn || "").toLowerCase().includes(search);
+        })
+        .sort((a, b) => compareValues(a, b, sortKey, sortDir) || String(a.sifradn || "").localeCompare(String(b.sifradn || "")));
+
+      ordersRatioEl.textContent = `${state.filteredOrders.length} / ${rows.length}`;
+
+      if (!state.filteredOrders.length) state.selectedDnid = null;
+      else if (!state.filteredOrders.some((row) => Number(row.dnid) === Number(state.selectedDnid))) state.selectedDnid = pickStartDnid(state.filteredOrders);
+
+      renderOrders();
+      renderDetail();
+    }
+
+    function renderOrders() {
+      const rows = state.filteredOrders;
+      if (!rows.length) {
+        ordersBodyEl.innerHTML = `<tr><td colspan="17"><div class="empty">Nema naloga za odabrani timeline i filtere.</div></td></tr>`;
+        return;
+      }
+      ordersBodyEl.innerHTML = rows.map((row) => {
+        const selected = Number(row.dnid) === Number(state.selectedDnid) ? "selected" : "";
+        return `
+          <tr class="${selected}" data-dnid="${row.dnid}">
+            <td>${esc(row.termin_zac)}</td>
+            <td><strong>${esc(row.sifradn)}</strong></td>
+            <td>${esc(row.projekt || "-")}</td>
+            <td>${statusPill(row.status_sifra)}</td>
+            <td>${esc(row.admctr || "-")}</td>
+            <td>${esc(row.artikel_sifra || "-")}</td>
+            <td>${esc(row.artikel_naziv || "-")}</td>
+            <td>${esc(row.artikel_jm || "-")}</td>
+            <td>${fmtNum(row.kolicina)}</td>
+            <td>${row.artikel_ops || 0}</td>
+            <td>${fmtNum(row.artikel_min)}</td>
+            <td>${row.operation_count_window}</td>
+            <td>${row.feedback_rows_window}</td>
+            <td>${fmtNum(row.planned_minutes_window)}</td>
+            <td>${fmtNum(row.art_plan_variance_minutes)}</td>
+            <td>${fmtNum(row.actual_minutes_window)}</td>
+            <td>${esc(row.last_feedback_at_window || "-")}</td>
+          </tr>
+        `;
+      }).join("");
+
+      Array.from(ordersBodyEl.querySelectorAll("tr[data-dnid]")).forEach((tr) => {
+        tr.addEventListener("click", async () => {
+          state.selectedDnid = Number(tr.getAttribute("data-dnid"));
+          renderOrders();
+          await renderDetail();
+        });
+      });
+
+      const selectedRow = ordersBodyEl.querySelector(`tr[data-dnid="${state.selectedDnid}"]`);
+      if (selectedRow) {
+        selectedRow.scrollIntoView({ block: "center" });
+      }
+    }
+
+    async function ensureDetail(dnid) {
+      if (state.detailByDnid.has(dnid)) return state.detailByDnid.get(dnid);
+      setStatus(`Status: loading detail for dnid ${dnid}...`);
+      const res = await fetch(`/api/dnopr/v1/order/${encodeURIComponent(dnid)}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      state.detailByDnid.set(dnid, data);
+      setStatus(`Status: detail loaded for dnid ${dnid}`);
+      return data;
+    }
+
+    async function renderDetail() {
+      const selected = (state.filteredOrders || []).find((row) => Number(row.dnid) === Number(state.selectedDnid));
+      if (!selected) {
+        detailBoxEl.innerHTML = `<div class="empty">Odaberite radni nalog iz liste.</div>`;
+        operationsBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">Nema operacija.</div></td></tr>`;
+        timelineBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">Nema ledger timelinea.</div></td></tr>`;
+        return;
+      }
+
+      let detail;
+      try {
+        detail = await ensureDetail(selected.dnid);
+      } catch (err) {
+        detailBoxEl.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+        operationsBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">${esc(err.message)}</div></td></tr>`;
+        timelineBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">${esc(err.message)}</div></td></tr>`;
+        return;
+      }
+
+      const header = detail.header || {};
+      const totals = detail.operation_totals || {};
+      detailBoxEl.innerHTML = `
+        <div class="metric-grid">
+          <div class="metric"><div class="k">RN</div><div class="v mono">${esc(header.sifradn || selected.sifradn || "-")}</div></div>
+          <div class="metric"><div class="k">DNID</div><div class="v mono">${header.dnid || selected.dnid}</div></div>
+          <div class="metric"><div class="k">Projekt</div><div class="v">${esc(header.nalog || selected.projekt || "-")}</div></div>
+          <div class="metric"><div class="k">Status</div><div class="v">${statusPill(header.status_sifra || selected.status_sifra)}</div></div>
+          <div class="metric"><div class="k">AdmCtr</div><div class="v">${esc(header.admctr || selected.admctr || "-")}</div></div>
+          <div class="metric"><div class="k">Artikal</div><div class="v">${esc(header.artikel_sifra || header.sifraid || selected.artikel_sifra || "-")}</div></div>
+          <div class="metric"><div class="k">Naziv artikla</div><div class="v">${esc(header.artikel_naziv || selected.artikel_naziv || "-")}</div></div>
+          <div class="metric"><div class="k">JM</div><div class="v">${esc(header.artikel_jm || selected.artikel_jm || "-")}</div></div>
+          <div class="metric"><div class="k">Kol</div><div class="v">${fmtNum(header.kolicina || selected.kolicina)}</div></div>
+          <div class="metric"><div class="k">Artikal min</div><div class="v">${fmtNum(header.artikel_min || selected.artikel_min)}</div></div>
+        </div>
+        <div class="note">
+          <div><strong>Plan naloga:</strong> ${esc(header.termin_zac || selected.termin_zac || "-")} -> ${esc(header.termin_kon || selected.termin_kon || "-")}</div>
+          <div><strong>Dat lansa / konac:</strong> ${esc(header.dat_lans || selected.dat_lans || "-")} -> ${esc(header.dat_konc || selected.dat_konc || "-")}</div>
+          <div><strong>Request:</strong> <span class="mono">${esc(detail.audit.request_id || "-")}</span></div>
+        </div>
+      `;
+
+      const ops = detail.operation_rows || [];
+      operationsBodyEl.innerHTML = ops.length ? `${ops.map((row) => `
+        <tr>
+          <td class="mono">${row.oper}</td>
+          <td>${esc(row.tekst)}</td>
+          <td>${statusPill(row.status)}</td>
+          <td>${esc(row.stdoper || "-")}</td>
+          <td>${esc(row.dm || "-")}</td>
+          <td>${row.artikel_minutes === null ? "" : fmtNum(row.artikel_minutes)}</td>
+          <td>${fmtNum(row.planned_minutes)}</td>
+          <td>${fmtNum(row.actual_minutes)}</td>
+          <td>${fmtNum(row.variance_minutes)}</td>
+          <td class="mono">${row.next_dnoprid || "-"}</td>
+        </tr>
+      `).join("")}
+        <tr class="summary-row">
+          <td colspan="5">Ukupno</td>
+          <td>${fmtNum(totals.artikel_minutes)}</td>
+          <td>${fmtNum(totals.planned_minutes)}</td>
+          <td>${fmtNum(totals.actual_minutes)}</td>
+          <td>${fmtNum(totals.variance_minutes)}</td>
+          <td></td>
+        </tr>` : `<tr><td colspan="10"><div class="empty">Za ovaj nalog nema operacija.</div></td></tr>`;
+
+      const timeline = detail.timeline_rows || [];
+      timelineBodyEl.innerHTML = timeline.length ? timeline.map((row) => `
+        <tr>
+          <td>${esc(row.timecr)}</td>
+          <td class="mono">${row.oper}</td>
+          <td>${esc(row.tekst)}</td>
+          <td>${statusPill(row.statusop)}</td>
+          <td>${statusPill(row.statusdn)}</td>
+          <td>${esc(row.casefstr || String(row.casefektf || ""))}</td>
+          <td>${esc(row.priimekime || "-")}</td>
+          <td>${esc(row.dm || "-")}</td>
+          <td>${esc(row.datzac || "-")}</td>
+          <td>${esc(row.datkon || "-")}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="10"><div class="empty">Za ovaj nalog nema ledger zapisa.</div></td></tr>`;
+    }
+
+    loadBtn.addEventListener("click", () => loadWindow().catch((err) => setStatus(`Status: load failed - ${err.message}`)));
+    defaultBtn.addEventListener("click", () => {
+      defaultWindow();
+      loadWindow().catch((err) => setStatus(`Status: load failed - ${err.message}`));
+    });
+    searchEl.addEventListener("input", applyFilters);
+    statusFilterEl.addEventListener("change", applyFilters);
+    projektFilterEl.addEventListener("change", applyFilters);
+    admctrFilterEl.addEventListener("change", () => {
+      refreshDependentFilters();
+      applyFilters();
+    });
+    sortKeyEl.addEventListener("change", applyFilters);
+    sortDirEl.addEventListener("change", applyFilters);
+
+    Array.from(document.querySelectorAll("#ordersTable th[data-key]")).forEach((th) => {
+      th.addEventListener("click", () => {
+        const key = th.getAttribute("data-key");
+        if (sortKeyEl.value === key) sortDirEl.value = sortDirEl.value === "asc" ? "desc" : "asc";
+        else sortKeyEl.value = key;
+        applyFilters();
+      });
+    });
+
+    defaultWindow();
+    loadWindow().catch((err) => {
+      setStatus(`Status: load failed - ${err.message}`);
+      detailBoxEl.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+    });
+  </script>
+</body>
+</html>
