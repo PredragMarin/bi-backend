@@ -13,9 +13,14 @@ const {
   loadLatestLayer2Result
 } = require("../../core_shell/services/eojn_layer2_store");
 const {
-  loadCanonicalStateArtifacts,
-  mergeCanonicalStateArtifacts
+  loadCanonicalStateArtifacts
 } = require("../../core_shell/services/eojn_layer1_store");
+const {
+  syncLayer2ResultsToCanonical
+} = require("../../core_shell/services/eojn_canonical_store");
+const {
+  appendRunAuditEntries
+} = require("../../core_shell/services/eojn_ops_store");
 const {
   getReviewDecisionsForRun,
   getLatestReviewDecisionsByTender
@@ -300,46 +305,8 @@ async function buildCanonicalStartRows({ outRoot, cfg }) {
   };
 }
 
-function applyLayer2ResultsToLatestRows(latestRows, results) {
-  const currentRows = Array.isArray(latestRows) ? latestRows : [];
-  const resultMap = new Map(
-    (Array.isArray(results) ? results : [])
-      .filter((row) => Number.isFinite(Number(row && row.tender_id)))
-      .map((row) => [Number(row.tender_id), row])
-  );
-  return currentRows
-    .filter((row) => resultMap.has(Number(row && row.TenderId)))
-    .map((row) => {
-      const result = resultMap.get(Number(row && row.TenderId));
-      const hitItems = Number(result && result.hit_items || 0);
-      const keywordHits = Number(result && result.total_keyword_hits || 0);
-      return {
-        ...row,
-        L2Status: String(result && result.status || row.L2Status || "PENDING").trim(),
-        L2Label: String(result && result.label || row.L2Label || "").trim(),
-        L2Incidence: result && result.incidence !== undefined ? Number(result.incidence || 0) : row.L2Incidence,
-        L2ItemCount: result && result.total_items !== undefined ? Number(result.total_items || 0) : row.L2ItemCount,
-        L2HitItems: result && result.hit_items !== undefined ? Number(result.hit_items || 0) : row.L2HitItems,
-        L2Intensity: hitItems > 0 ? Number((keywordHits / hitItems).toFixed(4)) : row.L2Intensity,
-        L2MaxSheet: String(result && result.max_sheet || row.L2MaxSheet || "").trim(),
-        LifecycleGate: String(result && result.watchlist_gate || row.LifecycleGate || "").trim(),
-        UpdatedAt: new Date().toISOString()
-      };
-    });
-}
-
 async function syncCanonicalLatestAfterLayer2({ outRoot, results }) {
-  const canonical = await loadCanonicalStateArtifacts({ outRoot });
-  const latestRows = Array.isArray(canonical.tender_latest_rows) ? canonical.tender_latest_rows : [];
-  const updatedLatestRows = applyLayer2ResultsToLatestRows(latestRows, results);
-  if (!updatedLatestRows.length) return 0;
-  await mergeCanonicalStateArtifacts({
-    outRoot,
-    tenderLatestRows: updatedLatestRows,
-    tenderNoticeHistoryRows: [],
-    reviewDecisionHistoryRows: []
-  });
-  return updatedLatestRows.length;
+  return syncLayer2ResultsToCanonical({ outRoot, results });
 }
 
 function resolveReviewForTender(reviewDecisionsForRun, latestReviewByTender, runDateYmd, tenderId) {
@@ -368,6 +335,23 @@ function filterQueueByReviewState(queueRows, reviewDecisionsForRun, latestReview
   return {
     rows,
     skipped_reviewed: skippedReviewed
+  };
+}
+
+function buildL2RunAuditEntry({ runId, eventType, runDateYmd, eventAt, runDir, queueSource, counts, status, message, errorCode }) {
+  return {
+    RunId: String(runId || "").trim(),
+    RunType: "L2",
+    EventType: String(eventType || "").trim(),
+    RunDateYmd: String(runDateYmd || "").trim(),
+    EventAt: String(eventAt || "").trim(),
+    Status: String(status || "").trim(),
+    Mode: "incremental",
+    OutDir: String(runDir || "").trim(),
+    QueueSource: String(queueSource || "").trim(),
+    Counts: counts || null,
+    Message: String(message || "").trim(),
+    ErrorCode: errorCode ? String(errorCode).trim() : ""
   };
 }
 
@@ -859,132 +843,191 @@ async function processTender({
 
 async function runLayer2Worker({ outRoot, runDir, queueRows, cfg, runId }) {
   const runDateYmd = path.basename(runDir).replace(/_/g, "-");
-  const skipReviewFilter = Boolean(cfg.skip_review_filter);
-  let selected = [];
-  let skippedReviewed = 0;
-  if (skipReviewFilter) {
-    selected = (Array.isArray(queueRows) ? queueRows : []).slice(0, cfg.max_items);
-    skippedReviewed = Number(cfg.review_skipped_count || 0);
-  } else {
-    const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
-    const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
-    const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
-    const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, latestReviewByTender, runDateYmd, cfg.force_reprocess);
-    selected = reviewFiltered.rows.slice(0, cfg.max_items);
-    skippedReviewed = reviewFiltered.skipped_reviewed;
-  }
-  const total = selected.length;
-  const results = [];
-  const moduleDir = __dirname;
-  let noticesByTender = cfg.notices_by_tender instanceof Map ? cfg.notices_by_tender : null;
-  if (!noticesByTender) {
-    let noticesRows = [];
-    try {
-      const noticesPath = path.join(runDir, "notices_raw.json");
-      if (fs.existsSync(noticesPath)) {
-        const loaded = await readJson(noticesPath);
-        noticesRows = Array.isArray(loaded) ? loaded : [];
-      }
-    } catch (_) {
-      noticesRows = [];
+  try {
+    const skipReviewFilter = Boolean(cfg.skip_review_filter);
+    let selected = [];
+    let skippedReviewed = 0;
+    if (skipReviewFilter) {
+      selected = (Array.isArray(queueRows) ? queueRows : []).slice(0, cfg.max_items);
+      skippedReviewed = Number(cfg.review_skipped_count || 0);
+    } else {
+      const reviewDecisions = await getReviewDecisionsForRun({ outRoot, runDateYmd });
+      const latestReviewByTender = await getLatestReviewDecisionsByTender({ outRoot });
+      const requestedQueue = filterQueueByTenderIds(queueRows, cfg.tender_ids);
+      const reviewFiltered = filterQueueByReviewState(requestedQueue, reviewDecisions, latestReviewByTender, runDateYmd, cfg.force_reprocess);
+      selected = reviewFiltered.rows.slice(0, cfg.max_items);
+      skippedReviewed = reviewFiltered.skipped_reviewed;
     }
-    noticesByTender = buildNoticesByTender(noticesRows);
-  }
-  let done = 0;
-  let skipped = 0;
-  let failed = 0;
-
-  await updateStatus(outRoot, {
-    active: true,
-    run_id: runId,
-    started_at: new Date().toISOString(),
-    completed_at: null,
-    phase: "RUNNING",
-    message: total ? `Starting Layer 2 run: 0/${total}` : "No queue items to process.",
-    current_index: 0,
-    total,
-    done: 0,
-    skipped: 0,
-    reviewed: skippedReviewed,
-    failed: 0,
-    progress_pct: 0,
-    current_tender_id: null,
-    output_file: null
-  });
-
-  for (let i = 0; i < selected.length; i += 1) {
-    const idx = i + 1;
-    const row = selected[i];
-    const item = await processTender({
-      outRoot,
-      runDir,
-      moduleDir,
-      row,
-      idx,
-      total,
-      retryCount: cfg.retry_count,
-      itemTimeoutMs: cfg.item_timeout_ms,
-      enableDownload: cfg.enable_download,
-      configPath: cfg.config_path || "",
-      runId,
-      jitterMinMs: cfg.human_delay_min_ms,
-      jitterMaxMs: cfg.human_delay_max_ms,
-      noticesForTender: noticesByTender.get(Number(row && row.Id)) || []
-    });
-    results.push(item);
-    if (item.status === "DONE") done += 1;
-    else if (item.status === "NEMA_TROSKOVNIK" || item.status === "BUDGET_PRESENT_MANUAL_REVIEW") skipped += 1;
-    else failed += 1;
+    const total = selected.length;
+    const results = [];
+    const moduleDir = __dirname;
+    let noticesByTender = cfg.notices_by_tender instanceof Map ? cfg.notices_by_tender : null;
+    if (!noticesByTender) {
+      let noticesRows = [];
+      try {
+        const noticesPath = path.join(runDir, "notices_raw.json");
+        if (fs.existsSync(noticesPath)) {
+          const loaded = await readJson(noticesPath);
+          noticesRows = Array.isArray(loaded) ? loaded : [];
+        }
+      } catch (_) {
+        noticesRows = [];
+      }
+      noticesByTender = buildNoticesByTender(noticesRows);
+    }
+    let done = 0;
+    let skipped = 0;
+    let failed = 0;
 
     await updateStatus(outRoot, {
-      current_index: idx,
+      active: true,
+      run_id: runId,
+      started_at: new Date().toISOString(),
+      completed_at: null,
+      phase: "RUNNING",
+      message: total ? `Starting Layer 2 run: 0/${total}` : "No queue items to process.",
+      current_index: 0,
+      total,
+      done: 0,
+      skipped: 0,
+      reviewed: skippedReviewed,
+      failed: 0,
+      progress_pct: 0,
+      current_tender_id: null,
+      output_file: null
+    });
+
+    for (let i = 0; i < selected.length; i += 1) {
+      const idx = i + 1;
+      const row = selected[i];
+      const item = await processTender({
+        outRoot,
+        runDir,
+        moduleDir,
+        row,
+        idx,
+        total,
+        retryCount: cfg.retry_count,
+        itemTimeoutMs: cfg.item_timeout_ms,
+        enableDownload: cfg.enable_download,
+        configPath: cfg.config_path || "",
+        runId,
+        jitterMinMs: cfg.human_delay_min_ms,
+        jitterMaxMs: cfg.human_delay_max_ms,
+        noticesForTender: noticesByTender.get(Number(row && row.Id)) || []
+      });
+      results.push(item);
+      if (item.status === "DONE") done += 1;
+      else if (item.status === "NEMA_TROSKOVNIK" || item.status === "BUDGET_PRESENT_MANUAL_REVIEW") skipped += 1;
+      else failed += 1;
+
+      await updateStatus(outRoot, {
+        current_index: idx,
+        done,
+        skipped,
+        reviewed: skippedReviewed,
+        failed,
+        current_tender_id: null,
+        message: `Processed ${idx}/${total} (done=${done}, skipped=${skipped}, failed=${failed})`
+      });
+    }
+
+    const outputPayload = {
+      run_id: runId,
+      created_at: new Date().toISOString(),
+      run_dir: runDir,
+      config: {
+        max_items: cfg.max_items,
+        retry_count: cfg.retry_count,
+        item_timeout_ms: cfg.item_timeout_ms,
+        enable_download: cfg.enable_download,
+        human_delay_min_ms: cfg.human_delay_min_ms,
+        human_delay_max_ms: cfg.human_delay_max_ms
+      },
+      total,
       done,
       skipped,
-      reviewed: skippedReviewed,
       failed,
+      results
+    };
+    const outputFile = await saveLayer2Result({
+      runDir,
+      runId,
+      result: outputPayload
+    });
+    try {
+      await syncCanonicalLatestAfterLayer2({ outRoot, results });
+    } catch (_) {
+      // Keep Layer 2 result persisted even if canonical latest sync fails.
+    }
+
+    const completedAt = new Date().toISOString();
+    await appendRunAuditEntries({
+      outRoot,
+      entries: [
+        buildL2RunAuditEntry({
+          runId,
+          eventType: "COMPLETED",
+          runDateYmd,
+          eventAt: completedAt,
+          runDir,
+          queueSource: cfg.skip_review_filter ? "canonical_state" : "legacy_queue",
+          counts: { total, done, skipped, reviewed: skippedReviewed, failed },
+          status: failed > 0 ? "PARTIAL_SUCCESS" : (total === 0 ? "EMPTY_SUCCESS" : "SUCCESS"),
+          message: `Layer 2 run done (${done}/${total}, skipped=${skipped}, reviewed=${skippedReviewed}, failed=${failed})`
+        })
+      ]
+    });
+
+    await updateStatus(outRoot, {
+      active: false,
+      completed_at: completedAt,
+      phase: "DONE",
+      message: `Layer 2 run done (${done}/${total}, skipped=${skipped}, reviewed=${skippedReviewed}, failed=${failed})`,
       current_tender_id: null,
-      message: `Processed ${idx}/${total} (done=${done}, skipped=${skipped}, failed=${failed})`
+      output_file: outputFile,
+      current_index: total
+    });
+  } catch (err) {
+    const failedAt = new Date().toISOString();
+    await appendRunAuditEntries({
+      outRoot,
+      entries: [
+        buildL2RunAuditEntry({
+          runId,
+          eventType: "FAILED",
+          runDateYmd,
+          eventAt: failedAt,
+          runDir,
+          queueSource: cfg.skip_review_filter ? "canonical_state" : "legacy_queue",
+          status: "FAILED",
+          message: String(err && err.message || err || "").slice(0, 500),
+          errorCode: err && err.code ? err.code : "L2_FAILED"
+        })
+      ]
+    });
+    await saveLayer2Status({
+      outRoot,
+      status: {
+        active: false,
+        run_id: runId,
+        started_at: null,
+        completed_at: failedAt,
+        phase: "FAILED",
+        message: String(err && err.message || err || "").slice(0, 500),
+        current_index: 0,
+        total: 0,
+        done: 0,
+        skipped: 0,
+        reviewed: Number(cfg.review_skipped_count || 0),
+        failed: 1,
+        progress_pct: 0,
+        current_tender_id: null,
+        last_heartbeat_at: failedAt,
+        output_file: null
+      }
     });
   }
-
-  const outputPayload = {
-    run_id: runId,
-    created_at: new Date().toISOString(),
-    run_dir: runDir,
-    config: {
-      max_items: cfg.max_items,
-      retry_count: cfg.retry_count,
-      item_timeout_ms: cfg.item_timeout_ms,
-      enable_download: cfg.enable_download,
-      human_delay_min_ms: cfg.human_delay_min_ms,
-      human_delay_max_ms: cfg.human_delay_max_ms
-    },
-    total,
-    done,
-    skipped,
-    failed,
-    results
-  };
-  const outputFile = await saveLayer2Result({
-    runDir,
-    runId,
-    result: outputPayload
-  });
-  try {
-    await syncCanonicalLatestAfterLayer2({ outRoot, results });
-  } catch (_) {
-    // Keep Layer 2 result persisted even if canonical latest sync fails.
-  }
-
-  await updateStatus(outRoot, {
-    active: false,
-    completed_at: new Date().toISOString(),
-    phase: "DONE",
-    message: `Layer 2 run done (${done}/${total}, skipped=${skipped}, reviewed=${skippedReviewed}, failed=${failed})`,
-    current_tender_id: null,
-    output_file: outputFile,
-    current_index: total
-  });
 }
 
 async function startLayer2Run(opts) {
@@ -1065,6 +1108,26 @@ async function startLayer2Run(opts) {
       last_heartbeat_at: new Date().toISOString(),
       output_file: null
     }
+  });
+  await appendRunAuditEntries({
+    outRoot,
+    entries: [
+      buildL2RunAuditEntry({
+        runId,
+        eventType: "STARTED",
+        runDateYmd: cfg.run_date_ymd || path.basename(runDir).replace(/_/g, "-"),
+        eventAt: new Date().toISOString(),
+        runDir,
+        queueSource,
+        counts: {
+          queue_total: queueRows.length,
+          queue_selected: Math.min(queueRows.length, cfg.max_items),
+          queue_skipped_reviewed: skippedReviewed
+        },
+        status: "STARTED",
+        message: `Layer 2 run started from ${queueSource}.`
+      })
+    ]
   });
   try {
     const prevCycle = await loadActiveCycle({ outRoot });

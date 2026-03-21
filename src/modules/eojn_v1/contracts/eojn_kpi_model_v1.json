@@ -1,0 +1,51 @@
+{
+  "model_id": "eojn_kpi_model_v1",
+  "version": "1.0.0",
+  "description": "Management-oriented EOJN KPI model with explicit calendar-aware continuity and review-performance rules.",
+  "calendar_assumptions": {
+    "timezone": "Europe/Zagreb",
+    "scheduled_cycle_local_times": ["06:00", "15:00"],
+    "expected_raw_publish_pattern": "weekday_midnight_heavy",
+    "normal_empty_morning_window": {
+      "local_time": "06:00",
+      "applies_on": ["Saturday", "Sunday"]
+    },
+    "notes": [
+      "EOJN raw procurements and notices are expected to cluster around 00:00 local time on working days.",
+      "An empty 06:00 run on weekends is not by itself a continuity problem.",
+      "Coverage assessment must use both scheduler execution evidence and watermark continuity."
+    ]
+  },
+  "management_view_fields": [
+    "ExpectedCycles",
+    "SuccessfulL1Cycles",
+    "SuccessfulL2Cycles",
+    "CoverageStatus",
+    "NewL1PassTenders",
+    "L2AnalyzedTenders",
+    "OpenReviewBacklog",
+    "WatchCount",
+    "MedianReviewLatencyHours",
+    "StrongSignalSlaStatus"
+  ],
+  "coverage_rules": {
+    "ok": "All expected cycles executed or empty cycles are calendar-normal and watermark continuity is intact.",
+    "warning": "At least one expected cycle was missed or failed, but overlap plus watermark continuity still protects against likely raw gaps.",
+    "gap_risk": "A required cycle is missing or failed and watermark continuity is stale enough to create a plausible ingest gap."
+  },
+  "review_rules": {
+    "open_review_backlog": "Count of canonical tender_latest rows with unresolved decision state.",
+    "median_review_latency_hours": "Median elapsed hours from first strong actionable state to first operator decision.",
+    "strong_signal_sla_status": {
+      "ok": "All strong positive signals reviewed within target SLA.",
+      "warning": "Some strong positive signals exceeded target SLA.",
+      "breach": "Majority of strong positive signals exceeded target SLA or remain unresolved."
+    }
+  },
+  "contracts": {
+    "kpi_summary_contract": "contracts/eojn_kpi_summary_contract.json",
+    "tender_latest_contract": "contracts/tender_latest_contract.json",
+    "review_decision_history_contract": "contracts/review_decision_history_contract.json",
+    "layer1_run_contract": "contracts/layer1_run_contract.json"
+  }
+}

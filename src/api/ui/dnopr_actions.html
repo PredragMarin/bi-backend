@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DNOPR Action Queue</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --card: #fffdf8;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --line: #d9ccb9;
+      --accent: #85552a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #faf6ef 0%, var(--bg) 100%);
+    }
+    .wrap {
+      max-width: 1600px;
+      margin: 0;
+      padding: 18px 14px 28px;
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: 0 14px 34px rgba(61, 39, 12, 0.08);
+    }
+    h1, h2 { margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif; }
+    h1 { font-size: 26px; line-height: 1.02; }
+    h2 { font-size: 20px; }
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+    .hero-links { font-size: 13px; }
+    .hero-links a { color: var(--accent); text-decoration: none; }
+    .hero-links a:hover { text-decoration: underline; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px 10px;
+      background: linear-gradient(180deg, #fffdf8 0%, #f7f0e6 100%);
+      min-height: 66px;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .stat-value {
+      margin-top: 4px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .stat-sub {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 12px;
+      align-items: end;
+    }
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      font-weight: 700;
+    }
+    input, select, button {
+      font: inherit;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      background: #fff;
+      color: var(--ink);
+    }
+    input[type="date"] { width: 168px; }
+    input[type="search"] { width: 220px; }
+    select { min-width: 180px; }
+    button {
+      cursor: pointer;
+      color: #fff;
+      font-weight: 700;
+      background: linear-gradient(180deg, #956334 0%, #7d4d21 100%);
+      border-color: #6b431c;
+    }
+    button.secondary {
+      background: linear-gradient(180deg, #3e7066 0%, #29574f 100%);
+      border-color: #234941;
+    }
+    .status-line {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .table-wrap {
+      max-height: 720px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fffdfa;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1440px;
+    }
+    th, td {
+      padding: 8px 9px;
+      border-bottom: 1px solid #eadfce;
+      font-size: 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f4e6d7;
+      user-select: none;
+      cursor: pointer;
+    }
+    tbody tr:hover td { background: #fdf4e7; }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      background: #efe5d7;
+      white-space: nowrap;
+    }
+    .pill.high { background: #f6dddd; border-color: #d4a0a0; color: #8f2d2d; }
+    .pill.medium { background: #fff0cf; border-color: #d9bd79; color: #8b5d15; }
+    .pill.low { background: #dcefe6; border-color: #9ec3b5; color: #23554b; }
+    .pill.deviation { border-style: dashed; }
+    .signal-detail {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.2;
+      margin-top: 2px;
+    }
+    .empty {
+      padding: 24px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      background: #fffaf4;
+      text-align: center;
+      color: var(--muted);
+    }
+    @media (max-width: 1200px) {
+      .stats { grid-template-columns: 1fr; }
+      .hero { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <div class="hero">
+        <div>
+          <h1>DNOPR Action Queue</h1>
+        </div>
+        <div class="hero-links"><a href="/ui/dnopr">Lifecycle DN</a> | <a href="/ui/epr">EPR</a> | <a href="/ui/eojn">EOJN</a> | <a href="/ui/sms">SMS</a></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Actions</div><div class="stat-value" id="statActions">0</div><div class="stat-sub">rows in queue</div></div>
+        <div class="stat"><div class="stat-label">High</div><div class="stat-value" id="statHigh">0</div><div class="stat-sub">priority</div></div>
+        <div class="stat"><div class="stat-label">Planning</div><div class="stat-value" id="statPlanning">0</div><div class="stat-sub">queue rows</div></div>
+        <div class="stat"><div class="stat-label">Window</div><div class="stat-value" id="statWindow">-</div><div class="stat-sub">active period</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="toolbar">
+        <div>
+          <label for="fromDate">From</label>
+          <input id="fromDate" type="date" />
+        </div>
+        <div>
+          <label for="toDate">To</label>
+          <input id="toDate" type="date" />
+        </div>
+        <div>
+          <label for="admctrFilter">AdmCtr</label>
+          <select id="admctrFilter"><option value="ALL">ALL</option></select>
+        </div>
+        <div>
+          <label for="projektFilter">Projekt</label>
+          <select id="projektFilter"><option value="ALL">ALL</option></select>
+        </div>
+        <div>
+          <label for="statusFilter">Status</label>
+          <select id="statusFilter"><option value="ALL">ALL</option></select>
+        </div>
+        <div>
+          <label for="queueFilter">Queue</label>
+          <select id="queueFilter"><option value="ALL">ALL</option></select>
+        </div>
+        <div>
+          <label for="ownerFilter">Owner</label>
+          <select id="ownerFilter"><option value="ALL">ALL</option></select>
+        </div>
+        <div>
+          <label for="priorityFilter">Priority</label>
+          <select id="priorityFilter"><option value="ALL">ALL</option></select>
+        </div>
+        <div>
+          <label for="search">Search RN</label>
+          <input id="search" type="search" placeholder="035BU001" />
+        </div>
+        <div>
+          <label for="sortKey">Sort</label>
+          <select id="sortKey">
+            <option value="priority_rank">Priority</option>
+            <option value="queue_type">Queue</option>
+            <option value="admctr">AdmCtr</option>
+            <option value="sifradn">RN</option>
+            <option value="termin_zac">Termin</option>
+            <option value="last_feedback_at_window">Last feedback</option>
+          </select>
+        </div>
+        <div>
+          <label for="sortDir">Direction</label>
+          <select id="sortDir">
+            <option value="asc">Asc</option>
+            <option value="desc">Desc</option>
+          </select>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="loadBtn">Load queue</button>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="defaultBtn" class="secondary">Default -90 / +90</button>
+        </div>
+      </div>
+      <div class="status-line" id="statusLine">Status: idle</div>
+    </section>
+
+    <section class="card">
+      <h2>Open Actions</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-key="priority_rank">Priority</th>
+              <th data-key="queue_type">Queue</th>
+              <th data-key="owner_role">Owner</th>
+              <th data-key="admctr">AdmCtr</th>
+              <th data-key="projekt">Projekt</th>
+              <th data-key="sifradn">RN</th>
+              <th data-key="status_sifra">Status</th>
+              <th data-key="artikel_sifra">Artikal</th>
+              <th data-key="signal_label">Signal</th>
+              <th>Signal detail</th>
+              <th>Recommended action</th>
+              <th data-key="termin_zac">Termin</th>
+              <th data-key="last_feedback_at_window">Last feedback</th>
+            </tr>
+          </thead>
+          <tbody id="queueBody"></tbody>
+        </table>
+      </div>
+    </section>
+  <script>
+    const state = { data: null, rows: [], initialFilters: null };
+    const fromDateEl = document.getElementById("fromDate");
+    const toDateEl = document.getElementById("toDate");
+    const admctrFilterEl = document.getElementById("admctrFilter");
+    const projektFilterEl = document.getElementById("projektFilter");
+    const statusFilterEl = document.getElementById("statusFilter");
+    const queueFilterEl = document.getElementById("queueFilter");
+    const ownerFilterEl = document.getElementById("ownerFilter");
+    const priorityFilterEl = document.getElementById("priorityFilter");
+    const searchEl = document.getElementById("search");
+    const sortKeyEl = document.getElementById("sortKey");
+    const sortDirEl = document.getElementById("sortDir");
+    const loadBtn = document.getElementById("loadBtn");
+    const defaultBtn = document.getElementById("defaultBtn");
+    const statusLineEl = document.getElementById("statusLine");
+    const queueBodyEl = document.getElementById("queueBody");
+    const facetConfigs = [
+      { key: "admctr", el: admctrFilterEl, field: "admctr" },
+      { key: "projekt", el: projektFilterEl, field: "projekt" },
+      { key: "status", el: statusFilterEl, field: "status_sifra" },
+      { key: "queue", el: queueFilterEl, field: "queue_type" },
+      { key: "owner", el: ownerFilterEl, field: "owner_role" },
+      { key: "priority", el: priorityFilterEl, field: "priority" }
+    ];
+
+    function pad2(n) { return String(n).padStart(2, "0"); }
+    function toIsoDate(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`; }
+    function defaultWindow() {
+      const now = new Date();
+      const base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      fromDateEl.value = toIsoDate(new Date(base.getFullYear(), base.getMonth(), base.getDate() - 90));
+      toDateEl.value = toIsoDate(new Date(base.getFullYear(), base.getMonth(), base.getDate() + 90));
+    }
+    function esc(value) {
+      return String(value === null || value === undefined ? "" : value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function setStatus(message) { statusLineEl.textContent = message; }
+    function compareValues(a, b, key, dir) {
+      const av = a[key];
+      const bv = b[key];
+      let out = 0;
+      if (typeof av === "number" || typeof bv === "number") out = Number(av || 0) - Number(bv || 0);
+      else out = String(av || "").localeCompare(String(bv || ""));
+      return dir === "asc" ? out : -out;
+    }
+    function populateSelect(selectEl, options, current) {
+      selectEl.innerHTML = `<option value="ALL">ALL</option>${(options || []).map((item) => `<option value="${esc(item.value)}">${esc(item.value)} (${item.count})</option>`).join("")}`;
+      if (Array.from(selectEl.options).some((opt) => opt.value === current)) selectEl.value = current;
+    }
+    function getCriteria(overrides = {}) {
+      return {
+        admctr: overrides.admctr !== undefined ? overrides.admctr : admctrFilterEl.value,
+        projekt: overrides.projekt !== undefined ? overrides.projekt : projektFilterEl.value,
+        status: overrides.status !== undefined ? overrides.status : statusFilterEl.value,
+        queue: overrides.queue !== undefined ? overrides.queue : queueFilterEl.value,
+        owner: overrides.owner !== undefined ? overrides.owner : ownerFilterEl.value,
+        priority: overrides.priority !== undefined ? overrides.priority : priorityFilterEl.value,
+        search: overrides.search !== undefined ? overrides.search : searchEl.value
+      };
+    }
+    function filterRowsByCriteria(rows, criteria, excludeKey = "") {
+      const search = String(criteria.search || "").trim().toLowerCase();
+      return (rows || []).filter((row) => {
+        if (excludeKey !== "admctr" && criteria.admctr !== "ALL" && row.admctr !== criteria.admctr) return false;
+        if (excludeKey !== "projekt" && criteria.projekt !== "ALL" && row.projekt !== criteria.projekt) return false;
+        if (excludeKey !== "status" && criteria.status !== "ALL" && row.status_sifra !== criteria.status) return false;
+        if (excludeKey !== "queue" && criteria.queue !== "ALL" && row.queue_type !== criteria.queue) return false;
+        if (excludeKey !== "owner" && criteria.owner !== "ALL" && row.owner_role !== criteria.owner) return false;
+        if (excludeKey !== "priority" && criteria.priority !== "ALL" && row.priority !== criteria.priority) return false;
+        if (search && !String(row.sifradn || "").toLowerCase().includes(search)) return false;
+        return true;
+      });
+    }
+    function buildFacetOptions(rows, field) {
+      const counts = new Map();
+      rows.forEach((row) => {
+        const value = String(row[field] || "").trim() || "(blank)";
+        counts.set(value, (counts.get(value) || 0) + 1);
+      });
+      return Array.from(counts.entries())
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => a.value.localeCompare(b.value));
+    }
+    function refreshFacetControls(preferred = {}) {
+      if (!state.data) return;
+      const baseRows = state.data.actions_queue || [];
+      facetConfigs.forEach((config) => {
+        const current = preferred[config.key] !== undefined ? preferred[config.key] : config.el.value;
+        const criteria = getCriteria(preferred);
+        const filteredRows = filterRowsByCriteria(baseRows, criteria, config.key);
+        const options = buildFacetOptions(filteredRows, config.field);
+        populateSelect(config.el, options, current);
+        if (!Array.from(config.el.options).some((opt) => opt.value === current)) {
+          config.el.value = "ALL";
+        }
+      });
+    }
+    function applyInitialFilterState() {
+      const initial = state.initialFilters;
+      if (!initial) return;
+      facetConfigs.forEach((config) => {
+        const value = initial[config.key];
+        if (value && Array.from(config.el.options).some((opt) => opt.value === value)) {
+          config.el.value = value;
+        }
+      });
+      if (initial.search) searchEl.value = initial.search;
+      if (initial.sortKey) sortKeyEl.value = mapSortKey(initial.sortKey);
+      if (initial.sortDir) sortDirEl.value = initial.sortDir;
+      state.initialFilters = null;
+    }
+    function mapSortKey(value) {
+      const v = String(value || "").trim();
+      if (v === "status_sifra") return "status_sifra";
+      if (v === "projekt") return "projekt";
+      if (v === "sifradn") return "sifradn";
+      if (v === "admctr") return "admctr";
+      if (v === "last_feedback_at_window") return "last_feedback_at_window";
+      if (v === "termin_zac") return "termin_zac";
+      return "priority_rank";
+    }
+    function applyUrlState() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("from")) fromDateEl.value = params.get("from") || fromDateEl.value;
+      if (params.has("to")) toDateEl.value = params.get("to") || toDateEl.value;
+      state.initialFilters = {
+        admctr: params.get("admctr") || "ALL",
+        projekt: params.get("projekt") || "ALL",
+        status: params.get("status") || "ALL",
+        search: params.get("search") || "",
+        sortKey: params.get("sortKey") || "",
+        sortDir: params.get("sortDir") || "asc"
+      };
+    }
+    async function loadQueue() {
+      setStatus("Status: loading action queue...");
+      const res = await fetch(`/api/dnopr/v1/actions?from=${encodeURIComponent(fromDateEl.value)}&to=${encodeURIComponent(toDateEl.value)}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      state.data = data;
+      facetConfigs.forEach((config) => {
+        populateSelect(config.el, buildFacetOptions(data.actions_queue || [], config.field), config.el.value || "ALL");
+      });
+      applyInitialFilterState();
+      renderSummary();
+      applyFilters();
+      setStatus(`Status: loaded ${data.actions_queue.length} action rows, request ${data.audit.request_id}`);
+    }
+    function renderSummary() {
+      const data = state.data;
+      const rows = data ? (data.actions_queue || []) : [];
+      document.getElementById("statActions").textContent = String(rows.length);
+      document.getElementById("statHigh").textContent = String(rows.filter((row) => row.priority === "HIGH").length);
+      document.getElementById("statPlanning").textContent = String(rows.filter((row) => row.queue_type === "Planning Queue").length);
+      document.getElementById("statWindow").textContent = data && data.window ? `${data.window.from} -> ${data.window.to}` : "-";
+    }
+    function applyFilters() {
+      if (!state.data) return;
+      refreshFacetControls();
+      const criteria = getCriteria();
+      const sortKey = sortKeyEl.value;
+      const sortDir = sortDirEl.value;
+      state.rows = filterRowsByCriteria(state.data.actions_queue || [], criteria)
+        .sort((a, b) => compareValues(a, b, sortKey, sortDir) || String(a.sifradn || "").localeCompare(String(b.sifradn || "")));
+      renderRows();
+    }
+    function renderRows() {
+      const rows = state.rows;
+      if (!rows.length) {
+        queueBodyEl.innerHTML = `<tr><td colspan="13"><div class="empty">Nema action rows za odabrane filtere.</div></td></tr>`;
+        return;
+      }
+      queueBodyEl.innerHTML = rows.map((row) => `
+        <tr>
+          <td><span class="pill ${esc(String(row.priority || "").toLowerCase())}">${esc(row.priority)}</span></td>
+          <td>${esc(row.queue_type)}</td>
+          <td>${esc(row.owner_role)}</td>
+          <td>${esc(row.admctr)}</td>
+          <td>${esc(row.projekt)}</td>
+          <td><strong>${esc(row.sifradn)}</strong></td>
+          <td>${esc(row.status_sifra)}</td>
+          <td>${esc(row.artikel_sifra)}</td>
+          <td><span class="pill ${esc(String(row.priority || "").toLowerCase())} ${esc(row.signal_kind)}">${esc(row.signal_label)}</span></td>
+          <td><div class="signal-detail">${esc(row.signal_detail)}</div></td>
+          <td>${esc(row.recommended_action)}</td>
+          <td>${esc(row.termin_zac)}</td>
+          <td>${esc(row.last_feedback_at_window || "-")}</td>
+        </tr>
+      `).join("");
+    }
+    loadBtn.addEventListener("click", () => loadQueue().catch((err) => setStatus(`Status: load failed - ${err.message}`)));
+    defaultBtn.addEventListener("click", () => {
+      defaultWindow();
+      loadQueue().catch((err) => setStatus(`Status: load failed - ${err.message}`));
+    });
+    admctrFilterEl.addEventListener("change", applyFilters);
+    projektFilterEl.addEventListener("change", applyFilters);
+    statusFilterEl.addEventListener("change", applyFilters);
+    queueFilterEl.addEventListener("change", applyFilters);
+    ownerFilterEl.addEventListener("change", applyFilters);
+    priorityFilterEl.addEventListener("change", applyFilters);
+    searchEl.addEventListener("input", applyFilters);
+    sortKeyEl.addEventListener("change", applyFilters);
+    sortDirEl.addEventListener("change", applyFilters);
+    defaultWindow();
+    applyUrlState();
+    loadQueue().catch((err) => setStatus(`Status: load failed - ${err.message}`));
+  </script>
+</body>
+</html>

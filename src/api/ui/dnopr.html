@@ -240,6 +240,37 @@
       background: #efe6db;
       border: 1px solid var(--line);
     }
+    .tag.high {
+      background: #f6dddd;
+      border-color: #d4a0a0;
+      color: #8f2d2d;
+    }
+    .tag.medium {
+      background: #fff0cf;
+      border-color: #d9bd79;
+      color: #8b5d15;
+    }
+    .tag.low {
+      background: #dcefe6;
+      border-color: #9ec3b5;
+      color: #23554b;
+    }
+    .tag.deviation {
+      border-style: dashed;
+    }
+    .signal-stack {
+      display: grid;
+      gap: 4px;
+    }
+    .signal-item {
+      display: grid;
+      gap: 2px;
+    }
+    .signal-detail {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.2;
+    }
     .note {
       margin-top: 10px;
       padding: 10px 12px;
@@ -333,6 +364,10 @@
           <label>&nbsp;</label>
           <button id="defaultBtn" class="secondary">Default -90 / +90</button>
         </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="actionsBtn" class="secondary">Open Action Queue</button>
+        </div>
       </div>
       <div class="status-line" id="statusLine">Status: idle</div>
     </section>
@@ -364,6 +399,7 @@
                 <th data-key="planned_minutes_window">Plan min</th>
                 <th data-key="art_plan_variance_minutes">Art/Plan variance</th>
                 <th data-key="actual_minutes_window">Actual min</th>
+                <th data-key="signal_count">Signals</th>
                 <th data-key="last_feedback_at_window">Last feedback</th>
               </tr>
             </thead>
@@ -448,6 +484,7 @@
     const sortDirEl = document.getElementById("sortDir");
     const loadBtn = document.getElementById("loadBtn");
     const defaultBtn = document.getElementById("defaultBtn");
+    const actionsBtn = document.getElementById("actionsBtn");
     const statusLineEl = document.getElementById("statusLine");
     const ordersBodyEl = document.getElementById("ordersBody");
     const ordersRatioEl = document.getElementById("ordersRatio");
@@ -499,6 +536,19 @@
 
     function setStatus(message) {
       statusLineEl.textContent = message;
+    }
+
+    function buildActionQueueUrl() {
+      const params = new URLSearchParams();
+      params.set("from", fromDateEl.value || "");
+      params.set("to", toDateEl.value || "");
+      params.set("admctr", admctrFilterEl.value || "ALL");
+      params.set("projekt", projektFilterEl.value || "ALL");
+      params.set("status", statusFilterEl.value || "ALL");
+      params.set("search", searchEl.value || "");
+      params.set("sortKey", sortKeyEl.value || "priority_rank");
+      params.set("sortDir", sortDirEl.value || "asc");
+      return `/ui/dnopr-actions?${params.toString()}`;
     }
 
     function compareValues(a, b, key, dir) {
@@ -607,7 +657,7 @@
     function renderOrders() {
       const rows = state.filteredOrders;
       if (!rows.length) {
-        ordersBodyEl.innerHTML = `<tr><td colspan="17"><div class="empty">Nema naloga za odabrani timeline i filtere.</div></td></tr>`;
+        ordersBodyEl.innerHTML = `<tr><td colspan="18"><div class="empty">Nema naloga za odabrani timeline i filtere.</div></td></tr>`;
         return;
       }
       ordersBodyEl.innerHTML = rows.map((row) => {
@@ -630,6 +680,7 @@
             <td>${fmtNum(row.planned_minutes_window)}</td>
             <td>${fmtNum(row.art_plan_variance_minutes)}</td>
             <td>${fmtNum(row.actual_minutes_window)}</td>
+            <td>${row.signal_count ? `<div class="signal-stack">${row.signals.map((flag) => `<div class="signal-item"><span class="tag ${esc(flag.severity)} ${esc(flag.kind)}">${esc(flag.label)}</span><div class="signal-detail">${esc(flag.detail || "")}</div></div>`).join("")}</div>` : "-"}</td>
             <td>${esc(row.last_feedback_at_window || "-")}</td>
           </tr>
         `;
@@ -681,6 +732,7 @@
 
       const header = detail.header || {};
       const totals = detail.operation_totals || {};
+      const signals = detail.signals || [];
       detailBoxEl.innerHTML = `
         <div class="metric-grid">
           <div class="metric"><div class="k">RN</div><div class="v mono">${esc(header.sifradn || selected.sifradn || "-")}</div></div>
@@ -694,6 +746,7 @@
           <div class="metric"><div class="k">Kol</div><div class="v">${fmtNum(header.kolicina || selected.kolicina)}</div></div>
           <div class="metric"><div class="k">Artikal min</div><div class="v">${fmtNum(header.artikel_min || selected.artikel_min)}</div></div>
         </div>
+        <div class="tag-list">${signals.length ? signals.map((flag) => `<div class="signal-item"><span class="tag ${esc(flag.severity)} ${esc(flag.kind)}">${esc(flag.label)}</span><div class="signal-detail">${esc(flag.detail || "")}</div></div>`).join("") : '<span class="tag">No signals</span>'}</div>
         <div class="note">
           <div><strong>Plan naloga:</strong> ${esc(header.termin_zac || selected.termin_zac || "-")} -> ${esc(header.termin_kon || selected.termin_kon || "-")}</div>
           <div><strong>Dat lansa / konac:</strong> ${esc(header.dat_lans || selected.dat_lans || "-")} -> ${esc(header.dat_konc || selected.dat_konc || "-")}</div>
@@ -746,6 +799,9 @@
     defaultBtn.addEventListener("click", () => {
       defaultWindow();
       loadWindow().catch((err) => setStatus(`Status: load failed - ${err.message}`));
+    });
+    actionsBtn.addEventListener("click", () => {
+      window.location.href = buildActionQueueUrl();
     });
     searchEl.addEventListener("input", applyFilters);
     statusFilterEl.addEventListener("change", applyFilters);

@@ -61,8 +61,18 @@ Branch: `restructure/core-shell-v1`
 - SMS outbox publish smoke passed with shared helper path.
 
 ## Next Phase
-1. Define EOJN consolidation target workflow and watchlist persistence contract through storage interface.
-2. Add EOJN module runtime entry and registry integration.
+1. Complete EOJN unattended production hardening:
+   - scheduler/heartbeat semantics,
+   - run audit,
+   - KPI summary generation.
+2. Freeze EOJN DB migration target:
+   - canonical tender latest,
+   - notice history,
+   - review history,
+   - ingest ledger,
+   - run audit,
+   - ingest state,
+   - ref catalog.
 3. Continue consolidation of any remaining duplicated utility logic.
 4. After parity confidence, remove legacy bridge files (`src/core/epr/*` thin adapters and `src/dev/*` wrappers).
 

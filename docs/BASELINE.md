@@ -13,7 +13,7 @@ Refactoring target:
 ## 2. Terminology (Locked)
 - `ERP (Gosoft SAP ASE)` = external read-only source system (SQL SELECT only)
 - `EPR Attendance` = BI module/use-case (`epr_attendance_v1`)
-- `EOJN` = BI module/use-case (`eojn_v1`, currently partially smoke/proto)
+- `EOJN` = BI module/use-case (`eojn_v1`, now consolidated around canonical latest-state + history filesystem model)
 - `BI Core Store` = internal BI persistence (currently filesystem)
 
 ## 3. Current Entrypoints and Flows
@@ -31,8 +31,10 @@ Note:
 - Current baseline accepts this; consolidation will happen later.
 
 ### 3.2 EOJN flow currently in use
-- Daily/smoke scripts for Layer 1 + Layer 2 are available.
-- EOJN is not yet fully consolidated as production module workflow.
+- EOJN uses a canonical filesystem state under `out/eojn_v1/_state`.
+- Main operator worklist is based on latest-state by `TenderId`.
+- Daily run artifacts remain available for audit/debug.
+- EOJN is not yet final production-hardening complete, but is no longer only smoke/proto flow.
 
 ## 4. Baseline Behavior to Preserve During Refactor
 
@@ -65,9 +67,10 @@ Must remain functionally equivalent:
 - Atomic outbox drop behavior
 
 ### 4.4 EOJN baseline
-Until EOJN consolidation is approved:
-- Existing scripts must still execute as they do now
-- Existing output artifacts from EOJN smoke flow should remain obtainable
+During remaining EOJN stabilization:
+- Existing Layer 1 and Layer 2 flows must still execute
+- Canonical `_state` worklist/history artifacts must remain producible
+- Daily run-folder artifacts must remain obtainable for audit/debug
 
 ## 5. Current Artifacts (Filesystem baseline)
 Current filesystem artifacting is accepted as baseline.
@@ -82,7 +85,7 @@ Exact structure may evolve later, but during architecture refactor:
 - Duplicate helper logic across layers
 - Rudimentary frontend/UI structure
 - Filesystem-centric storage without formal storage abstraction
-- EOJN watchlist store not yet finalized
+- EOJN KPI/reporting layer not yet finalized
 
 These are intentional refactor targets and not immediate blockers.
 
@@ -108,7 +111,7 @@ Requires explicit approval:
 
 ## 9. Out of Scope for This Baseline Lock
 - Final UI redesign
-- EOJN full production watchlist productization
+- EOJN final unattended production hardening
 - Payroll module implementation
 - MES control module implementation
 

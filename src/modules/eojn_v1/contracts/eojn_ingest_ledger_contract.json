@@ -1,0 +1,26 @@
+{
+  "contract_id": "eojn_ingest_ledger_contract_v1",
+  "version": "1.0.0",
+  "description": "Append-only EOJN ingest ledger for all seen raw procurement and notice IDs, with compact L1 applicability status.",
+  "storage_model": {
+    "artifact_name": "ingest_ledger.ndjson",
+    "record_granularity": "one row per seen raw entity in a persisted Layer 1 run",
+    "primary_key": ["RunId", "EntityType", "EntityId"],
+    "update_rule": "append only"
+  },
+  "required_fields": [
+    { "name": "RunId", "type": "string", "source": "system" },
+    { "name": "RunDateYmd", "type": "string", "source": "system" },
+    { "name": "SeenAt", "type": "string", "source": "system" },
+    { "name": "EntityType", "type": "string", "source": "system", "enum": ["procurement", "notice"] },
+    { "name": "EntityId", "type": "string", "source": "raw" },
+    { "name": "L1Status", "type": "string", "source": "derived", "enum": ["passed", "rejected", "not_applicable"] }
+  ],
+  "optional_fields": [
+    { "name": "TenderId", "type": "number", "source": "raw" },
+    { "name": "PublishDate", "type": "string", "source": "raw" },
+    { "name": "NoticeTypeId", "type": "number", "source": "raw" },
+    { "name": "Reference", "type": "string", "source": "raw" },
+    { "name": "SourceMode", "type": "string", "source": "request" }
+  ]
+}

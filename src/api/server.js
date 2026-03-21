@@ -58,6 +58,7 @@ const eprHtmlPath = path.join(uiDir, "epr.html");
 const smsHtmlPath = path.join(uiDir, "sms.html"); // +++
 const eojnHtmlPath = path.join(uiDir, "eojn.html");
 const dnoprHtmlPath = path.join(uiDir, "dnopr.html");
+const dnoprActionsHtmlPath = path.join(uiDir, "dnopr_actions.html");
 
 app.use("/ui", express.static(uiDir, { extensions: ["html"] }));
 
@@ -70,6 +71,8 @@ app.get("/ui/eojn", (req, res) => res.sendFile(eojnHtmlPath));
 app.get("/ui/eojn.html", (req, res) => res.sendFile(eojnHtmlPath));
 app.get("/ui/dnopr", (req, res) => res.sendFile(dnoprHtmlPath));
 app.get("/ui/dnopr.html", (req, res) => res.sendFile(dnoprHtmlPath));
+app.get("/ui/dnopr-actions", (req, res) => res.sendFile(dnoprActionsHtmlPath));
+app.get("/ui/dnopr-actions.html", (req, res) => res.sendFile(dnoprActionsHtmlPath));
 // health check
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
@@ -343,6 +346,7 @@ const server = app.listen(PORT, () => {
   console.log(`UI (alt): http://localhost:${PORT}/ui/epr.html`);
   console.log(`UI EOJN: http://localhost:${PORT}/ui/eojn`);
   console.log(`UI DNOPR: http://localhost:${PORT}/ui/dnopr`);
+  console.log(`UI DNOPR Actions: http://localhost:${PORT}/ui/dnopr-actions`);
   console.log("EMPLOYEE_TAGS_V1 =", process.env.EMPLOYEE_TAGS_V1);
   if (IDLE_SHUTDOWN_MS > 0) {
     console.log(`Idle shutdown: ${IDLE_SHUTDOWN_MINUTES} min`);

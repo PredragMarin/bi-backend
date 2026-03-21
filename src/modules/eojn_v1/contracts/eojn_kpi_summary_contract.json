@@ -1,0 +1,37 @@
+{
+  "contract_id": "eojn_kpi_summary_contract_v1",
+  "version": "1.0.0",
+  "description": "Daily EOJN management KPI summary derived from run audit, canonical tender state, review history and ingest watermarks.",
+  "storage_model": {
+    "artifact_name": "eojn_kpi_summary.json",
+    "record_granularity": "one row per local business date",
+    "primary_key": ["KpiDate"],
+    "update_rule": "upsert daily snapshot by local KPI date"
+  },
+  "required_fields": [
+    { "name": "KpiDate", "type": "string", "source": "system.local_date_ymd" },
+    { "name": "ExpectedCycles", "type": "number", "source": "derived.scheduler_calendar" },
+    { "name": "ExecutedL1Cycles", "type": "number", "source": "derived.run_audit" },
+    { "name": "SuccessfulL1Cycles", "type": "number", "source": "derived.run_audit" },
+    { "name": "ExecutedL2Cycles", "type": "number", "source": "derived.run_audit" },
+    { "name": "SuccessfulL2Cycles", "type": "number", "source": "derived.run_audit" },
+    { "name": "CoverageStatus", "type": "string", "source": "derived.coverage_rules" },
+    { "name": "GapRiskFlag", "type": "boolean", "source": "derived.coverage_rules" },
+    { "name": "NewL1PassTenders", "type": "number", "source": "derived.tender_latest" },
+    { "name": "L2AnalyzedTenders", "type": "number", "source": "derived.layer2_results" },
+    { "name": "OpenReviewBacklog", "type": "number", "source": "derived.review_latest" },
+    { "name": "WatchCount", "type": "number", "source": "derived.review_latest" },
+    { "name": "MedianReviewLatencyHours", "type": "number", "source": "derived.review_history" },
+    { "name": "StrongSignalSlaStatus", "type": "string", "source": "derived.review_history" },
+    { "name": "UpdatedAt", "type": "string", "source": "system" }
+  ],
+  "optional_fields": [
+    { "name": "BusinessCalendarClass", "type": "string", "source": "derived.scheduler_calendar" },
+    { "name": "ExpectedRawPattern", "type": "string", "source": "derived.scheduler_calendar" },
+    { "name": "WatermarkAdvanceOk", "type": "boolean", "source": "derived.watermarks" },
+    { "name": "EmptyMorningRunStatus", "type": "string", "source": "derived.coverage_rules" },
+    { "name": "FailedL2Cycles", "type": "number", "source": "derived.run_audit" },
+    { "name": "OldestBacklogHours", "type": "number", "source": "derived.review_latest" },
+    { "name": "Notes", "type": "string", "source": "derived.summary_notes" }
+  ]
+}

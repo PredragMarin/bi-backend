@@ -125,6 +125,83 @@ function computeArtikelOpsCount({ artikelMetaBySifraid, tehOpsByTehid, sifraid }
   return tehRows.length;
 }
 
+function buildSignals(workOrder) {
+  const flags = [];
+  const status = trimValue(workOrder.status_sifra);
+  const today = toIsoDate(todayLocal());
+  const terminDate = trimValue(workOrder.termin_zac).slice(0, 10);
+  const feedbackRows = toNumber(workOrder.feedback_rows_window);
+  const actualMinutes = toNumber(workOrder.actual_minutes_window);
+  const plannedMinutes = toNumber(workOrder.planned_minutes_window);
+  const artikelMinutes = toNumber(workOrder.artikel_min);
+  const artikelOps = toNumber(workOrder.artikel_ops);
+  const ops = toNumber(workOrder.operation_count_window);
+  const planVsArtGap = Math.abs(plannedMinutes - artikelMinutes);
+  const planVsActualGap = Math.abs(actualMinutes - plannedMinutes);
+
+  if (status === "LA" && (feedbackRows === 0 || actualMinutes <= 0)) {
+    flags.push({
+      code: "LA_NO_ACTUAL",
+      kind: "anomaly",
+      severity: "high",
+      label: "LA bez actual",
+      detail: `status LA, ledger ${feedbackRows}, actual ${actualMinutes.toFixed(2)}`
+    });
+  }
+  if (status === "KO" && (feedbackRows === 0 || actualMinutes <= 0)) {
+    flags.push({
+      code: "KO_NO_ACTUAL",
+      kind: "anomaly",
+      severity: "high",
+      label: "KO bez actual",
+      detail: `status KO, ledger ${feedbackRows}, actual ${actualMinutes.toFixed(2)}`
+    });
+  }
+  if (status === "LN" && terminDate && terminDate < today) {
+    flags.push({
+      code: "LN_STALE",
+      kind: "anomaly",
+      severity: "medium",
+      label: "LN star",
+      detail: `termin ${terminDate} < ${today}`
+    });
+  }
+  if (artikelOps > 0 && ops > 0 && artikelOps !== ops) {
+    flags.push({
+      code: "GENERIC_OPS_DEVIATION",
+      kind: "deviation",
+      severity: "medium",
+      label: "Plan revizija ops",
+      detail: `art ops ${artikelOps} / ops ${ops}`
+    });
+  }
+  if (artikelMinutes > 0) {
+    const ratio = artikelMinutes ? planVsArtGap / artikelMinutes : 0;
+    if (planVsArtGap >= 60 || ratio >= 0.3) {
+      flags.push({
+        code: "GENERIC_TIME_DEVIATION",
+        kind: "deviation",
+        severity: "medium",
+        label: "Art/Plan odstupanje",
+        detail: `art ${artikelMinutes.toFixed(2)} / plan ${plannedMinutes.toFixed(2)}`
+      });
+    }
+  }
+  if (plannedMinutes > 0) {
+    const ratio = plannedMinutes ? planVsActualGap / plannedMinutes : 0;
+    if (planVsActualGap >= 60 || ratio >= 0.3) {
+      flags.push({
+        code: "PLAN_ACTUAL_GAP",
+        kind: "anomaly",
+        severity: "medium",
+        label: "Plan/Actual gap",
+        detail: `plan ${plannedMinutes.toFixed(2)} / actual ${actualMinutes.toFixed(2)}`
+      });
+    }
+  }
+  return flags;
+}
+
 function summarizeWindowRows({ vdnRows, vdnoprRows, feedbackRows, artikelMetaBySifraid, tehOpsByTehid, fromISO, toISO }) {
   const opsByDnid = new Map();
   const feedbackByDnid = new Map();
@@ -166,7 +243,7 @@ function summarizeWindowRows({ vdnRows, vdnoprRows, feedbackRows, artikelMetaByS
     const plannedMinutes = Number((plannedSeconds / 60).toFixed(2));
     const actualMinutes = Number((actualSeconds / 60).toFixed(2));
 
-    return {
+    const workOrder = {
       dnid,
       sifradn: trimValue(row.sifradn),
       projekt: trimValue(row.nalog),
@@ -197,6 +274,14 @@ function summarizeWindowRows({ vdnRows, vdnoprRows, feedbackRows, artikelMetaByS
       progress_pct_window: ops.length ? Number(((realizedDnoprIds.size / ops.length) * 100).toFixed(1)) : 0,
       first_feedback_at_window: minString(feedback.map((item) => trimValue(item.timecr))),
       last_feedback_at_window: maxString(feedback.map((item) => trimValue(item.timecr)))
+    };
+    const signals = buildSignals(workOrder);
+    return {
+      ...workOrder,
+      signals,
+      signal_count: signals.length,
+      anomaly_count: signals.filter((item) => item.kind === "anomaly").length,
+      deviation_count: signals.filter((item) => item.kind === "deviation").length
     };
   });
 
@@ -348,6 +433,7 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
   let artikelTehid = "";
   let artikelJm = "";
   let artikelMin = 0;
+  let artikelOpsCount = 0;
 
   if (sifraid) {
     const artikelResult = await executeAllowedBatch({
@@ -385,6 +471,7 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
     }
 
     const tehRows = distinctTehRows(normalizeRows(tehResult.rowsByKey.tehopr));
+    artikelOpsCount = tehRows.length;
     artikelMin = Number((tehRows.reduce((sum, row) => {
       return sum + ((toNumber(row.casvar) + toNumber(row.casfix)) * toNumber(header.kolicina));
     }, 0) / 60).toFixed(2));
@@ -396,7 +483,8 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
     artikel_naziv: artikelNaziv,
     artikel_jm: artikelJm,
     artikel_tehid: artikelTehid,
-    artikel_min: artikelMin
+    artikel_min: artikelMin,
+    artikel_ops: artikelOpsCount
   } : null;
   const feedbackByDnoprid = new Map();
   for (const row of feedback) {
@@ -457,6 +545,17 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
     actual_minutes: Number(operation_rows.reduce((sum, row) => sum + toNumber(row.actual_minutes), 0).toFixed(2)),
     variance_minutes: Number(operation_rows.reduce((sum, row) => sum + toNumber(row.variance_minutes), 0).toFixed(2))
   };
+  const detailSummary = {
+    status_sifra: trimValue(enrichedHeader && enrichedHeader.status_sifra),
+    termin_zac: trimValue(enrichedHeader && enrichedHeader.termin_zac),
+    feedback_rows_window: feedback.length,
+    actual_minutes_window: totals.actual_minutes,
+    planned_minutes_window: totals.planned_minutes,
+    artikel_min: artikelMin,
+    artikel_ops: toNumber(enrichedHeader && enrichedHeader.artikel_ops),
+    operation_count_window: operation_rows.length
+  };
+  const signals = buildSignals(detailSummary);
 
   return {
     audit: {
@@ -465,14 +564,159 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
       status: dbResult.audit.status
     },
     header: enrichedHeader,
+    signals,
     operation_rows,
     operation_totals: totals,
     timeline_rows
   };
 }
 
+function mapSignalToAction({ workOrder, signal }) {
+  const status = trimValue(workOrder && workOrder.status_sifra);
+  const signalCode = trimValue(signal && signal.code);
+  const base = {
+    signal_code: signalCode,
+    signal_label: trimValue(signal && signal.label),
+    signal_detail: trimValue(signal && signal.detail),
+    signal_kind: trimValue(signal && signal.kind),
+    priority: trimValue(signal && signal.severity).toUpperCase() || "MEDIUM",
+    queue_type: "Review Queue",
+    owner_role: "voditelj proizvodnje",
+    recommended_action: "Provjeriti nalog i potvrditi sljedeći korak."
+  };
+
+  if (signalCode === "LN_STALE") {
+    return {
+      ...base,
+      queue_type: "Planning Queue",
+      owner_role: "voditelj planiranja",
+      recommended_action: "Provjeriti termin početka i status naloga te korigirati termin ili lansiranje u ERP-u."
+    };
+  }
+  if (signalCode === "GENERIC_OPS_DEVIATION") {
+    return {
+      ...base,
+      priority: "MEDIUM",
+      queue_type: "Planning Queue",
+      owner_role: "voditelj planiranja",
+      recommended_action: "Provjeriti je li revizija planskih operacija opravdana i treba li doraditi DNOPR plan."
+    };
+  }
+  if (signalCode === "GENERIC_TIME_DEVIATION") {
+    return {
+      ...base,
+      priority: "MEDIUM",
+      queue_type: "Planning Queue",
+      owner_role: "voditelj planiranja",
+      recommended_action: "Provjeriti minutaže plana prema generičkoj tehnologiji i po potrebi korigirati plan ili nativnu tehnologiju."
+    };
+  }
+  if (signalCode === "LA_NO_ACTUAL") {
+    return {
+      ...base,
+      priority: "HIGH",
+      queue_type: "Execution Queue",
+      owner_role: "voditelj proizvodnje",
+      recommended_action: "Provjeriti evidenciju start/stop rada i dopuniti actual trag na nalogu."
+    };
+  }
+  if (signalCode === "KO_NO_ACTUAL") {
+    return {
+      ...base,
+      priority: "HIGH",
+      queue_type: "Closing Queue",
+      owner_role: "voditelj proizvodnje",
+      recommended_action: "Provjeriti uvjete zatvaranja i dopuniti evidenciju prije potvrde KO statusa."
+    };
+  }
+  if (signalCode === "PLAN_ACTUAL_GAP") {
+    return {
+      ...base,
+      queue_type: status === "KO" ? "Closing Queue" : "Execution Queue",
+      owner_role: "voditelj proizvodnje",
+      recommended_action: status === "KO"
+        ? "Provjeriti zašto actual značajno odstupa od plana i potvrditi zatvaranje naloga."
+        : "Provjeriti realizaciju rada, trajanje operacija i kvalitetu evidencije actual minuta."
+    };
+  }
+  return base;
+}
+
+function buildActionQueueFromWindow(windowData) {
+  const workOrders = Array.isArray(windowData && windowData.work_orders) ? windowData.work_orders : [];
+  const actions = [];
+
+  workOrders.forEach((row) => {
+    const signals = Array.isArray(row.signals) ? row.signals : [];
+    signals.forEach((signal, index) => {
+      const mapped = mapSignalToAction({ workOrder: row, signal });
+      const priorityRank = mapped.priority === "HIGH" ? 1 : mapped.priority === "MEDIUM" ? 2 : 3;
+      actions.push({
+        action_id: `${row.dnid}_${trimValue(signal.code)}_${index}`,
+        priority_rank: priorityRank,
+        ...mapped,
+        dnid: Number(row.dnid),
+        sifradn: trimValue(row.sifradn),
+        projekt: trimValue(row.projekt),
+        admctr: trimValue(row.admctr),
+        status_sifra: trimValue(row.status_sifra),
+        artikel_sifra: trimValue(row.artikel_sifra),
+        artikel_naziv: trimValue(row.artikel_naziv),
+        termin_zac: trimValue(row.termin_zac),
+        last_feedback_at_window: trimValue(row.last_feedback_at_window),
+        plan_minutes: toNumber(row.planned_minutes_window),
+        actual_minutes: toNumber(row.actual_minutes_window),
+        artikel_minutes: toNumber(row.artikel_min)
+      });
+    });
+  });
+
+  const queueCounts = new Map();
+  const ownerCounts = new Map();
+  const priorityCounts = new Map();
+  const projektCounts = new Map();
+  const statusCounts = new Map();
+  actions.forEach((row) => {
+    queueCounts.set(row.queue_type, (queueCounts.get(row.queue_type) || 0) + 1);
+    ownerCounts.set(row.owner_role, (ownerCounts.get(row.owner_role) || 0) + 1);
+    priorityCounts.set(row.priority, (priorityCounts.get(row.priority) || 0) + 1);
+    projektCounts.set(row.projekt || "(blank)", (projektCounts.get(row.projekt || "(blank)") || 0) + 1);
+    statusCounts.set(row.status_sifra || "(blank)", (statusCounts.get(row.status_sifra || "(blank)") || 0) + 1);
+  });
+
+  return {
+    window: windowData && windowData.window ? windowData.window : null,
+    meta: {
+      source_work_orders: workOrders.length,
+      action_rows: actions.length
+    },
+    facets: {
+      queue_options: Array.from(queueCounts.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value)),
+      owner_options: Array.from(ownerCounts.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value)),
+      priority_options: Array.from(priorityCounts.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value)),
+      projekt_options: Array.from(projektCounts.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value)),
+      status_options: Array.from(statusCounts.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value))
+    },
+    actions_queue: actions.sort((a, b) =>
+      a.priority_rank - b.priority_rank ||
+      String(a.termin_zac).localeCompare(String(b.termin_zac)) ||
+      String(a.sifradn).localeCompare(String(b.sifradn))
+    )
+  };
+}
+
+async function fetchDnoprLifecycleActions({ fromISO, toISO, dsn = "ERP_POC_RO" }) {
+  const windowData = await fetchDnoprLifecycleWindow({ fromISO, toISO, dsn });
+  const queue = buildActionQueueFromWindow(windowData);
+  return {
+    ...queue,
+    audit: windowData.audit
+  };
+}
+
 module.exports = {
   fetchDnoprLifecycleWindow,
   fetchDnoprLifecycleOrderDetail,
+  fetchDnoprLifecycleActions,
   resolveWindow
 };

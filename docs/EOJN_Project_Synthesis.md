@@ -9,14 +9,16 @@ EOJN v1 is a continuous BI module for daily tender intelligence:
 
 Primary objective: maximize recall (do not miss relevant tenders), while keeping sales workload low through heavy filtering.
 
-## 2. Current verified status (as of 2026-02-21)
-- Playwright login flow is validated in fully automated mode (no manual click needed).
-- Login smoke test: PASS (`out/eojn_v1/_dev_budget_pw/2026_02_21/login_smoke_74182.json`).
-- Batch download test with one session across multiple tender IDs: PASS.
-- Batch report created at:
-  - `out/eojn_v1/_dev_budget_pw/2026_02_21/batch_report.json`
-- Downloaded budget files are stored per tender folder under:
-  - `out/eojn_v1/_dev_budget_pw/2026_02_21/tender_<ID>/...`
+## 2. Current verified status (as of 2026-03-21)
+- EOJN now operates with one canonical latest-state worklist over `TenderId`, not with multiple operator-facing daily lists.
+- Main UI worklist reads canonical `_state` indices by default.
+- Layer 2 can start from canonical state without mandatory `run_date`.
+- Review save and Layer 2 result save both sync back into canonical latest/history state immediately.
+- Layer 2 XLS/XLS parsers were refactored:
+  - bulk extraction instead of cell-by-cell COM traversal,
+  - `uom_anchor_items_v2` item detection,
+  - use-case split scoring (`target_fitout`, `doors_joinery`).
+- Legacy EOJN keyword/smoke files were moved under `src/modules/eojn_v1/legacy/`.
 
 ## 3. Confirmed EOJN auth/session behavior
 - Public tender pages can be opened anonymously.
@@ -28,7 +30,7 @@ Primary objective: maximize recall (do not miss relevant tenders), while keeping
 ## 4. Layer architecture
 
 ### Layer 1 (metadata only)
-- Input: EOJN searchgrid for date D (default: today/active window, no past-only ingestion for auto flow).
+- Input: EOJN procurements/notices public feeds with watermark + overlap.
 - Steps:
   1) Fetch bootstrap page and parse `uiUserToken`.
   2) Fetch searchgrid JSON.
@@ -36,33 +38,54 @@ Primary objective: maximize recall (do not miss relevant tenders), while keeping
   4) Hard-negative filter.
   5) Program scoring (P1-P4).
   6) Risk heuristic (hidden equipment signal).
-  7) Produce shortlist + layer2 queue.
-- Output (daily partition):
-  - `raw.json`, `scored.json`, `shortlist.json`, `layer2_queue.json`, `manifest.json`, `events.log`.
+  7) Mark `L1 pass` tenders and update canonical latest state.
+- Output:
+  - daily run artifacts remain available for audit/debug,
+  - canonical `_state` indices are the primary operator source.
 
 ### Layer 2 (targeted docs)
-- Input: `layer2_queue` + optional manual tender IDs.
+- Input:
+  - canonical latest-state `L1 pass` tenders for normal run,
+  - optional manual/run-date fallback for debug.
 - Steps:
   1) Single Playwright session (login once).
   2) Open tender pages, detect budget links, download docs.
   3) Parse/scan XLS/XLSX evidence.
-  4) Update L2 score and propose watch/discard.
+  4) Score by use-case profile and update canonical latest state.
 - Output:
-  - `layer2_evidence.json` and scoring updates.
+  - `layer2_analysis_*.json`,
+  - `layer2_monitor_result_*.json`,
+  - canonical `L2Status/L2Label/L2Incidence` update per `TenderId`.
+
+### Canonical state and review
+- One canonical `TenderId` list for all `L1 pass` tenders.
+- One linked notice history by `TenderId`.
+- Review decisions are append-only history with latest decision projected back to canonical latest state.
+- `WATCH` is a filter over canonical latest state, not a separate operator list.
 
 ### Watch and re-check
-- Persistent watchlist per `tender_id`.
-- Every run checks updates for watched IDs and emits alerts.
-- Expired tenders can remain watched for post-award/business-relevant decisions.
+- Persistent watchlist semantics are implemented as latest review/watch state per `TenderId`.
+- Every run may refresh watched IDs and their notice history.
+- Expired tenders can remain tracked for post-award/business-relevant decisions.
 
-## 5. Data model contract (draft)
-Use two levels: event stream + current state.
+## 5. Current data model contract
+Current filesystem model uses one primary latest-state table plus linked histories.
 
-### Entities
-- `tender_event`: one EOJN publication/event (immutable, append-only).
-- `tender_case`: current watch status for a specific `tender_id`.
-- `watch_subject`: soft watch item without tender ID (institution/topic-based).
-- `alert`: actionable notification item.
+### Primary artifacts
+- `tender_latest_index.json`
+  - one latest-state row per `TenderId`
+- `tender_notice_history_index.json`
+  - append-style notice history for tracked tenders
+- `review_decision_history_index.json`
+  - append-only operator decisions
+
+### Supporting contracts
+- `event_model_v1.json`
+- `procedure_type_catalog.json`
+- `document_type_catalog.json`
+- `layer2_use_case_profiles.json`
+- `eojn_kpi_summary_contract.json`
+- `eojn_kpi_model_v1.json`
 
 ### Status model
 - `event_status`: `new -> l1_scored -> l2_scored -> proposed_discard|proposed_watch -> confirmed_discard|confirmed_watch`
@@ -70,18 +93,20 @@ Use two levels: event stream + current state.
 - `subject_status`: `active | converted_to_case | disengaged`
 
 ## 6. Logging/storage policy
-Recommended pattern:
-- Persistent current state:
-  - `watchlist_current` (source of truth for active status).
-- Append-only event log (partitioned):
-  - monthly/yearly NDJSON partitions for audit/history.
-- Daily run artifacts:
-  - partitioned by `YYYY_MM_DD`.
-
-Why:
-- watchlist remains durable and easy to query,
-- event history is scalable and audit-safe,
-- month/year boundaries do not break long-lived tender tracking.
+Current target pattern:
+- canonical `_state` indices as primary operator source,
+- daily partition folders as audit/debug artifacts,
+- run-specific outputs retained for rebuild or forensic inspection,
+- no full raw warehouse for rejected/not-applicable items,
+- future DB migration should preserve:
+  - `tender_latest`,
+  - `notice_history`,
+  - `review_decision_history`,
+  - `run_audit`,
+  - `ingest_state`,
+  - `ingest_ledger`,
+  - `ref_catalog`,
+  - optional later `kpi_daily`.
 
 ## 7. Retention and cleanup policy
 - For `discard_confirmed` cases:
@@ -94,11 +119,13 @@ Why:
 - Always mask tokens/cookies in logs.
 
 ## 8. Operational assumptions
-- Background runs: 2x daily (minimum).
-- Optional lighter delta re-check for watchlist updates during day.
+- Background runs target: `06:00` and `15:00` local.
+- EOJN raw publish pattern is assumed to be weekday-heavy around local midnight.
+- Empty morning run on weekends is not by itself a process-health failure.
 - Layer 2 limits:
   - bounded docs/day,
-  - single worker (no aggressive parallelism).
+  - single worker,
+  - canonical latest-state is the default queue source.
 
 ## 9. Manual workflows required
 - Manual add of missed tender ID:
@@ -110,57 +137,55 @@ Why:
   - watch mode selection (`DIRECT` or `GC`),
   - disengage with reason.
 
-## 10. Recommended production file structure (target)
+## 10. Recommended production file structure (current direction)
 ```text
 src/modules/eojn_v1/
   module_manifest.json
   run_daily.js
-  layer1_fetch.js
-  layer1_score.js
   layer2_budget_scan.js
-  watchlist_store.js
-  publish.js
-  rules/
-    keywords_p1.json
-    keywords_p2.json
-    keywords_p3.json
-    keywords_p4.json
-    stopwords_hard_negative.json
-    risk_object_terms.json
   contracts/
-    tender_event.schema.json
-    tender_case.schema.json
-    watch_subject.schema.json
-    alert.schema.json
-  _dev/
-    dev_pw_login_smoke.js
-    dev_pw_download_budget.js
+    tender_latest_contract.json
+    tender_notice_history_contract.json
+    review_decision_history_contract.json
+    worklist_view_config_contract.json
+    procedure_type_catalog.json
+    document_type_catalog.json
+    event_model_v1.json
+    layer2_use_case_profiles.json
+    eojn_kpi_summary_contract.json
+    eojn_kpi_model_v1.json
+  legacy/
+    ...
 
 out/eojn_v1/
   YYYY_MM_DD/
-    raw.json
+    procurements_raw.json
+    notices_raw.json
     scored.json
     shortlist.json
     layer2_queue.json
-    layer2_evidence.json
+    layer2_analysis_*.json
+    layer2_monitor_result_*.json
     manifest.json
     events.log
   _state/
-    watchlist_current.json
-    watch_subjects_current.json
-    intake_log.ndjson
-    cleanup_log.ndjson
-    events/YYYY/MM/events_YYYY_MM.ndjson
+    tender_latest_index.json
+    tender_notice_history_index.json
+    review_decision_history_index.json
+    layer1_state.json
+    layer2_run_status.json
+    active_cycle.json
+    worklist_view_config.json
 ```
 
 ## 11. Repo simplification decision
-Before production hardening:
-- Keep only production module files in root of `src/modules/eojn_v1`.
-- Move/remove smoke/dev scripts (`_dev` only, or remove after stabilization).
-- Centralize all paths/config in one external config (and secrets outside repo).
+- Operator-facing EOJN must converge on one canonical worklist and one linked notice history.
+- Daily shortlist/queue artifacts may remain as technical pipeline outputs, but not as primary operator lists.
+- Legacy smoke/dev/keyword files are moved out of active runtime path.
+- Paths/config remain centralized and DB migration must preserve storage contracts instead of embedding file logic into business code.
 
 ## 12. Open decisions for final contract freeze
-- exact shortlist and alert thresholds,
-- final retention days per status,
-- final UI action set and role permissions,
-- final event schema fields and reason code enums.
+- exact alert thresholds and strong-signal SLA,
+- final review operator identity model,
+- final scheduler/heartbeat semantics for unattended production mode,
+- exact DB cutover sequence and retention of audit artifacts.

@@ -18,10 +18,15 @@ const {
   loadLayer1RunView,
   loadLayer1RawArtifacts,
   writeLayer1DerivedArtifacts,
-  writeCanonicalArtifacts,
   ensureWorklistViewConfig,
-  mergeCanonicalStateArtifacts
 } = require("../../core_shell/services/eojn_layer1_store");
+const {
+  persistCanonicalArtifactsForRun
+} = require("../../core_shell/services/eojn_canonical_store");
+const {
+  appendRunAuditEntries,
+  appendIngestLedgerEntries
+} = require("../../core_shell/services/eojn_ops_store");
 const {
   loadReviewState,
   getLatestReviewDecisionsByTender
@@ -433,141 +438,262 @@ function updateStateFromRun({ state, procurementsRows, noticesRows, runMeta }) {
   return next;
 }
 
+function buildL1RunAuditEntry({ runId, eventType, runDateYmd, eventAt, mode, outDir, counts, status, message, errorCode }) {
+  return {
+    RunId: String(runId || "").trim(),
+    RunType: "L1",
+    EventType: String(eventType || "").trim(),
+    RunDateYmd: String(runDateYmd || "").trim(),
+    EventAt: String(eventAt || "").trim(),
+    Status: String(status || "").trim(),
+    Mode: String(mode || "").trim(),
+    OutDir: String(outDir || "").trim(),
+    Counts: counts || null,
+    Message: String(message || "").trim(),
+    ErrorCode: errorCode ? String(errorCode).trim() : ""
+  };
+}
+
+function buildIngestLedgerEntries({ runId, runDateYmd, seenAt, mode, procurementsRows, noticesRows }) {
+  const procurementEntries = (Array.isArray(procurementsRows) ? procurementsRows : []).map((row) => {
+    const eojn = row && row._eojn ? row._eojn : {};
+    const passed = Boolean(eojn.shortlist || eojn.candidate);
+    return {
+      RunId: String(runId || "").trim(),
+      RunDateYmd: String(runDateYmd || "").trim(),
+      SeenAt: String(seenAt || "").trim(),
+      EntityType: "procurement",
+      EntityId: String(row && row.Id !== undefined ? row.Id : "").trim(),
+      L1Status: passed ? "passed" : "rejected",
+      TenderId: Number(row && row.Id || 0) || null,
+      PublishDate: String(row && row.NoticePublishDate || "").trim(),
+      NoticeTypeId: null,
+      Reference: String(row && row.ReferenceNumber || "").trim(),
+      SourceMode: String(mode || "").trim()
+    };
+  });
+  const noticeEntries = (Array.isArray(noticesRows) ? noticesRows : []).map((row) => ({
+    RunId: String(runId || "").trim(),
+    RunDateYmd: String(runDateYmd || "").trim(),
+    SeenAt: String(seenAt || "").trim(),
+    EntityType: "notice",
+    EntityId: String(row && row._eojn_ingest && row._eojn_ingest.dedup_key ? row._eojn_ingest.dedup_key : resolveNoticeKey(row)).trim(),
+    L1Status: "not_applicable",
+    TenderId: Number(row && (row.TenderId || row.TenderID || row.ProcurementId) || 0) || null,
+    PublishDate: String(row && (row.PublishDate || row.NoticePublishDate || "")).trim(),
+    NoticeTypeId: Number(row && row.DocumentTypeId || 0) || null,
+    Reference: String(row && row.NoticeNumber || "").trim(),
+    SourceMode: String(mode || "").trim()
+  }));
+  return [...procurementEntries, ...noticeEntries];
+}
+
 async function runLayer1(payload) {
   const req = validateLayer1Request(payload);
   const runDateYmd = req.run_date_ymd || ymdInTZ(new Date(), TZ);
   const outRoot = req.out_root || defaultOutRoot();
   const startedAt = new Date().toISOString();
+  const runId = `l1_${runDateYmd.replace(/-/g, "")}_${crypto.randomUUID()}`;
 
-  const state = await loadLayer1State({ outRoot });
-  const procurementsWatermark = state?.watermarks?.procurements_notice_publish_date || null;
-  const noticesWatermark = state?.watermarks?.notices_publish_date || null;
-  const noticesFromYmd =
-    noticesWatermark || (req.mode === "bootstrap" ? "2000-01-01" : runDateYmd);
-
-  const procurementsFeed = await fetchProcurementsPublic({
-    mode: req.mode,
-    watermarkYmd: procurementsWatermark,
-    runDateYmd
-  });
-  const noticesFeed = await fetchNoticesPublic({
-    watermarkYmd: noticesFromYmd,
-    runDateYmd
-  });
-
-  const uniqueProcurements = dedupeById(procurementsFeed.rows);
-  const uniqueNotices = dedupeNotices(noticesFeed.rows);
-  const procurementsMarked = markProcurementsWithState(uniqueProcurements, state);
-  const noticesMarked = markNoticesWithState(uniqueNotices, state);
-
-  const scoreResult = await scoreRows({
-    moduleDir: __dirname,
-    rows: procurementsMarked.procurementsWithStatus
+  await appendRunAuditEntries({
+    outRoot,
+    entries: [
+      buildL1RunAuditEntry({
+        runId,
+        eventType: "STARTED",
+        runDateYmd,
+        eventAt: startedAt,
+        mode: req.mode,
+        status: "STARTED",
+        message: req.dry_run ? "Layer 1 dry run started." : "Layer 1 run started."
+      })
+    ]
   });
 
-  const completedAt = new Date().toISOString();
-  const runMeta = {
-    mode: req.mode,
-    run_date_ymd: runDateYmd,
-    started_at: startedAt,
-    completed_at: completedAt,
-    timezone: TZ,
-    counts: {
-      procurements_fetched: Array.isArray(procurementsFeed.rows) ? procurementsFeed.rows.length : 0,
-      procurements_unique: uniqueProcurements.length,
-      procurements_total: procurementsMarked.procurementsWithStatus.length,
-      procurements_changed_or_new: procurementsMarked.changedOrNew.length,
-      notices_fetched: Array.isArray(noticesFeed.rows) ? noticesFeed.rows.length : 0,
-      notices_unique: uniqueNotices.length,
-      notices_total: noticesMarked.noticesWithStatus.length,
-      notices_new: noticesMarked.newNoticesCount,
-      scored: scoreResult.scoredCount,
-      shortlist: scoreResult.shortlistCount,
-      layer2_queue: scoreResult.layer2Queue.length
-    }
-  };
+  try {
+    const state = await loadLayer1State({ outRoot });
+    const procurementsWatermark = state?.watermarks?.procurements_notice_publish_date || null;
+    const noticesWatermark = state?.watermarks?.notices_publish_date || null;
+    const noticesFromYmd =
+      noticesWatermark || (req.mode === "bootstrap" ? "2000-01-01" : runDateYmd);
 
-  const manifest = {
-    module: "eojn_v1",
-    phase: "EOJN-1",
-    created_at: completedAt,
-    run: runMeta,
-    filters: {
-      procurements: procurementsFeed.filter_expr,
-      notices: noticesFeed.filter_expr
-    },
-    sources: {
-      procurements: procurementsFeed.source,
-      notices: noticesFeed.source
-    }
-  };
+    const procurementsFeed = await fetchProcurementsPublic({
+      mode: req.mode,
+      watermarkYmd: procurementsWatermark,
+      runDateYmd
+    });
+    const noticesFeed = await fetchNoticesPublic({
+      watermarkYmd: noticesFromYmd,
+      runDateYmd
+    });
 
-  if (!req.dry_run) {
-    const writeInfo = await writeLayer1RunArtifacts({
-      outRoot,
-      runDateYmd,
-      procurementsRows: procurementsMarked.procurementsWithStatus,
-      noticesRows: noticesMarked.noticesWithStatus,
-      scoredRows: scoreResult.scored,
-      shortlistRows: scoreResult.shortlist,
-      layer2QueueRows: scoreResult.layer2Queue,
-      manifest
+    const uniqueProcurements = dedupeById(procurementsFeed.rows);
+    const uniqueNotices = dedupeNotices(noticesFeed.rows);
+    const procurementsMarked = markProcurementsWithState(uniqueProcurements, state);
+    const noticesMarked = markNoticesWithState(uniqueNotices, state);
+
+    const scoreResult = await scoreRows({
+      moduleDir: __dirname,
+      rows: procurementsMarked.procurementsWithStatus
     });
-    const canonical = await buildCanonicalArtifacts({
-      outRoot,
-      outDir: writeInfo.outDir,
-      runDateYmd,
-      scoredRows: scoreResult.scored,
-      noticesRows: noticesMarked.noticesWithStatus
-    });
-    await writeCanonicalArtifacts({
-      outRoot,
-      runDateYmd,
-      tenderLatestRows: canonical.tenderLatestRows,
-      tenderNoticeHistoryRows: canonical.tenderNoticeHistoryRows,
-      reviewDecisionHistoryRows: canonical.reviewDecisionHistoryRows
-    });
-    await mergeCanonicalStateArtifacts({
-      outRoot,
-      tenderLatestRows: canonical.tenderLatestRows,
-      tenderNoticeHistoryRows: canonical.tenderNoticeHistoryRows,
-      reviewDecisionHistoryRows: canonical.reviewDecisionHistoryRows
-    });
-    await ensureDefaultWorklistConfig(outRoot);
-    await appendEventLog({
-      outDir: writeInfo.outDir,
-      event: { ts: completedAt, type: "LAYER1_RUN_OK", run: runMeta }
-    });
-    const nextState = updateStateFromRun({
-      state,
-      procurementsRows: procurementsMarked.procurementsWithStatus,
-      noticesRows: noticesMarked.noticesWithStatus,
-      runMeta
-    });
-    await saveLayer1State({ outRoot, state: nextState });
-    await saveActiveCycle({
-      outRoot,
-      activeCycle: {
-        cycle_id: runMeta.completed_at,
-        run_date_ymd: runDateYmd,
-        out_dir: writeInfo.outDir,
-        layer1_run: runMeta
+
+    const completedAt = new Date().toISOString();
+    const runMeta = {
+      mode: req.mode,
+      run_date_ymd: runDateYmd,
+      started_at: startedAt,
+      completed_at: completedAt,
+      timezone: TZ,
+      counts: {
+        procurements_fetched: Array.isArray(procurementsFeed.rows) ? procurementsFeed.rows.length : 0,
+        procurements_unique: uniqueProcurements.length,
+        procurements_total: procurementsMarked.procurementsWithStatus.length,
+        procurements_changed_or_new: procurementsMarked.changedOrNew.length,
+        notices_fetched: Array.isArray(noticesFeed.rows) ? noticesFeed.rows.length : 0,
+        notices_unique: uniqueNotices.length,
+        notices_total: noticesMarked.noticesWithStatus.length,
+        notices_new: noticesMarked.newNoticesCount,
+        scored: scoreResult.scoredCount,
+        shortlist: scoreResult.shortlistCount,
+        layer2_queue: scoreResult.layer2Queue.length
       }
+    };
+
+    const manifest = {
+      module: "eojn_v1",
+      phase: "EOJN-1",
+      created_at: completedAt,
+      run: runMeta,
+      filters: {
+        procurements: procurementsFeed.filter_expr,
+        notices: noticesFeed.filter_expr
+      },
+      sources: {
+        procurements: procurementsFeed.source,
+        notices: noticesFeed.source
+      }
+    };
+
+    if (!req.dry_run) {
+      const writeInfo = await writeLayer1RunArtifacts({
+        outRoot,
+        runDateYmd,
+        procurementsRows: procurementsMarked.procurementsWithStatus,
+        noticesRows: noticesMarked.noticesWithStatus,
+        scoredRows: scoreResult.scored,
+        shortlistRows: scoreResult.shortlist,
+        layer2QueueRows: scoreResult.layer2Queue,
+        manifest
+      });
+      const canonical = await buildCanonicalArtifacts({
+        outRoot,
+        outDir: writeInfo.outDir,
+        runDateYmd,
+        scoredRows: scoreResult.scored,
+        noticesRows: noticesMarked.noticesWithStatus
+      });
+      await persistCanonicalArtifactsForRun({
+        outRoot,
+        runDateYmd,
+        tenderLatestRows: canonical.tenderLatestRows,
+        tenderNoticeHistoryRows: canonical.tenderNoticeHistoryRows,
+        reviewDecisionHistoryRows: canonical.reviewDecisionHistoryRows
+      });
+      await appendIngestLedgerEntries({
+        outRoot,
+        entries: buildIngestLedgerEntries({
+          runId,
+          runDateYmd,
+          seenAt: completedAt,
+          mode: req.mode,
+          procurementsRows: procurementsMarked.procurementsWithStatus,
+          noticesRows: noticesMarked.noticesWithStatus
+        })
+      });
+      await ensureDefaultWorklistConfig(outRoot);
+      await appendEventLog({
+        outDir: writeInfo.outDir,
+        event: { ts: completedAt, type: "LAYER1_RUN_OK", run: runMeta }
+      });
+      const nextState = updateStateFromRun({
+        state,
+        procurementsRows: procurementsMarked.procurementsWithStatus,
+        noticesRows: noticesMarked.noticesWithStatus,
+        runMeta
+      });
+      await saveLayer1State({ outRoot, state: nextState });
+      await saveActiveCycle({
+        outRoot,
+        activeCycle: {
+          cycle_id: runMeta.completed_at,
+          run_date_ymd: runDateYmd,
+          out_dir: writeInfo.outDir,
+          layer1_run: runMeta
+        }
+      });
+      await appendRunAuditEntries({
+        outRoot,
+        entries: [
+          buildL1RunAuditEntry({
+            runId,
+            eventType: "COMPLETED",
+            runDateYmd,
+            eventAt: completedAt,
+            mode: req.mode,
+            outDir: writeInfo.outDir,
+            counts: runMeta.counts,
+            status: "SUCCESS",
+            message: "Layer 1 run completed."
+          })
+        ]
+      });
+      return {
+        ok: true,
+        run: runMeta,
+        out_dir: writeInfo.outDir,
+        state_watermarks: nextState.watermarks
+      };
+    }
+
+    await appendRunAuditEntries({
+      outRoot,
+      entries: [
+        buildL1RunAuditEntry({
+          runId,
+          eventType: "COMPLETED",
+          runDateYmd,
+          eventAt: completedAt,
+          mode: req.mode,
+          counts: runMeta.counts,
+          status: "DRY_RUN_SUCCESS",
+          message: "Layer 1 dry run completed."
+        })
+      ]
     });
     return {
       ok: true,
+      dry_run: true,
       run: runMeta,
-      out_dir: writeInfo.outDir,
-      state_watermarks: nextState.watermarks
+      state_watermarks: state && state.watermarks ? state.watermarks : {}
     };
+  } catch (err) {
+    await appendRunAuditEntries({
+      outRoot,
+      entries: [
+        buildL1RunAuditEntry({
+          runId,
+          eventType: "FAILED",
+          runDateYmd,
+          eventAt: new Date().toISOString(),
+          mode: req.mode,
+          status: "FAILED",
+          message: String(err && err.message || err || "").slice(0, 500),
+          errorCode: err && err.code ? err.code : "L1_FAILED"
+        })
+      ]
+    });
+    throw err;
   }
-
-  return {
-    ok: true,
-    dry_run: true,
-    run: runMeta,
-    state_watermarks: state && state.watermarks ? state.watermarks : {}
-  };
 }
 
 async function getLayer1Status(input) {
@@ -681,15 +807,9 @@ async function recomputeLayer1FromStoredRaw(input) {
     scoredRows: scoreResult.scored,
     noticesRows: loaded.noticesRows
   });
-  await writeCanonicalArtifacts({
+  await persistCanonicalArtifactsForRun({
     outRoot,
     runDateYmd,
-    tenderLatestRows: canonical.tenderLatestRows,
-    tenderNoticeHistoryRows: canonical.tenderNoticeHistoryRows,
-    reviewDecisionHistoryRows: canonical.reviewDecisionHistoryRows
-  });
-  await mergeCanonicalStateArtifacts({
-    outRoot,
     tenderLatestRows: canonical.tenderLatestRows,
     tenderNoticeHistoryRows: canonical.tenderNoticeHistoryRows,
     reviewDecisionHistoryRows: canonical.reviewDecisionHistoryRows

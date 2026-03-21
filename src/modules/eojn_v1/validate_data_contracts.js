@@ -8,10 +8,14 @@ const CONTRACT_FILES = [
   "contracts/tender_notice_history_contract.json",
   "contracts/review_decision_history_contract.json",
   "contracts/worklist_view_config_contract.json",
+  "contracts/eojn_kpi_summary_contract.json",
+  "contracts/eojn_run_audit_contract.json",
+  "contracts/eojn_ingest_ledger_contract.json",
   "contracts/procedure_type_catalog.json",
   "contracts/document_type_catalog.json",
   "contracts/layer2_use_case_profiles.json",
-  "contracts/event_model_v1.json"
+  "contracts/event_model_v1.json",
+  "contracts/eojn_kpi_model_v1.json"
 ];
 
 function readJsonObject(filePath) {
@@ -45,10 +49,17 @@ function validateContract(filePath) {
       version: data.version
     };
   }
-  if (base === "event_model_v1.json") {
+  if (base === "event_model_v1.json" || base === "eojn_kpi_model_v1.json") {
     for (const field of ["model_id", "version", "description", "latest_state_rules", "contracts"]) {
-      if (!Object.prototype.hasOwnProperty.call(data, field)) {
+      if (base === "event_model_v1.json" && !Object.prototype.hasOwnProperty.call(data, field)) {
         throw new Error(`Missing ${field} in ${filePath}`);
+      }
+    }
+    if (base === "eojn_kpi_model_v1.json") {
+      for (const field of ["model_id", "version", "description", "calendar_assumptions", "management_view_fields", "coverage_rules", "review_rules", "contracts"]) {
+        if (!Object.prototype.hasOwnProperty.call(data, field)) {
+          throw new Error(`Missing ${field} in ${filePath}`);
+        }
       }
     }
     return {

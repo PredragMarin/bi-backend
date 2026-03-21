@@ -1,0 +1,27 @@
+{
+  "contract_id": "eojn_run_audit_contract_v1",
+  "version": "1.0.0",
+  "description": "Append-only EOJN run audit trail for Layer 1 and Layer 2 cycle execution, timing and outcome.",
+  "storage_model": {
+    "artifact_name": "run_audit.ndjson",
+    "record_granularity": "one audit event row per run lifecycle transition",
+    "primary_key": ["RunId", "EventAt", "EventType"],
+    "update_rule": "append only"
+  },
+  "required_fields": [
+    { "name": "RunId", "type": "string", "source": "system" },
+    { "name": "RunType", "type": "string", "source": "system", "enum": ["L1", "L2"] },
+    { "name": "EventType", "type": "string", "source": "system", "enum": ["STARTED", "COMPLETED", "FAILED"] },
+    { "name": "RunDateYmd", "type": "string", "source": "system" },
+    { "name": "EventAt", "type": "string", "source": "system" },
+    { "name": "Status", "type": "string", "source": "derived" }
+  ],
+  "optional_fields": [
+    { "name": "Mode", "type": "string", "source": "request" },
+    { "name": "OutDir", "type": "string", "source": "system" },
+    { "name": "QueueSource", "type": "string", "source": "derived" },
+    { "name": "Counts", "type": "object", "source": "derived" },
+    { "name": "Message", "type": "string", "source": "derived" },
+    { "name": "ErrorCode", "type": "string", "source": "derived" }
+  ]
+}
