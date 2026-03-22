@@ -187,7 +187,7 @@ function buildSignals(workOrder) {
       });
     }
   }
-  if (plannedMinutes > 0) {
+  if (plannedMinutes > 0 && status === "KO") {
     const ratio = plannedMinutes ? planVsActualGap / plannedMinutes : 0;
     if (planVsActualGap >= 60 || ratio >= 0.3) {
       flags.push({
@@ -195,6 +195,18 @@ function buildSignals(workOrder) {
         kind: "anomaly",
         severity: "medium",
         label: "Plan/Actual gap",
+        detail: `plan ${plannedMinutes.toFixed(2)} / actual ${actualMinutes.toFixed(2)}`
+      });
+    }
+  }
+  if (plannedMinutes > 0 && status === "LA") {
+    const ratio = plannedMinutes ? planVsActualGap / plannedMinutes : 0;
+    if (planVsActualGap >= 60 || ratio >= 0.3) {
+      flags.push({
+        code: "WIP_PLAN_ACTUAL_DRIFT",
+        kind: "deviation",
+        severity: "low",
+        label: "WIP plan/actual",
         detail: `plan ${plannedMinutes.toFixed(2)} / actual ${actualMinutes.toFixed(2)}`
       });
     }
@@ -637,6 +649,15 @@ function mapSignalToAction({ workOrder, signal }) {
       recommended_action: status === "KO"
         ? "Provjeriti zašto actual značajno odstupa od plana i potvrditi zatvaranje naloga."
         : "Provjeriti realizaciju rada, trajanje operacija i kvalitetu evidencije actual minuta."
+    };
+  }
+  if (signalCode === "WIP_PLAN_ACTUAL_DRIFT") {
+    return {
+      ...base,
+      priority: "LOW",
+      queue_type: "Execution Queue",
+      owner_role: "voditelj proizvodnje",
+      recommended_action: "Pratiti tijek realizacije aktivnog naloga i procijeniti treba li korekcija evidencije ili plana prije zatvaranja."
     };
   }
   return base;

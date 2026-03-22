@@ -3,7 +3,7 @@
 ## Migration Plan: Core Shell + Modules (DB-ready)
 
 ### Phase 0: Baseline Lock
-- Freeze current behavior in `docs/BASELINE.md`.
+- Freeze current behavior in `docs/CORE_BASELINE.md`.
 - Tag snapshot before structural work.
 - Accept temporary dual structure during migration.
 

@@ -1,5 +1,8 @@
 # MES-ASIST Contracts and Operations v1
 
+Status: Deprecated reference for `DNOPR` domain alignment.  
+Note: Relevant ideas may be migrated into `docs/DNOPR_Contract_v1.md`. This document is not the long-term canonical contract for the DNOPR domain.
+
 ## 1. Scope
 Ovaj dokument definira:
 - canonical event contract,
@@ -149,4 +152,3 @@ Idempotency pravila:
 - Nova kolona ide prvo u mapping layer, tek onda opcionalno u canonical schema.
 - Rules promjene isporučivati kao novu verziju pravila, bez hardcoded branchanja.
 - Uvijek čuvati audit trag: raw input, odluka pravila, akcija, odgovor.
-

@@ -5,7 +5,7 @@ Branch: `restructure/core-shell-v1`
 ## Completed (Phase 1 Foundation)
 - Added governance file: `AGENTS.md`
 - Added migration roadmap: `PLANS.md`
-- Added baseline lock doc: `docs/BASELINE.md`
+- Added baseline lock doc: `docs/CORE_BASELINE.md`
 - Created Core Shell storage skeleton:
   - `src/core_shell/storage/index.js`
   - `src/core_shell/storage/fs_store.js`

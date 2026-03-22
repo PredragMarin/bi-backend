@@ -1,5 +1,8 @@
 # MES-ASIST Architecture v1
 
+Status: Deprecated reference for `DNOPR` domain alignment.  
+Note: Relevant ideas may be migrated into `docs/DNOPR_Contract_v1.md`. This document is not the long-term canonical contract for the DNOPR domain.
+
 ## 1. Context
 `MES-asist` je modul unutar BI core shell-a za near-real-time obradu MES signala iz ERP/GOSOFT view-a `V_FEEDBACK`, s ciljem pokretanja operativnih akcija (SMS, andon, eskalacija, servisne reakcije).
 
@@ -95,4 +98,3 @@ Izvan opsega modula:
 - `src/core/sql/shared_fetch.js` za zajednički SQL pristup.
 - `src/core/watchdog/*` za heartbeat i scheduler pomoćne funkcije.
 - `out/mes_asist/*` za runtime state i operativne artefakte.
-
