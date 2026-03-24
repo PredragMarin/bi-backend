@@ -62,6 +62,89 @@ function maxString(values) {
   return arr.length ? arr[arr.length - 1] : "";
 }
 
+function truthyFlag(value) {
+  const v = String(value === null || value === undefined ? "" : value).trim().toLowerCase();
+  return v === "1" || v === "true" || v === "t" || v === "da" || v === "y";
+}
+
+function isWeekdayFromIso(value) {
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  const day = date.getDay();
+  return day >= 1 && day <= 5;
+}
+
+function isCollectiveOffText(value) {
+  const text = trimValue(value).toLowerCase();
+  return /kolektiv|godišnj|godisnj|odmor/.test(text);
+}
+
+function buildWorkingCalendar(rows) {
+  const days = (rows || []).map((row) => {
+    const datum = trimValue(row.datum).slice(0, 10);
+    const praznik = truthyFlag(row.praznik);
+    const collectiveOff = isCollectiveOffText(row.tekst);
+    const weekday = datum ? isWeekdayFromIso(datum) : false;
+    const rawDandelovni = trimValue(row.dandelovni);
+    const gosoftWorking = rawDandelovni ? truthyFlag(rawDandelovni) : null;
+    const isWorkingDay = gosoftWorking === null
+      ? (weekday && !praznik && !collectiveOff)
+      : (gosoftWorking && !praznik && !collectiveOff);
+    return {
+      datum,
+      dandelovni: row.dandelovni,
+      tekst: trimValue(row.tekst),
+      praznik,
+      collective_off: collectiveOff,
+      weekday,
+      is_working_day: isWorkingDay,
+      available_minutes: isWorkingDay ? 450 : 0,
+      available_hours: isWorkingDay ? 7.5 : 0
+    };
+  });
+
+  const workingDays = days.filter((day) => day.is_working_day).length;
+  const holidayDays = days.filter((day) => day.praznik).length;
+  const collectiveDays = days.filter((day) => day.collective_off).length;
+  const availableMinutes = days.reduce((sum, day) => sum + toNumber(day.available_minutes), 0);
+
+  return {
+    days,
+    summary: {
+      total_days: days.length,
+      working_days: workingDays,
+      non_working_days: days.length - workingDays,
+      holiday_days: holidayDays,
+      collective_days: collectiveDays,
+      available_minutes: availableMinutes,
+      available_hours: Number((availableMinutes / 60).toFixed(2)),
+      minutes_per_working_day: 450,
+      hours_per_working_day: 7.5
+    }
+  };
+}
+
+function buildCalendarScopeSummary(calendarDays, fromISO, toISO) {
+  const from = trimValue(fromISO).slice(0, 10);
+  const to = trimValue(toISO).slice(0, 10);
+  const scopedDays = (calendarDays || []).filter((day) => {
+    const datum = trimValue(day.datum).slice(0, 10);
+    return (!from || datum >= from) && (!to || datum <= to);
+  });
+  const workingDays = scopedDays.filter((day) => day.is_working_day).length;
+  const holidayDays = scopedDays.filter((day) => day.praznik).length;
+  const collectiveDays = scopedDays.filter((day) => day.collective_off).length;
+  const availableMinutes = scopedDays.reduce((sum, day) => sum + toNumber(day.available_minutes), 0);
+  return {
+    total_days: scopedDays.length,
+    working_days: workingDays,
+    non_working_days: scopedDays.length - workingDays,
+    holiday_days: holidayDays,
+    collective_days: collectiveDays,
+    available_minutes: availableMinutes,
+    available_hours: Number((availableMinutes / 60).toFixed(2))
+  };
+}
+
 function buildArtikelMetaMap(rows) {
   const map = new Map();
   rows.forEach((row) => {
@@ -71,10 +154,32 @@ function buildArtikelMetaMap(rows) {
       artikel,
       naziv1: trimValue(row.naziv1),
       tehid: trimValue(row.tehid),
-      em: trimValue(row.em)
+      em: trimValue(row.em),
+      artid: trimValue(row.artid)
     });
   });
   return map;
+}
+
+function buildArtikelKlasByArtid(rows) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const artid = trimValue(row.artid);
+    const kljuc = trimValue(row.kljuc);
+    if (!artid || !kljuc || !kljuc.startsWith("AIE")) return;
+    if (!map.has(artid)) map.set(artid, []);
+    map.get(artid).push(kljuc);
+  });
+  return map;
+}
+
+function resolveArtikelKlas(artikelMeta, artikelKlasByArtid) {
+  const artid = trimValue(artikelMeta && artikelMeta.artid);
+  if (!artid) return "";
+  const values = (artikelKlasByArtid.get(artid) || []).filter(Boolean);
+  if (!values.length) return "";
+  const unique = Array.from(new Set(values));
+  return unique.slice(0, 2).join(" | ");
 }
 
 function buildTehOpsByTehid(rows) {
@@ -214,7 +319,7 @@ function buildSignals(workOrder) {
   return flags;
 }
 
-function summarizeWindowRows({ vdnRows, vdnoprRows, feedbackRows, artikelMetaBySifraid, tehOpsByTehid, fromISO, toISO }) {
+function summarizeWindowRows({ vdnRows, vdnoprRows, feedbackRows, artikelMetaBySifraid, artikelKlasByArtid, tehOpsByTehid, fromISO, toISO }) {
   const opsByDnid = new Map();
   const feedbackByDnid = new Map();
 
@@ -238,6 +343,7 @@ function summarizeWindowRows({ vdnRows, vdnoprRows, feedbackRows, artikelMetaByS
     const artikelMeta = artikelMetaBySifraid.get(sifraid);
     const artikelNaziv = trimValue(artikelMeta && artikelMeta.naziv1);
     const artikelJm = trimValue(artikelMeta && artikelMeta.em);
+    const artikelKlas = resolveArtikelKlas(artikelMeta, artikelKlasByArtid);
     const artikelMinutes = computeArtikelMinutes({
       artikelMetaBySifraid,
       tehOpsByTehid,
@@ -269,6 +375,7 @@ function summarizeWindowRows({ vdnRows, vdnoprRows, feedbackRows, artikelMetaByS
       dat_konc: trimValue(row.dat_konc),
       artikel_sifra: sifraid,
       artikel_naziv: artikelNaziv,
+      artikel_klas: artikelKlas,
       artikel_jm: artikelJm,
       artikel: sifraid,
       sifraid,
@@ -338,7 +445,8 @@ async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" })
     items: [
       { key: "vdnRows", queryId: "V_DN_WINDOW", params: [win.fromISO, win.toExclusiveISO] },
       { key: "vdnoprRows", queryId: "V_DNOPR_WINDOW", params: [win.fromISO, win.toExclusiveISO] },
-      { key: "feedbackRows", queryId: "V_FEEDBACK_WINDOW", params: [win.fromISO, win.toExclusiveISO] }
+      { key: "feedbackRows", queryId: "V_FEEDBACK_WINDOW", params: [win.fromISO, win.toExclusiveISO] },
+      { key: "calendarRows", queryId: "DNOPR_CAL_RANGE", params: [win.fromISO, win.toExclusiveISO] }
     ]
   });
 
@@ -349,10 +457,13 @@ async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" })
   const vdnRows = normalizeRows(baseResult.rowsByKey.vdnRows);
   const vdnoprRows = normalizeRows(baseResult.rowsByKey.vdnoprRows);
   const feedbackRows = normalizeRows(baseResult.rowsByKey.feedbackRows);
+  const calendarRows = normalizeRows(baseResult.rowsByKey.calendarRows);
   const sifraids = Array.from(new Set(vdnRows.map((row) => trimValue(row.sifraid)).filter(Boolean))).sort();
 
   let artikelRows = [];
+  let artklasRows = [];
   let artikelDurationMs = 0;
+  let artklasDurationMs = 0;
   let tehDurationMs = 0;
   let tehRows = [];
   if (sifraids.length) {
@@ -375,6 +486,26 @@ async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" })
     artikelRows = Object.values(artikelResult.rowsByKey || {}).flatMap((rows) => normalizeRows(rows));
 
     const artikelMetaBySifraid = buildArtikelMetaMap(artikelRows);
+    const artids = Array.from(new Set(Array.from(artikelMetaBySifraid.values()).map((item) => trimValue(item.artid)).filter(Boolean))).sort();
+    if (artids.length) {
+      const artklasResult = await executeAllowedBatch({
+        moduleId: "dnopr_lifecycle_v1",
+        requestId: `${requestId}_artklas`,
+        dsnOverride: dsn,
+        items: artids.map((artid, index) => ({
+          key: `artklas_${index}`,
+          queryId: "ARTKLAS_BY_ARTID",
+          params: [artid]
+        }))
+      });
+
+      if (!artklasResult.ok) {
+        throw new Error(artklasResult.audit && artklasResult.audit.error ? artklasResult.audit.error : "ARTKLAS fetch failed");
+      }
+
+      artklasDurationMs = Number(artklasResult.audit && artklasResult.audit.duration_ms) || 0;
+      artklasRows = Object.values(artklasResult.rowsByKey || {}).flatMap((rows) => normalizeRows(rows));
+    }
     const tehids = Array.from(new Set(Array.from(artikelMetaBySifraid.values()).map((item) => trimValue(item.tehid)).filter(Boolean))).sort();
     if (tehids.length) {
       const tehResult = await executeAllowedBatch({
@@ -398,13 +529,16 @@ async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" })
   }
 
   const artikelMetaBySifraid = buildArtikelMetaMap(artikelRows);
+  const artikelKlasByArtid = buildArtikelKlasByArtid(artklasRows);
   const tehOpsByTehid = buildTehOpsByTehid(tehRows);
+  const calendar = buildWorkingCalendar(calendarRows);
 
   const view = summarizeWindowRows({
     vdnRows,
     vdnoprRows,
     feedbackRows,
     artikelMetaBySifraid,
+    artikelKlasByArtid,
     tehOpsByTehid,
     fromISO: win.fromISO,
     toISO: win.toISO
@@ -412,9 +546,10 @@ async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" })
 
   return {
     ...view,
+    calendar,
     audit: {
       request_id: requestId,
-      duration_ms: (Number(baseResult.audit && baseResult.audit.duration_ms) || 0) + artikelDurationMs + tehDurationMs,
+      duration_ms: (Number(baseResult.audit && baseResult.audit.duration_ms) || 0) + artikelDurationMs + artklasDurationMs + tehDurationMs,
       status: baseResult.audit.status
     }
   };
@@ -442,8 +577,10 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
   const feedback = normalizeRows(dbResult.rowsByKey.feedbackRows);
   const sifraid = trimValue(header && header.sifraid);
   let artikelNaziv = "";
+  let artikelKlas = "";
   let artikelTehid = "";
   let artikelJm = "";
+  let artikelArtid = "";
   let artikelMin = 0;
   let artikelOpsCount = 0;
 
@@ -466,6 +603,25 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
     artikelNaziv = trimValue(artikelMeta && artikelMeta.naziv1);
     artikelTehid = trimValue(artikelMeta && artikelMeta.tehid);
     artikelJm = trimValue(artikelMeta && artikelMeta.em);
+    artikelArtid = trimValue(artikelMeta && artikelMeta.artid);
+    if (artikelArtid) {
+      const artklasResult = await executeAllowedBatch({
+        moduleId: "dnopr_lifecycle_v1",
+        requestId: `${requestId}_artklas`,
+        dsnOverride: dsn,
+        items: [
+          { key: "artklas", queryId: "ARTKLAS_BY_ARTID", params: [artikelArtid] }
+        ]
+      });
+
+      if (!artklasResult.ok) {
+        throw new Error(artklasResult.audit && artklasResult.audit.error ? artklasResult.audit.error : "ARTKLAS detail fetch failed");
+      }
+
+      const artikelKlasRows = normalizeRows(artklasResult.rowsByKey.artklas);
+      const artikelKlasByArtid = buildArtikelKlasByArtid(artikelKlasRows);
+      artikelKlas = resolveArtikelKlas({ artid: artikelArtid }, artikelKlasByArtid);
+    }
   }
 
   if (artikelTehid && header) {
@@ -493,6 +649,7 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
     ...header,
     artikel_sifra: sifraid,
     artikel_naziv: artikelNaziv,
+    artikel_klas: artikelKlas,
     artikel_jm: artikelJm,
     artikel_tehid: artikelTehid,
     artikel_min: artikelMin,

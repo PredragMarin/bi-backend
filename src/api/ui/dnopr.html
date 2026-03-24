@@ -1,832 +1,146 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="hr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lifecycle DN</title>
-  <style>
-    :root {
-      --bg: #f5f1e8;
-      --card: #fffdf8;
-      --ink: #1f2937;
-      --muted: #6b7280;
-      --line: #d9ccb9;
-      --accent: #85552a;
-      --accent-2: #2f6a60;
-      --accent-3: #9f2d2d;
-      --soft: #f3e6d5;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
-      color: var(--ink);
-      background:
-        radial-gradient(circle at top left, rgba(133, 85, 42, 0.12), transparent 25%),
-        linear-gradient(180deg, #faf6ef 0%, var(--bg) 100%);
-    }
-    .wrap {
-      max-width: 1560px;
-      margin: 0;
-      padding: 18px 14px 28px;
-      display: grid;
-      gap: 14px;
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 14px;
-      box-shadow: 0 14px 34px rgba(61, 39, 12, 0.08);
-    }
-    .hero {
-      display: grid;
-      grid-template-columns: 1.2fr .8fr;
-      gap: 14px;
-      align-items: start;
-    }
-    h1, h2, h3 { margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif; }
-    h1 { font-size: 26px; line-height: 1.02; }
-    h2 { font-size: 20px; }
-    h3 { font-size: 16px; }
-    p { margin: 4px 0; }
-    .muted { color: var(--muted); }
-    .hero-links { text-align: right; font-size: 13px; }
-    .hero-links a { color: var(--accent); text-decoration: none; }
-    .hero-links a:hover { text-decoration: underline; }
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 10px;
-      margin-top: 8px;
-    }
-    .stat {
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 8px 10px;
-      background: linear-gradient(180deg, #fffdf8 0%, #f7f0e6 100%);
-      min-height: 66px;
-    }
-    .stat-label {
-      font-size: 11px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .08em;
-    }
-    .stat-value {
-      margin-top: 4px;
-      font-size: 20px;
-      font-weight: 700;
-    }
-    .stat-sub {
-      margin-top: 4px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    label {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 12px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      font-weight: 700;
-    }
-    input, select, button {
-      font: inherit;
-      border-radius: 10px;
-      border: 1px solid var(--line);
-      padding: 9px 10px;
-      background: #fff;
-      color: var(--ink);
-    }
-    input[type="date"] { width: 168px; }
-    input[type="search"] { width: 240px; }
-    select { min-width: 170px; }
-    button {
-      cursor: pointer;
-      color: #fff;
-      font-weight: 700;
-      background: linear-gradient(180deg, #956334 0%, #7d4d21 100%);
-      border-color: #6b431c;
-    }
-    button.secondary {
-      background: linear-gradient(180deg, #3e7066 0%, #29574f 100%);
-      border-color: #234941;
-    }
-    .toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px 12px;
-      align-items: end;
-    }
-    .status-line {
-      margin-top: 8px;
-      min-height: 18px;
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .layout {
-      display: grid;
-      grid-template-columns: 1.22fr .78fr;
-      gap: 14px;
-    }
-    .section-head {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 6px;
-    }
-    .section-side {
-      font-size: 13px;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-    .detail-layout {
-      display: grid;
-      grid-template-columns: 1.14fr .86fr;
-      gap: 14px;
-    }
-    .table-wrap {
-      max-height: 560px;
-      overflow: auto;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: #fffdfa;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 1120px;
-    }
-    th, td {
-      padding: 8px 9px;
-      border-bottom: 1px solid #eadfce;
-      font-size: 12px;
-      text-align: left;
-      vertical-align: top;
-    }
-    th {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      background: #f4e6d7;
-      user-select: none;
-      cursor: pointer;
-    }
-    tbody tr:hover td { background: #fdf4e7; }
-    tbody tr.selected td { background: #f8e2bc; }
-    tbody tr.summary-row td {
-      background: #f6ecdd;
-      font-weight: 700;
-      border-top: 2px solid #d7b98c;
-    }
-    .mono { font-family: Consolas, "Courier New", monospace; }
-    .pill {
-      display: inline-block;
-      padding: 3px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 700;
-      border: 1px solid var(--line);
-      background: #efe5d7;
-      white-space: nowrap;
-    }
-    .pill.good { background: #dcefe6; border-color: #9ec3b5; color: #23554b; }
-    .pill.warn { background: #fff0cf; border-color: #d9bd79; color: #8b5d15; }
-    .pill.bad { background: #f6dddd; border-color: #d4a0a0; color: #8f2d2d; }
-    .empty {
-      padding: 24px;
-      border: 1px dashed var(--line);
-      border-radius: 12px;
-      background: #fffaf4;
-      text-align: center;
-      color: var(--muted);
-    }
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-      margin-top: 10px;
-    }
-    .metric {
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 10px;
-      background: #fffaf2;
-    }
-    .metric .k {
-      font-size: 11px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .05em;
-    }
-    .metric .v {
-      margin-top: 6px;
-      font-size: 18px;
-      font-weight: 700;
-    }
-    .tag-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 8px;
-    }
-    .tag {
-      font-size: 11px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: #efe6db;
-      border: 1px solid var(--line);
-    }
-    .tag.high {
-      background: #f6dddd;
-      border-color: #d4a0a0;
-      color: #8f2d2d;
-    }
-    .tag.medium {
-      background: #fff0cf;
-      border-color: #d9bd79;
-      color: #8b5d15;
-    }
-    .tag.low {
-      background: #dcefe6;
-      border-color: #9ec3b5;
-      color: #23554b;
-    }
-    .tag.deviation {
-      border-style: dashed;
-    }
-    .signal-stack {
-      display: grid;
-      gap: 4px;
-    }
-    .signal-item {
-      display: grid;
-      gap: 2px;
-    }
-    .signal-detail {
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.2;
-    }
-    .note {
-      margin-top: 10px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px dashed var(--line);
-      background: var(--soft);
-      font-size: 13px;
-    }
-    .hero.compact {
-      padding-top: 10px;
-      padding-bottom: 10px;
-    }
-    @media (max-width: 1200px) {
-      .hero, .layout, .detail-layout, .stats { grid-template-columns: 1fr; }
-      .hero-links { text-align: left; }
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lifecycle DN</title>
+<style>
+:root{--bg:#f5f1e8;--card:#fffdf8;--ink:#1f2937;--muted:#6b7280;--line:#d9ccb9;--accent:#85552a}
+*{box-sizing:border-box}body{margin:0;font-family:"Trebuchet MS","Segoe UI",sans-serif;color:var(--ink);background:linear-gradient(180deg,#faf6ef 0%,var(--bg) 100%)}
+.wrap{max-width:1560px;margin:0;padding:18px 14px 28px;display:grid;gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 14px 34px rgba(61,39,12,.08)}
+.hero{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.stats,.queue-stats{display:grid;gap:10px}.stats{grid-template-columns:repeat(5,1fr);margin-top:8px}.queue-stats{grid-template-columns:repeat(6,1fr);margin-bottom:10px}
+.stat{border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:#f7f0e6}.stat-label{font-size:11px;color:var(--muted);text-transform:uppercase}.stat-value{margin-top:4px;font-size:20px;font-weight:700}.stat-value.window-value{font-size:16px;white-space:nowrap}.stat-sub{margin-top:4px;font-size:12px;color:var(--muted)}
+h1,h2{margin:0 0 6px;font-family:Georgia,"Times New Roman",serif}h1{font-size:26px}p{margin:4px 0}.muted{color:var(--muted)}.hero-links{text-align:right;font-size:13px}.hero-links a{color:var(--accent);text-decoration:none}
+label{display:block;margin-bottom:4px;font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:700}input,select,button{font:inherit;border-radius:10px;border:1px solid var(--line);padding:9px 10px;background:#fff;color:var(--ink)}input[type="date"]{width:168px}input[type="search"]{width:220px}select{min-width:160px}
+button{cursor:pointer;color:#fff;font-weight:700;background:#7d4d21;border-color:#6b431c}button.secondary,button.active{background:#29574f;border-color:#234941}.toolbar{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:end}.view-switch{display:inline-flex;gap:8px;padding:4px;border:1px solid var(--line);border-radius:14px;background:#fbf4ea}.status-line{margin-top:8px;min-height:18px;color:var(--muted);font-size:13px}
+.layout{display:grid;grid-template-columns:1.22fr .78fr;gap:14px}.detail-layout{display:grid;grid-template-columns:1.14fr .86fr;gap:14px}.queue-layout{display:grid;grid-template-columns:1.18fr .82fr;gap:14px}.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap}.section-side{font-size:13px;color:var(--muted);white-space:nowrap}.section-head-block{display:grid;gap:2px}.section-kicker{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.table-wrap{max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:14px;background:#fffdfa}table{width:100%;border-collapse:collapse;min-width:1120px}th,td{padding:8px 9px;border-bottom:1px solid #eadfce;font-size:12px;text-align:left;vertical-align:top}th{position:sticky;top:0;z-index:2;background:#f4e6d7;cursor:pointer}tbody tr:hover td{background:#fdf4e7}tbody tr.selected td{background:#f8e2bc}
+.mono{font-family:Consolas,"Courier New",monospace}.pill,.tag{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid var(--line);background:#efe5d7;white-space:nowrap}.pill.good{background:#dcefe6;color:#23554b}.pill.warn{background:#fff0cf;color:#8b5d15}.pill.bad,.pill.high,.tag.high{background:#f6dddd;color:#8f2d2d}.pill.medium,.tag.medium{background:#fff0cf;color:#8b5d15}.pill.low,.tag.low{background:#dcefe6;color:#23554b}.pill.deviation,.tag.deviation{border-style:dashed}
+.empty{padding:24px;border:1px dashed var(--line);border-radius:12px;background:#fffaf4;text-align:center;color:var(--muted)}.metric-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}.metric{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fffaf2}.metric .k{font-size:11px;color:var(--muted);text-transform:uppercase}.metric .v{margin-top:6px;font-size:18px;font-weight:700}.tag-list{display:flex;flex-wrap:wrap;gap:6px}.signal-stack,.signal-item{display:grid;gap:4px}.signal-detail{font-size:11px;color:var(--muted)}.note{margin-top:10px;padding:10px 12px;border-radius:12px;border:1px dashed var(--line);background:#f3e6d5;font-size:13px}.hidden{display:none!important}.action-card{display:grid;gap:10px}.action-hero{display:grid;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:#fffaf2}.action-title{font-size:18px;font-weight:700}.action-sub{font-size:12px;color:var(--muted)}.action-step{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#f9efe1}.action-step strong{display:block;margin-bottom:4px}.filter-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#f7f0e6;font-size:12px}.dialog-backdrop{position:fixed;inset:0;background:rgba(31,41,55,.28);display:flex;align-items:center;justify-content:center;padding:20px;z-index:30}.dialog{width:min(560px,100%);background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 20px 50px rgba(31,41,55,.18);padding:16px;display:grid;gap:12px}.dialog-grid{display:grid;grid-template-columns:1.1fr .8fr 1.1fr;gap:10px}.dialog-actions{display:flex;justify-content:flex-end;gap:10px}.dialog-note{font-size:12px;color:var(--muted)}
+@media (max-width:1200px){.hero,.layout,.detail-layout,.queue-layout,.stats,.queue-stats{grid-template-columns:1fr}.hero-links{text-align:left}}
+</style>
 </head>
 <body>
-  <div class="wrap">
-    <section class="card hero compact">
-      <div>
-        <h1>Lifecycle DN modul</h1>
-        <div class="stats">
-          <div class="stat"><div class="stat-label">Radni nalozi</div><div class="stat-value" id="statOrders">0</div><div class="stat-sub" id="statOrdersSub">u windowu</div></div>
-          <div class="stat"><div class="stat-label">Operacije</div><div class="stat-value" id="statOps">0</div><div class="stat-sub" id="statOpsSub">V_DNOPR rows</div></div>
-          <div class="stat"><div class="stat-label">Ledger</div><div class="stat-value" id="statFeedback">0</div><div class="stat-sub" id="statFeedbackSub">V_FEEDBACK rows</div></div>
-          <div class="stat"><div class="stat-label">Artikli</div><div class="stat-value" id="statArticles">0</div><div class="stat-sub" id="statArticlesSub">Total Articles in WO</div></div>
-          <div class="stat"><div class="stat-label">Window</div><div class="stat-value" id="statWindow">-</div><div class="stat-sub" id="statWindowSub">today -90 / +90 default</div></div>
-        </div>
-      </div>
-      <div>
-        <div class="hero-links"><a href="/ui/epr">EPR</a> | <a href="/ui/eojn">EOJN</a> | <a href="/ui/sms">SMS</a></div>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="toolbar">
-        <div>
-          <label for="fromDate">From</label>
-          <input id="fromDate" type="date" />
-        </div>
-        <div>
-          <label for="toDate">To</label>
-          <input id="toDate" type="date" />
-        </div>
-        <div>
-          <label for="admctrFilter">AdmCtr</label>
-          <select id="admctrFilter"><option value="ALL">ALL</option></select>
-        </div>
-        <div>
-          <label for="projektFilter">Projekt</label>
-          <select id="projektFilter"><option value="ALL">ALL</option></select>
-        </div>
-        <div>
-          <label for="statusFilter">Status</label>
-          <select id="statusFilter"><option value="ALL">ALL</option></select>
-        </div>
-        <div>
-          <label for="search">Search sifradn</label>
-          <input id="search" type="search" placeholder="26T04V02" />
-        </div>
-        <div>
-          <label for="sortKey">Sort</label>
-          <select id="sortKey">
-            <option value="termin_zac">Termin start</option>
-            <option value="sifradn">RN</option>
-            <option value="projekt">Projekt</option>
-            <option value="status_sifra">Status</option>
-            <option value="kolicina">Kol</option>
-            <option value="artikel_min">Artikal min</option>
-            <option value="artikel_ops">Art Ops</option>
-            <option value="planned_minutes_window">Planned min</option>
-            <option value="art_plan_variance_minutes">Art/Plan variance</option>
-            <option value="actual_minutes_window">Actual min</option>
-            <option value="last_feedback_at_window">Last feedback</option>
-          </select>
-        </div>
-        <div>
-          <label for="sortDir">Direction</label>
-          <select id="sortDir">
-            <option value="asc">Asc</option>
-            <option value="desc">Desc</option>
-          </select>
-        </div>
-        <div>
-          <label>&nbsp;</label>
-          <button id="loadBtn">Load window</button>
-        </div>
-        <div>
-          <label>&nbsp;</label>
-          <button id="defaultBtn" class="secondary">Default -90 / +90</button>
-        </div>
-        <div>
-          <label>&nbsp;</label>
-          <button id="actionsBtn" class="secondary">Open Action Queue</button>
-        </div>
-      </div>
-      <div class="status-line" id="statusLine">Status: idle</div>
-    </section>
-
-    <section class="layout">
-      <div class="card">
-        <div class="section-head">
-          <h2>Work orders in window</h2>
-          <div class="section-side" id="ordersRatio">0 / 0</div>
-        </div>
-        <p class="muted">Glavni timeline pogled sortiramo po planiranom startu iz <span class="mono">V_DN.termin_zac</span>.</p>
-        <div class="table-wrap">
-          <table id="ordersTable">
-            <thead>
-              <tr>
-                <th data-key="termin_zac">Termin</th>
-                <th data-key="sifradn">RN</th>
-                <th data-key="projekt">Projekt</th>
-                <th data-key="status_sifra">Status</th>
-                <th data-key="admctr">AdmCtr</th>
-                <th data-key="artikel_sifra">Artikal</th>
-                <th data-key="artikel_naziv">Naziv artikla</th>
-                <th data-key="artikel_jm">JM</th>
-                <th data-key="kolicina">Kol</th>
-                <th data-key="artikel_ops">Art Ops</th>
-                <th data-key="artikel_min">Artikal min</th>
-                <th data-key="operation_count_window">Ops</th>
-                <th data-key="feedback_rows_window">Ledger</th>
-                <th data-key="planned_minutes_window">Plan min</th>
-                <th data-key="art_plan_variance_minutes">Art/Plan variance</th>
-                <th data-key="actual_minutes_window">Actual min</th>
-                <th data-key="signal_count">Signals</th>
-                <th data-key="last_feedback_at_window">Last feedback</th>
-              </tr>
-            </thead>
-            <tbody id="ordersBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Selected work order</h2>
-        <div id="detailBox" class="empty">Odaberite radni nalog iz liste. Detalj se tada dohvaća po <span class="mono">dnid</span> iz baze.</div>
-        <div id="facetTags" class="tag-list"></div>
-      </div>
-    </section>
-
-    <section class="detail-layout">
-      <div class="card">
-        <h2>Operacije po nalogu</h2>
-        <p class="muted">Prikaz koristi puni detail fetch iz <span class="mono">V_DNOPR</span> za odabrani <span class="mono">dnid</span>.</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Oper</th>
-                <th>Opis</th>
-                <th>Status</th>
-                <th>StdOper</th>
-                <th>DM</th>
-                <th>Artikal min</th>
-                <th>Plan min</th>
-                <th>Actual min</th>
-                <th>Variance</th>
-                <th>Next</th>
-              </tr>
-            </thead>
-            <tbody id="operationsBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Ledger timeline</h2>
-        <p class="muted">Kronologija realizacije iz <span class="mono">V_FEEDBACK</span> za odabrani nalog.</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>timecr</th>
-                <th>Oper</th>
-                <th>Opis</th>
-                <th>statusop</th>
-                <th>statusdn</th>
-                <th>casefstr</th>
-                <th>Worker</th>
-                <th>DM</th>
-                <th>datzac</th>
-                <th>datkon</th>
-              </tr>
-            </thead>
-            <tbody id="timelineBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <script>
-    const state = {
-      windowData: null,
-      filteredOrders: [],
-      selectedDnid: null,
-      detailByDnid: new Map()
-    };
-
-    const fromDateEl = document.getElementById("fromDate");
-    const toDateEl = document.getElementById("toDate");
-    const searchEl = document.getElementById("search");
-    const statusFilterEl = document.getElementById("statusFilter");
-    const projektFilterEl = document.getElementById("projektFilter");
-    const admctrFilterEl = document.getElementById("admctrFilter");
-    const sortKeyEl = document.getElementById("sortKey");
-    const sortDirEl = document.getElementById("sortDir");
-    const loadBtn = document.getElementById("loadBtn");
-    const defaultBtn = document.getElementById("defaultBtn");
-    const actionsBtn = document.getElementById("actionsBtn");
-    const statusLineEl = document.getElementById("statusLine");
-    const ordersBodyEl = document.getElementById("ordersBody");
-    const ordersRatioEl = document.getElementById("ordersRatio");
-    const detailBoxEl = document.getElementById("detailBox");
-    const facetTagsEl = document.getElementById("facetTags");
-    const operationsBodyEl = document.getElementById("operationsBody");
-    const timelineBodyEl = document.getElementById("timelineBody");
-
-    function pad2(n) { return String(n).padStart(2, "0"); }
-    function toIsoDate(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`; }
-      function defaultWindow() {
-        const now = new Date();
-        const base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-        const from = new Date(base.getFullYear(), base.getMonth(), base.getDate() - 90);
-        const to = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 90);
-        fromDateEl.value = toIsoDate(from);
-        toDateEl.value = toIsoDate(to);
-      }
-
-    function pickStartDnid(rows) {
-      if (!rows.length) return null;
-      const today = toIsoDate(new Date());
-      const firstFutureOrToday = rows.find((row) => String(row.termin_zac || "").slice(0, 10) >= today);
-      if (firstFutureOrToday) return Number(firstFutureOrToday.dnid);
-      return Number(rows[rows.length - 1].dnid);
-    }
-
-    function esc(value) {
-      return String(value === null || value === undefined ? "" : value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-    }
-
-    function fmtNum(value, digits = 2) {
-      const n = Number(value);
-      return Number.isFinite(n) ? n.toFixed(digits) : "";
-    }
-
-    function statusPill(value) {
-      const v = String(value || "").trim() || "-";
-      let cls = "";
-      if (v === "KO" || v === "PF" || v === "T" || v === "t") cls = "good";
-      else if (v === "LA" || v === "PL" || v === "R") cls = "warn";
-      else if (v === "B") cls = "bad";
-      return `<span class="pill ${cls}">${esc(v)}</span>`;
-    }
-
-    function setStatus(message) {
-      statusLineEl.textContent = message;
-    }
-
-    function buildActionQueueUrl() {
-      const params = new URLSearchParams();
-      params.set("from", fromDateEl.value || "");
-      params.set("to", toDateEl.value || "");
-      params.set("admctr", admctrFilterEl.value || "ALL");
-      params.set("projekt", projektFilterEl.value || "ALL");
-      params.set("status", statusFilterEl.value || "ALL");
-      params.set("search", searchEl.value || "");
-      params.set("sortKey", sortKeyEl.value || "priority_rank");
-      params.set("sortDir", sortDirEl.value || "asc");
-      return `/ui/dnopr-actions?${params.toString()}`;
-    }
-
-    function compareValues(a, b, key, dir) {
-      const av = a[key];
-      const bv = b[key];
-      let out = 0;
-      if (typeof av === "number" || typeof bv === "number") out = Number(av || 0) - Number(bv || 0);
-      else out = String(av || "").localeCompare(String(bv || ""));
-      return dir === "asc" ? out : -out;
-    }
-
-    function renderSummary() {
-      const data = state.windowData;
-      const rows = data ? (data.work_orders || []) : [];
-      document.getElementById("statOrders").textContent = String(rows.length);
-      document.getElementById("statOrdersSub").textContent = "filtered by V_DN window";
-      document.getElementById("statOps").textContent = String(data && data.meta ? data.meta.v_dnopr_rows : 0);
-      document.getElementById("statOpsSub").textContent = "rows in current window";
-      document.getElementById("statFeedback").textContent = String(data && data.meta ? data.meta.v_feedback_rows : 0);
-      document.getElementById("statFeedbackSub").textContent = "timeline rows in window";
-      const distinctArticles = new Set(rows.map((row) => String(row.artikel_sifra || "").trim()).filter(Boolean));
-      document.getElementById("statArticles").textContent = String(distinctArticles.size);
-      document.getElementById("statArticlesSub").textContent = "Total Articles in WO";
-      document.getElementById("statWindow").textContent = data ? `${data.window.from} -> ${data.window.to}` : "-";
-      document.getElementById("statWindowSub").textContent = "sliding timeline scope";
-      ordersRatioEl.textContent = `${state.filteredOrders.length} / ${rows.length}`;
-    }
-
-    function populateFacetSelect(selectEl, options, current) {
-      selectEl.innerHTML = `<option value="ALL">ALL</option>${(options || []).map((item) => `<option value="${esc(item.value)}">${esc(item.value)} (${item.count})</option>`).join("")}`;
-      if (Array.from(selectEl.options).some((opt) => opt.value === current)) selectEl.value = current;
-    }
-
-    function buildProjektOptions(rows, admctr) {
-      const counts = new Map();
-      rows.forEach((row) => {
-        if (admctr !== "ALL" && row.admctr !== admctr) return;
-        const value = String(row.projekt || "").trim() || "(blank)";
-        counts.set(value, (counts.get(value) || 0) + 1);
-      });
-      return Array.from(counts.entries())
-        .map(([value, count]) => ({ value, count }))
-        .sort((a, b) => a.value.localeCompare(b.value));
-    }
-
-    function refreshDependentFilters() {
-      if (!state.windowData) return;
-      const admctr = admctrFilterEl.value || "ALL";
-      const projektOptions = buildProjektOptions(state.windowData.work_orders || [], admctr);
-      const currentProjekt = projektFilterEl.value;
-      populateFacetSelect(projektFilterEl, projektOptions, currentProjekt);
-      if (!Array.from(projektFilterEl.options).some((opt) => opt.value === currentProjekt)) {
-        projektFilterEl.value = "ALL";
-      }
-    }
-
-    async function loadWindow() {
-      setStatus("Status: loading DB window...");
-      const url = `/api/dnopr/v1/window?from=${encodeURIComponent(fromDateEl.value)}&to=${encodeURIComponent(toDateEl.value)}`;
-      const res = await fetch(url, { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-      state.windowData = data;
-      state.detailByDnid.clear();
-      renderSummary();
-      populateFacetSelect(admctrFilterEl, data.facets.admctr_options, admctrFilterEl.value);
-      populateFacetSelect(statusFilterEl, data.facets.status_options, statusFilterEl.value);
-      refreshDependentFilters();
-      facetTagsEl.innerHTML = [
-        ...data.facets.status_options.slice(0, 12).map((item) => `<span class="tag">status ${esc(item.value)}: ${item.count}</span>`),
-        ...data.facets.admctr_options.slice(0, 8).map((item) => `<span class="tag">admctr ${esc(item.value)}: ${item.count}</span>`)
-      ].join("");
-      applyFilters();
-      setStatus(`Status: loaded ${data.work_orders.length} naloga, request ${data.audit.request_id}`);
-    }
-
-    function applyFilters() {
-      if (!state.windowData) return;
-      const rows = state.windowData.work_orders || [];
-      const search = String(searchEl.value || "").trim().toLowerCase();
-      const status = statusFilterEl.value;
-      const projekt = projektFilterEl.value;
-      const admctr = admctrFilterEl.value;
-      const sortKey = sortKeyEl.value;
-      const sortDir = sortDirEl.value;
-
-      state.filteredOrders = rows
-        .filter((row) => {
-          if (status !== "ALL" && row.status_sifra !== status) return false;
-          if (projekt !== "ALL" && row.projekt !== projekt) return false;
-          if (admctr !== "ALL" && row.admctr !== admctr) return false;
-          if (!search) return true;
-          return String(row.sifradn || "").toLowerCase().includes(search);
-        })
-        .sort((a, b) => compareValues(a, b, sortKey, sortDir) || String(a.sifradn || "").localeCompare(String(b.sifradn || "")));
-
-      ordersRatioEl.textContent = `${state.filteredOrders.length} / ${rows.length}`;
-
-      if (!state.filteredOrders.length) state.selectedDnid = null;
-      else if (!state.filteredOrders.some((row) => Number(row.dnid) === Number(state.selectedDnid))) state.selectedDnid = pickStartDnid(state.filteredOrders);
-
-      renderOrders();
-      renderDetail();
-    }
-
-    function renderOrders() {
-      const rows = state.filteredOrders;
-      if (!rows.length) {
-        ordersBodyEl.innerHTML = `<tr><td colspan="18"><div class="empty">Nema naloga za odabrani timeline i filtere.</div></td></tr>`;
-        return;
-      }
-      ordersBodyEl.innerHTML = rows.map((row) => {
-        const selected = Number(row.dnid) === Number(state.selectedDnid) ? "selected" : "";
-        return `
-          <tr class="${selected}" data-dnid="${row.dnid}">
-            <td>${esc(row.termin_zac)}</td>
-            <td><strong>${esc(row.sifradn)}</strong></td>
-            <td>${esc(row.projekt || "-")}</td>
-            <td>${statusPill(row.status_sifra)}</td>
-            <td>${esc(row.admctr || "-")}</td>
-            <td>${esc(row.artikel_sifra || "-")}</td>
-            <td>${esc(row.artikel_naziv || "-")}</td>
-            <td>${esc(row.artikel_jm || "-")}</td>
-            <td>${fmtNum(row.kolicina)}</td>
-            <td>${row.artikel_ops || 0}</td>
-            <td>${fmtNum(row.artikel_min)}</td>
-            <td>${row.operation_count_window}</td>
-            <td>${row.feedback_rows_window}</td>
-            <td>${fmtNum(row.planned_minutes_window)}</td>
-            <td>${fmtNum(row.art_plan_variance_minutes)}</td>
-            <td>${fmtNum(row.actual_minutes_window)}</td>
-            <td>${row.signal_count ? `<div class="signal-stack">${row.signals.map((flag) => `<div class="signal-item"><span class="tag ${esc(flag.severity)} ${esc(flag.kind)}">${esc(flag.label)}</span><div class="signal-detail">${esc(flag.detail || "")}</div></div>`).join("")}</div>` : "-"}</td>
-            <td>${esc(row.last_feedback_at_window || "-")}</td>
-          </tr>
-        `;
-      }).join("");
-
-      Array.from(ordersBodyEl.querySelectorAll("tr[data-dnid]")).forEach((tr) => {
-        tr.addEventListener("click", async () => {
-          state.selectedDnid = Number(tr.getAttribute("data-dnid"));
-          renderOrders();
-          await renderDetail();
-        });
-      });
-
-      const selectedRow = ordersBodyEl.querySelector(`tr[data-dnid="${state.selectedDnid}"]`);
-      if (selectedRow) {
-        selectedRow.scrollIntoView({ block: "center" });
-      }
-    }
-
-    async function ensureDetail(dnid) {
-      if (state.detailByDnid.has(dnid)) return state.detailByDnid.get(dnid);
-      setStatus(`Status: loading detail for dnid ${dnid}...`);
-      const res = await fetch(`/api/dnopr/v1/order/${encodeURIComponent(dnid)}`, { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
-      state.detailByDnid.set(dnid, data);
-      setStatus(`Status: detail loaded for dnid ${dnid}`);
-      return data;
-    }
-
-    async function renderDetail() {
-      const selected = (state.filteredOrders || []).find((row) => Number(row.dnid) === Number(state.selectedDnid));
-      if (!selected) {
-        detailBoxEl.innerHTML = `<div class="empty">Odaberite radni nalog iz liste.</div>`;
-        operationsBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">Nema operacija.</div></td></tr>`;
-        timelineBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">Nema ledger timelinea.</div></td></tr>`;
-        return;
-      }
-
-      let detail;
-      try {
-        detail = await ensureDetail(selected.dnid);
-      } catch (err) {
-        detailBoxEl.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
-        operationsBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">${esc(err.message)}</div></td></tr>`;
-        timelineBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">${esc(err.message)}</div></td></tr>`;
-        return;
-      }
-
-      const header = detail.header || {};
-      const totals = detail.operation_totals || {};
-      const signals = detail.signals || [];
-      detailBoxEl.innerHTML = `
-        <div class="metric-grid">
-          <div class="metric"><div class="k">RN</div><div class="v mono">${esc(header.sifradn || selected.sifradn || "-")}</div></div>
-          <div class="metric"><div class="k">DNID</div><div class="v mono">${header.dnid || selected.dnid}</div></div>
-          <div class="metric"><div class="k">Projekt</div><div class="v">${esc(header.nalog || selected.projekt || "-")}</div></div>
-          <div class="metric"><div class="k">Status</div><div class="v">${statusPill(header.status_sifra || selected.status_sifra)}</div></div>
-          <div class="metric"><div class="k">AdmCtr</div><div class="v">${esc(header.admctr || selected.admctr || "-")}</div></div>
-          <div class="metric"><div class="k">Artikal</div><div class="v">${esc(header.artikel_sifra || header.sifraid || selected.artikel_sifra || "-")}</div></div>
-          <div class="metric"><div class="k">Naziv artikla</div><div class="v">${esc(header.artikel_naziv || selected.artikel_naziv || "-")}</div></div>
-          <div class="metric"><div class="k">JM</div><div class="v">${esc(header.artikel_jm || selected.artikel_jm || "-")}</div></div>
-          <div class="metric"><div class="k">Kol</div><div class="v">${fmtNum(header.kolicina || selected.kolicina)}</div></div>
-          <div class="metric"><div class="k">Artikal min</div><div class="v">${fmtNum(header.artikel_min || selected.artikel_min)}</div></div>
-        </div>
-        <div class="tag-list">${signals.length ? signals.map((flag) => `<div class="signal-item"><span class="tag ${esc(flag.severity)} ${esc(flag.kind)}">${esc(flag.label)}</span><div class="signal-detail">${esc(flag.detail || "")}</div></div>`).join("") : '<span class="tag">No signals</span>'}</div>
-        <div class="note">
-          <div><strong>Plan naloga:</strong> ${esc(header.termin_zac || selected.termin_zac || "-")} -> ${esc(header.termin_kon || selected.termin_kon || "-")}</div>
-          <div><strong>Dat lansa / konac:</strong> ${esc(header.dat_lans || selected.dat_lans || "-")} -> ${esc(header.dat_konc || selected.dat_konc || "-")}</div>
-          <div><strong>Request:</strong> <span class="mono">${esc(detail.audit.request_id || "-")}</span></div>
-        </div>
-      `;
-
-      const ops = detail.operation_rows || [];
-      operationsBodyEl.innerHTML = ops.length ? `${ops.map((row) => `
-        <tr>
-          <td class="mono">${row.oper}</td>
-          <td>${esc(row.tekst)}</td>
-          <td>${statusPill(row.status)}</td>
-          <td>${esc(row.stdoper || "-")}</td>
-          <td>${esc(row.dm || "-")}</td>
-          <td>${row.artikel_minutes === null ? "" : fmtNum(row.artikel_minutes)}</td>
-          <td>${fmtNum(row.planned_minutes)}</td>
-          <td>${fmtNum(row.actual_minutes)}</td>
-          <td>${fmtNum(row.variance_minutes)}</td>
-          <td class="mono">${row.next_dnoprid || "-"}</td>
-        </tr>
-      `).join("")}
-        <tr class="summary-row">
-          <td colspan="5">Ukupno</td>
-          <td>${fmtNum(totals.artikel_minutes)}</td>
-          <td>${fmtNum(totals.planned_minutes)}</td>
-          <td>${fmtNum(totals.actual_minutes)}</td>
-          <td>${fmtNum(totals.variance_minutes)}</td>
-          <td></td>
-        </tr>` : `<tr><td colspan="10"><div class="empty">Za ovaj nalog nema operacija.</div></td></tr>`;
-
-      const timeline = detail.timeline_rows || [];
-      timelineBodyEl.innerHTML = timeline.length ? timeline.map((row) => `
-        <tr>
-          <td>${esc(row.timecr)}</td>
-          <td class="mono">${row.oper}</td>
-          <td>${esc(row.tekst)}</td>
-          <td>${statusPill(row.statusop)}</td>
-          <td>${statusPill(row.statusdn)}</td>
-          <td>${esc(row.casefstr || String(row.casefektf || ""))}</td>
-          <td>${esc(row.priimekime || "-")}</td>
-          <td>${esc(row.dm || "-")}</td>
-          <td>${esc(row.datzac || "-")}</td>
-          <td>${esc(row.datkon || "-")}</td>
-        </tr>
-      `).join("") : `<tr><td colspan="10"><div class="empty">Za ovaj nalog nema ledger zapisa.</div></td></tr>`;
-    }
-
-    loadBtn.addEventListener("click", () => loadWindow().catch((err) => setStatus(`Status: load failed - ${err.message}`)));
-    defaultBtn.addEventListener("click", () => {
-      defaultWindow();
-      loadWindow().catch((err) => setStatus(`Status: load failed - ${err.message}`));
-    });
-    actionsBtn.addEventListener("click", () => {
-      window.location.href = buildActionQueueUrl();
-    });
-    searchEl.addEventListener("input", applyFilters);
-    statusFilterEl.addEventListener("change", applyFilters);
-    projektFilterEl.addEventListener("change", applyFilters);
-    admctrFilterEl.addEventListener("change", () => {
-      refreshDependentFilters();
-      applyFilters();
-    });
-    sortKeyEl.addEventListener("change", applyFilters);
-    sortDirEl.addEventListener("change", applyFilters);
-
-    Array.from(document.querySelectorAll("#ordersTable th[data-key]")).forEach((th) => {
-      th.addEventListener("click", () => {
-        const key = th.getAttribute("data-key");
-        if (sortKeyEl.value === key) sortDirEl.value = sortDirEl.value === "asc" ? "desc" : "asc";
-        else sortKeyEl.value = key;
-        applyFilters();
-      });
-    });
-
-    defaultWindow();
-    loadWindow().catch((err) => {
-      setStatus(`Status: load failed - ${err.message}`);
-      detailBoxEl.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
-    });
-  </script>
+<div class="wrap">
+<section class="card hero"><div><h1>Lifecycle DN modul</h1><div class="stats"><div class="stat"><div class="stat-label">Radni nalozi</div><div class="stat-value" id="statOrders">0</div><div class="stat-sub" id="statOrdersSub">u windowu</div></div><div class="stat"><div class="stat-label">Operacije</div><div class="stat-value" id="statOps">0</div><div class="stat-sub" id="statOpsSub">V_DNOPR rows</div></div><div class="stat"><div class="stat-label">Ledger</div><div class="stat-value" id="statFeedback">0</div><div class="stat-sub" id="statFeedbackSub">V_FEEDBACK rows</div></div><div class="stat"><div class="stat-label">Artikli</div><div class="stat-value" id="statArticles">0</div><div class="stat-sub" id="statArticlesSub">Total Articles in WO</div></div><div class="stat"><div class="stat-label">Window</div><div class="stat-value window-value" id="statWindow">-</div><div class="stat-sub" id="statWindowSub">today -90 / +90 default</div></div></div></div><div><div class="hero-links"><a href="/ui/epr">EPR</a> | <a href="/ui/eojn">EOJN</a> | <a href="/ui/sms">SMS</a></div></div></section>
+<section class="card"><div class="section-head"><div class="section-head-block"><div class="section-kicker">DNOPR Views</div><h2 id="viewTitle">DNOPR Views - Lifecycle</h2></div><div class="view-switch"><button id="viewLifecycleBtn" type="button" class="active">Lifecycle</button><button id="viewActionsBtn" type="button">Action Queue</button></div></div></section>
+<section class="card"><div class="toolbar"><div><label for="fromDate">From</label><input id="fromDate" type="date" /></div><div><label for="toDate">To</label><input id="toDate" type="date" /></div><div><label for="admctrFilter">AdmCtr</label><select id="admctrFilter"><option value="ALL">ALL</option></select></div><div><label for="projektFilter">Projekt</label><select id="projektFilter"><option value="ALL">ALL</option></select></div><div><label for="statusFilter">Status</label><select id="statusFilter"><option value="ALL">ALL</option></select></div><div><label for="search">Search</label><input id="search" type="search" placeholder="RN, projekt, artikal, naziv..." /></div><div><label>&nbsp;</label><button id="openFilterBtn" class="secondary" type="button">Advanced filter</button></div><div><label>&nbsp;</label><button id="exportWowBtn" class="secondary" type="button">Save as Excel</button></div><div id="lifecycleSortBox"><label for="sortKey">Sort</label><select id="sortKey"><option value="termin_zac">Termin start</option><option value="sifradn">RN</option><option value="projekt">Projekt</option><option value="status_sifra">Status</option><option value="artikel_naziv">Naziv artikla</option><option value="artikel_klas">Klas</option><option value="kolicina">Kol</option><option value="artikel_min">Artikal min</option><option value="artikel_ops">Art Ops</option><option value="planned_minutes_window">Planned min</option><option value="art_plan_variance_minutes">Art/Plan variance</option><option value="actual_minutes_window">Actual min</option><option value="last_feedback_at_window">Last feedback</option></select></div><div id="lifecycleSortDirBox"><label for="sortDir">Direction</label><select id="sortDir"><option value="asc">Asc</option><option value="desc">Desc</option></select></div><div><label>&nbsp;</label><button id="loadBtn">Load window</button></div><div><label>&nbsp;</label><button id="defaultBtn" class="secondary">Default -90 / +90</button></div></div><div class="status-line" id="statusLine">Status: idle</div><div id="advancedFilterChip" class="tag-list"></div></section>
+<div id="filterDialogBackdrop" class="dialog-backdrop hidden"><div class="dialog"><div class="section-head"><div class="section-head-block"><div class="section-kicker">WOW Filter Builder v1</div><h2>Advanced Filter</h2></div></div><div class="dialog-grid"><div><label for="advField">Field</label><select id="advField"><option value="artikel_klas">Klas</option><option value="artikel_naziv">Naziv artikla</option><option value="artikel_sifra">Artikal</option><option value="projekt">Projekt</option><option value="status_sifra">Status</option><option value="admctr">AdmCtr</option><option value="planned_minutes_window">Plan min</option><option value="actual_minutes_window">Actual min</option><option value="artikel_min">Artikal min</option><option value="kolicina">Kol</option></select></div><div><label for="advOperator">Operator</label><select id="advOperator"><option value="contains">contains</option><option value="equals">equals</option><option value="starts_with">starts with</option><option value="gt">&gt;</option><option value="lt">&lt;</option><option value="is_null">is null</option><option value="not_null">not null</option></select></div><div><label for="advValue">Value</label><input id="advValue" type="search" placeholder="AIE, KO, 50..." /></div></div><div class="dialog-note">V1 podrzava jedno dodatno pravilo nad WOW tablicom. Djeluje zajedno s postojećim top filterima i searchom.</div><div class="dialog-actions"><button id="clearFilterBtn" class="secondary" type="button">Clear</button><button id="cancelFilterBtn" class="secondary" type="button">Cancel</button><button id="applyFilterBtn" type="button">Apply filter</button></div></div></div>
+<div id="lifecycleView"><section class="layout"><div class="card"><div class="section-head"><h2>Work orders in window</h2><div class="section-side" id="ordersRatio">0 / 0</div></div><p class="muted">Glavni timeline pogled sortiramo po planiranom startu iz <span class="mono">V_DN.termin_zac</span>.</p><div class="table-wrap"><table id="ordersTable"><thead><tr><th data-key="termin_zac">Termin</th><th data-key="sifradn">RN</th><th data-key="projekt">Projekt</th><th data-key="status_sifra">Status</th><th data-key="admctr">AdmCtr</th><th data-key="artikel_sifra">Artikal</th><th data-key="artikel_naziv">Naziv artikla</th><th data-key="artikel_klas">Klas</th><th data-key="artikel_jm">JM</th><th data-key="kolicina">Kol</th><th data-key="artikel_ops">Art Ops</th><th data-key="artikel_min">Artikal min</th><th data-key="operation_count_window">Ops</th><th data-key="feedback_rows_window">Ledger</th><th data-key="planned_minutes_window">Plan min</th><th data-key="art_plan_variance_minutes">Art/Plan variance</th><th data-key="actual_minutes_window">Actual min</th><th data-key="signal_count">Signals</th><th data-key="last_feedback_at_window">Last feedback</th></tr></thead><tbody id="ordersBody"></tbody></table></div></div><div class="card"><h2>Selected work order</h2><div id="detailBox" class="empty">Odaberite radni nalog iz liste.</div><div id="facetTags" class="tag-list"></div></div></section><section class="detail-layout"><div class="card"><h2>Operacije po nalogu</h2><div class="table-wrap"><table><thead><tr><th>Oper</th><th>Opis</th><th>Status</th><th>StdOper</th><th>DM</th><th>Artikal min</th><th>Plan min</th><th>Actual min</th><th>Variance</th><th>Next</th></tr></thead><tbody id="operationsBody"></tbody></table></div></div><div class="card"><h2>Ledger timeline</h2><div class="table-wrap"><table><thead><tr><th>timecr</th><th>Oper</th><th>Opis</th><th>statusop</th><th>statusdn</th><th>casefstr</th><th>Worker</th><th>DM</th><th>datzac</th><th>datkon</th></tr></thead><tbody id="timelineBody"></tbody></table></div></div></section></div>
+<div id="actionQueueView" class="hidden"><section class="card"><div class="queue-stats"><div class="stat"><div class="stat-label">Actions</div><div class="stat-value" id="queueStatActions">0</div><div class="stat-sub">rows in current queue view</div></div><div class="stat"><div class="stat-label">RN</div><div class="stat-value" id="queueStatOrders">0</div><div class="stat-sub">work orders in scope</div></div><div class="stat"><div class="stat-label">Artikli</div><div class="stat-value" id="queueStatArticles">0</div><div class="stat-sub">articles in scope</div></div><div class="stat"><div class="stat-label">High</div><div class="stat-value" id="queueStatHigh">0</div><div class="stat-sub">priority rows</div></div><div class="stat"><div class="stat-label">Planning</div><div class="stat-value" id="queueStatPlanning">0</div><div class="stat-sub">planning queue rows</div></div><div class="stat"><div class="stat-label">Execution</div><div class="stat-value" id="queueStatExecution">0</div><div class="stat-sub">execution queue rows</div></div></div><div class="toolbar"><div><label for="actionTopicFilter">Action topic</label><select id="actionTopicFilter"><option value="terminiranje">Terminiranje DN</option></select></div><div><label for="queueFilter">Queue</label><select id="queueFilter"><option value="ALL">ALL</option></select></div><div><label for="ownerFilter">Owner</label><select id="ownerFilter"><option value="ALL">ALL</option></select></div><div><label for="priorityFilter">Priority</label><select id="priorityFilter"><option value="ALL">ALL</option></select></div><div><label for="signalKindFilter">Signal kind</label><select id="signalKindFilter"><option value="ALL">ALL</option><option value="anomaly">anomaly</option><option value="deviation">deviation</option></select></div><div><label for="queueSortKey">Sort</label><select id="queueSortKey"><option value="priority_rank">Priority</option><option value="queue_type">Queue</option><option value="owner_role">Owner</option><option value="admctr">AdmCtr</option><option value="projekt">Projekt</option><option value="sifradn">RN</option><option value="termin_zac">Termin</option><option value="last_feedback_at_window">Last feedback</option></select></div><div><label for="queueSortDir">Direction</label><select id="queueSortDir"><option value="asc">Asc</option><option value="desc">Desc</option></select></div></div></section><section class="queue-layout"><div class="card"><div class="section-head"><div class="section-head-block"><div class="section-kicker">Action Queue Topic</div><h2 id="actionTopicTitle">Terminiranje DN</h2></div><div class="section-side" id="queueRatio">0 / 0</div></div><p class="muted">Ovaj topic priprema batch skup DN koje zatim u Gosoftu filtrirate po statusu i projektu te obradujete grupno.</p><div class="table-wrap"><table id="queueTable"><thead><tr><th data-key="priority_rank">Priority</th><th data-key="queue_type">Queue</th><th data-key="owner_role">Owner</th><th data-key="admctr">AdmCtr</th><th data-key="projekt">Projekt</th><th data-key="sifradn">RN</th><th data-key="status_sifra">Status</th><th data-key="artikel_sifra">Artikal</th><th>Naziv artikla</th><th data-key="signal_label">Signal</th><th>Signal detail</th><th>Recommended action</th><th data-key="termin_zac">Termin</th><th data-key="last_feedback_at_window">Last feedback</th></tr></thead><tbody id="queueBody"></tbody></table></div></div><div class="card"><div class="section-head"><div class="section-head-block"><div class="section-kicker">Batch Focus</div><h2>Gosoft Batch Action Focus</h2></div></div><div id="actionDetailBox" class="empty">Filtrirajte scope i odaberite action red ili projektni batch.</div></div></section></div>
+<script>
+const state = { viewMode: "lifecycle", actionTopic: "terminiranje", advancedFilter: null, windowData: null, filteredOrders: [], actionRows: [], filteredActions: [], selectedDnid: null, selectedActionId: null, detailByDnid: new Map() };
+const fromDateEl = document.getElementById("fromDate");
+const toDateEl = document.getElementById("toDate");
+const searchEl = document.getElementById("search");
+const openFilterBtn = document.getElementById("openFilterBtn");
+const exportWowBtn = document.getElementById("exportWowBtn");
+const advancedFilterChipEl = document.getElementById("advancedFilterChip");
+const statusFilterEl = document.getElementById("statusFilter");
+const projektFilterEl = document.getElementById("projektFilter");
+const admctrFilterEl = document.getElementById("admctrFilter");
+const sortKeyEl = document.getElementById("sortKey");
+const sortDirEl = document.getElementById("sortDir");
+const loadBtn = document.getElementById("loadBtn");
+const defaultBtn = document.getElementById("defaultBtn");
+const viewLifecycleBtn = document.getElementById("viewLifecycleBtn");
+const viewActionsBtn = document.getElementById("viewActionsBtn");
+const viewTitleEl = document.getElementById("viewTitle");
+const statusLineEl = document.getElementById("statusLine");
+const lifecycleViewEl = document.getElementById("lifecycleView");
+const actionQueueViewEl = document.getElementById("actionQueueView");
+const lifecycleSortBoxEl = document.getElementById("lifecycleSortBox");
+const lifecycleSortDirBoxEl = document.getElementById("lifecycleSortDirBox");
+const ordersBodyEl = document.getElementById("ordersBody");
+const ordersRatioEl = document.getElementById("ordersRatio");
+const detailBoxEl = document.getElementById("detailBox");
+const facetTagsEl = document.getElementById("facetTags");
+const operationsBodyEl = document.getElementById("operationsBody");
+const timelineBodyEl = document.getElementById("timelineBody");
+const queueFilterEl = document.getElementById("queueFilter");
+const actionTopicFilterEl = document.getElementById("actionTopicFilter");
+const actionTopicTitleEl = document.getElementById("actionTopicTitle");
+const ownerFilterEl = document.getElementById("ownerFilter");
+const priorityFilterEl = document.getElementById("priorityFilter");
+const signalKindFilterEl = document.getElementById("signalKindFilter");
+const queueSortKeyEl = document.getElementById("queueSortKey");
+const queueSortDirEl = document.getElementById("queueSortDir");
+const queueBodyEl = document.getElementById("queueBody");
+const queueRatioEl = document.getElementById("queueRatio");
+const actionDetailBoxEl = document.getElementById("actionDetailBox");
+const filterDialogBackdropEl = document.getElementById("filterDialogBackdrop");
+const advFieldEl = document.getElementById("advField");
+const advOperatorEl = document.getElementById("advOperator");
+const advValueEl = document.getElementById("advValue");
+const applyFilterBtn = document.getElementById("applyFilterBtn");
+const clearFilterBtn = document.getElementById("clearFilterBtn");
+const cancelFilterBtn = document.getElementById("cancelFilterBtn");
+const actionFacetConfigs = [{ key: "queue", el: queueFilterEl, field: "queue_type" }, { key: "owner", el: ownerFilterEl, field: "owner_role" }, { key: "priority", el: priorityFilterEl, field: "priority" }, { key: "signalKind", el: signalKindFilterEl, field: "signal_kind" }];
+function pad2(n) { return String(n).padStart(2, "0"); }
+function toIsoDate(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`; }
+function defaultWindow() { const now = new Date(); const base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0); fromDateEl.value = toIsoDate(new Date(base.getFullYear(), base.getMonth(), base.getDate() - 90)); toDateEl.value = toIsoDate(new Date(base.getFullYear(), base.getMonth(), base.getDate() + 90)); }
+function esc(value) { return String(value === null || value === undefined ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;"); }
+function fmtNum(value, digits = 2) { const n = Number(value); return Number.isFinite(n) ? n.toFixed(digits) : ""; }
+function compareValues(a, b, key, dir) { const av = a[key]; const bv = b[key]; const out = (typeof av === "number" || typeof bv === "number") ? Number(av || 0) - Number(bv || 0) : String(av || "").localeCompare(String(bv || "")); return dir === "asc" ? out : -out; }
+function statusPill(value) { const v = String(value || "").trim() || "-"; let cls = ""; if (v === "KO" || v === "PF" || v === "T" || v === "t") cls = "good"; else if (v === "LA" || v === "PL" || v === "R" || v === "LN") cls = "warn"; else if (v === "B") cls = "bad"; return `<span class="pill ${cls}">${esc(v)}</span>`; }
+function setStatus(message) { statusLineEl.textContent = message; }
+function buildCalendarScope(days, fromValue, toValue) { const from = String(fromValue || "").slice(0, 10); const to = String(toValue || "").slice(0, 10); const scoped = (days || []).filter((day) => { const datum = String(day.datum || "").slice(0, 10); return (!from || datum >= from) && (!to || datum <= to); }); const workingDays = scoped.filter((day) => day.is_working_day).length; const holidayDays = scoped.filter((day) => day.praznik).length; const collectiveDays = scoped.filter((day) => day.collective_off).length; const availableMinutes = scoped.reduce((sum, day) => sum + Number(day.available_minutes || 0), 0); return { total_days: scoped.length, working_days: workingDays, holiday_days: holidayDays, collective_days: collectiveDays, available_minutes: availableMinutes, available_hours: Number((availableMinutes / 60).toFixed(2)) }; }
+function normalizeSearchText(value) { return String(value === null || value === undefined ? "" : value).toLowerCase(); }
+function matchesWorkOrderSearch(row, query) { const q = normalizeSearchText(query).trim(); if (!q) return true; const haystack = [row.sifradn, row.projekt, row.status_sifra, row.admctr, row.artikel_sifra, row.artikel_naziv, row.artikel_klas, row.artikel_jm, row.kolicina, row.artikel_ops, row.artikel_min, row.operation_count_window, row.feedback_rows_window, row.planned_minutes_window, row.art_plan_variance_minutes, row.actual_minutes_window, row.last_feedback_at_window, row.termin_zac, row.termin_kon].map(normalizeSearchText).join(" | "); return haystack.includes(q); }
+function matchesActionSearch(row, query) { const q = normalizeSearchText(query).trim(); if (!q) return true; const haystack = [row.queue_type, row.owner_role, row.priority, row.signal_label, row.signal_detail, row.recommended_action, row.admctr, row.projekt, row.sifradn, row.status_sifra, row.artikel_sifra, row.artikel_naziv, row.termin_zac, row.last_feedback_at_window].map(normalizeSearchText).join(" | "); return haystack.includes(q); }
+function getAdvancedFieldMeta(field) { const numericFields = new Set(["planned_minutes_window","actual_minutes_window","artikel_min","kolicina","artikel_ops","feedback_rows_window","operation_count_window"]); return { type: numericFields.has(field) ? "number" : "string" }; }
+function matchesAdvancedFilter(row, rule) { if (!rule || !rule.field || !rule.op) return true; const raw = row ? row[rule.field] : ""; const value = String(raw === null || raw === undefined ? "" : raw).trim(); if (rule.op === "is_null") return value === ""; if (rule.op === "not_null") return value !== ""; const compareValue = String(rule.value === null || rule.value === undefined ? "" : rule.value).trim(); if (!compareValue) return true; const meta = getAdvancedFieldMeta(rule.field); if (meta.type === "number") { const left = Number(raw); const right = Number(compareValue); if (!Number.isFinite(left) || !Number.isFinite(right)) return false; if (rule.op === "equals") return left === right; if (rule.op === "gt") return left > right; if (rule.op === "lt") return left < right; return String(left).includes(compareValue); } const left = value.toLowerCase(); const right = compareValue.toLowerCase(); if (rule.op === "equals") return left === right; if (rule.op === "starts_with") return left.startsWith(right); if (rule.op === "contains") return left.includes(right); return false; }
+function advancedFilterLabel(rule) { if (!rule || !rule.field || !rule.op) return ""; const fieldLabels = { artikel_klas: "Klas", artikel_naziv: "Naziv artikla", artikel_sifra: "Artikal", projekt: "Projekt", status_sifra: "Status", admctr: "AdmCtr", planned_minutes_window: "Plan min", actual_minutes_window: "Actual min", artikel_min: "Artikal min", kolicina: "Kol" }; const operatorLabels = { contains: "contains", equals: "=", starts_with: "starts with", gt: ">", lt: "<", is_null: "is null", not_null: "not null" }; return `${fieldLabels[rule.field] || rule.field} ${operatorLabels[rule.op] || rule.op}${rule.op === "is_null" || rule.op === "not_null" ? "" : ` ${rule.value}`}`; }
+function renderAdvancedFilterChip() { if (!state.advancedFilter) { advancedFilterChipEl.innerHTML = ""; return; } advancedFilterChipEl.innerHTML = `<span class="filter-chip">WOW filter: ${esc(advancedFilterLabel(state.advancedFilter))} <button id="removeAdvancedFilterBtn" class="secondary" type="button">x</button></span>`; const btn = document.getElementById("removeAdvancedFilterBtn"); if (btn) btn.addEventListener("click", () => { state.advancedFilter = null; renderAdvancedFilterChip(); applyFilters(); }); }
+function syncAdvancedFilterDialogFromState() { const rule = state.advancedFilter || { field: "artikel_klas", op: "contains", value: "" }; advFieldEl.value = rule.field; advOperatorEl.value = rule.op; advValueEl.value = rule.value || ""; advValueEl.disabled = rule.op === "is_null" || rule.op === "not_null"; }
+function openAdvancedFilterDialog() { syncAdvancedFilterDialogFromState(); filterDialogBackdropEl.classList.remove("hidden"); }
+function closeAdvancedFilterDialog() { filterDialogBackdropEl.classList.add("hidden"); }
+function pickStartDnid(rows) { if (!rows.length) return null; const today = toIsoDate(new Date()); const nextRow = rows.find((row) => String(row.termin_zac || "").slice(0, 10) >= today); return Number((nextRow || rows[rows.length - 1]).dnid); }
+function applyCommonFacet(selectEl, options) { const current = selectEl.value || "ALL"; selectEl.innerHTML = `<option value="ALL">ALL</option>${(options || []).map((item) => `<option value="${esc(item.value)}">${esc(item.value)} (${item.count})</option>`).join("")}`; if (Array.from(selectEl.options).some((opt) => opt.value === current)) selectEl.value = current; else selectEl.value = "ALL"; }
+function refreshLifecycleDependentFilters() { if (!state.windowData) return; const counts = new Map(); (state.windowData.work_orders || []).forEach((row) => { if (admctrFilterEl.value !== "ALL" && row.admctr !== admctrFilterEl.value) return; const value = String(row.projekt || "").trim() || "(blank)"; counts.set(value, (counts.get(value) || 0) + 1); }); applyCommonFacet(projektFilterEl, Array.from(counts.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value))); }
+function topicLabel(topic) { return topic === "terminiranje" ? "Terminiranje DN" : "Action Queue"; }
+function setViewMode(mode) { state.viewMode = mode === "actions" ? "actions" : "lifecycle"; const isActions = state.viewMode === "actions"; lifecycleViewEl.classList.toggle("hidden", isActions); actionQueueViewEl.classList.toggle("hidden", !isActions); lifecycleSortBoxEl.classList.toggle("hidden", isActions); lifecycleSortDirBoxEl.classList.toggle("hidden", isActions); viewLifecycleBtn.classList.toggle("active", !isActions); viewActionsBtn.classList.toggle("active", isActions); viewTitleEl.textContent = isActions ? `DNOPR Views - ${topicLabel(state.actionTopic)}` : "DNOPR Views - Lifecycle"; applyFilters(); }
+function isActionInTopic(actionRow, topic) { if (topic !== "terminiranje") return true; return ["LN_STALE", "LA_NO_ACTUAL", "KO_NO_ACTUAL", "PLAN_ACTUAL_GAP", "WIP_PLAN_ACTUAL_DRIFT"].includes(String(actionRow.signal_code || "")); }
+function mapSignalToAction(workOrder, signal, index) { const status = String(workOrder.status_sifra || "").trim(); const code = String(signal.code || "").trim(); const base = { action_id: `${workOrder.dnid}_${code}_${index}`, priority: String(signal.severity || "medium").toUpperCase(), signal_label: signal.label || "", signal_detail: signal.detail || "", signal_kind: signal.kind || "", queue_type: "Review Queue", owner_role: "voditelj proizvodnje", recommended_action: "Provjeriti nalog i potvrditi sljedeci korak." }; if (code === "LN_STALE") return { ...base, queue_type: "Planning Queue", owner_role: "voditelj planiranja", recommended_action: "Provjeriti termin pocetka i status naloga te korigirati termin ili lansiranje u ERP-u." }; if (code === "GENERIC_OPS_DEVIATION") return { ...base, priority: "MEDIUM", queue_type: "Planning Queue", owner_role: "voditelj planiranja", recommended_action: "Provjeriti je li revizija planskih operacija opravdana i treba li doraditi DNOPR plan." }; if (code === "GENERIC_TIME_DEVIATION") return { ...base, priority: "MEDIUM", queue_type: "Planning Queue", owner_role: "voditelj planiranja", recommended_action: "Provjeriti minutaze plana prema generickoj tehnologiji i po potrebi korigirati plan ili nativnu tehnologiju." }; if (code === "LA_NO_ACTUAL") return { ...base, priority: "HIGH", queue_type: "Execution Queue", owner_role: "voditelj proizvodnje", recommended_action: "Provjeriti evidenciju start/stop rada i dopuniti actual trag na nalogu." }; if (code === "KO_NO_ACTUAL") return { ...base, priority: "HIGH", queue_type: "Closing Queue", owner_role: "voditelj proizvodnje", recommended_action: "Provjeriti uvjete zatvaranja i dopuniti evidenciju prije potvrde KO statusa." }; if (code === "PLAN_ACTUAL_GAP") return { ...base, queue_type: status === "KO" ? "Closing Queue" : "Execution Queue", owner_role: "voditelj proizvodnje", recommended_action: status === "KO" ? "Provjeriti zasto actual znacajno odstupa od plana i potvrditi zatvaranje naloga." : "Provjeriti realizaciju rada, trajanje operacija i kvalitetu evidencije actual minuta." }; if (code === "WIP_PLAN_ACTUAL_DRIFT") return { ...base, priority: "LOW", queue_type: "Execution Queue", owner_role: "voditelj proizvodnje", recommended_action: "Pratiti tijek realizacije aktivnog naloga i procijeniti treba li korekcija evidencije ili plana prije zatvaranja." }; return base; }
+function buildActionRows(rows) { const actions = []; rows.forEach((row) => { (row.signals || []).forEach((signal, index) => { const mapped = mapSignalToAction(row, signal, index); const priorityRank = mapped.priority === "HIGH" ? 1 : mapped.priority === "MEDIUM" ? 2 : 3; actions.push({ ...mapped, signal_code: signal.code || "", priority_rank: priorityRank, dnid: Number(row.dnid), sifradn: row.sifradn || "", projekt: row.projekt || "", admctr: row.admctr || "", status_sifra: row.status_sifra || "", artikel_sifra: row.artikel_sifra || "", artikel_naziv: row.artikel_naziv || "", termin_zac: row.termin_zac || "", last_feedback_at_window: row.last_feedback_at_window || "" }); }); }); return actions; }
+function renderSummary() { const data = state.windowData; const rows = data ? (data.work_orders || []) : []; document.getElementById("statOrders").textContent = String(rows.length); document.getElementById("statOrdersSub").textContent = "filtered by V_DN window"; document.getElementById("statOps").textContent = String(data && data.meta ? data.meta.v_dnopr_rows : 0); document.getElementById("statOpsSub").textContent = "rows in current window"; document.getElementById("statFeedback").textContent = String(data && data.meta ? data.meta.v_feedback_rows : 0); document.getElementById("statFeedbackSub").textContent = "timeline rows in window"; document.getElementById("statArticles").textContent = String(new Set(rows.map((row) => String(row.artikel_sifra || "").trim()).filter(Boolean)).size); document.getElementById("statArticlesSub").textContent = "Total Articles in WO"; document.getElementById("statWindow").textContent = data ? `${data.window.from} -> ${data.window.to}` : "-"; document.getElementById("statWindowSub").textContent = data && data.calendar && data.calendar.summary ? `${data.calendar.summary.working_days} WD / ${data.calendar.summary.available_hours} h available` : "sliding timeline scope"; ordersRatioEl.textContent = `${state.filteredOrders.length} / ${rows.length}`; queueRatioEl.textContent = `${state.filteredActions.length} / ${state.actionRows.length}`; document.getElementById("queueStatActions").textContent = String(state.filteredActions.length); document.getElementById("queueStatOrders").textContent = String(new Set(state.filteredActions.map((row) => Number(row.dnid)).filter(Number.isFinite)).size); document.getElementById("queueStatArticles").textContent = String(new Set(state.filteredActions.map((row) => String(row.artikel_sifra || "").trim()).filter(Boolean)).size); document.getElementById("queueStatHigh").textContent = String(state.filteredActions.filter((row) => row.priority === "HIGH").length); document.getElementById("queueStatPlanning").textContent = String(state.filteredActions.filter((row) => row.queue_type === "Planning Queue").length); document.getElementById("queueStatExecution").textContent = String(state.filteredActions.filter((row) => row.queue_type === "Execution Queue").length); }
+async function loadWindow() { setStatus("Status: loading DB window..."); const res = await fetch(`/api/dnopr/v1/window?from=${encodeURIComponent(fromDateEl.value)}&to=${encodeURIComponent(toDateEl.value)}`, { cache: "no-store" }); const data = await res.json(); if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`); state.windowData = data; state.actionRows = buildActionRows(data.work_orders || []); state.detailByDnid.clear(); applyCommonFacet(admctrFilterEl, data.facets.admctr_options); applyCommonFacet(statusFilterEl, data.facets.status_options); refreshLifecycleDependentFilters(); facetTagsEl.innerHTML = [...data.facets.status_options.slice(0, 12).map((item) => `<span class="tag">status ${esc(item.value)}: ${item.count}</span>`), ...data.facets.admctr_options.slice(0, 8).map((item) => `<span class="tag">admctr ${esc(item.value)}: ${item.count}</span>`)].join(""); refreshActionFacetControls(); applyFilters(); setStatus(`Status: loaded ${data.work_orders.length} naloga, request ${data.audit.request_id}`); }
+function applyOrderFilters() { if (!state.windowData) return; const rows = state.windowData.work_orders || []; const search = String(searchEl.value || ""); state.filteredOrders = rows.filter((row) => (statusFilterEl.value === "ALL" || row.status_sifra === statusFilterEl.value) && (projektFilterEl.value === "ALL" || row.projekt === projektFilterEl.value) && (admctrFilterEl.value === "ALL" || row.admctr === admctrFilterEl.value) && matchesWorkOrderSearch(row, search) && matchesAdvancedFilter(row, state.advancedFilter)).sort((a, b) => compareValues(a, b, sortKeyEl.value, sortDirEl.value) || String(a.artikel_naziv || "").localeCompare(String(b.artikel_naziv || "")) || String(a.sifradn || "").localeCompare(String(b.sifradn || ""))); if (!state.filteredOrders.length) state.selectedDnid = null; else if (!state.filteredOrders.some((row) => Number(row.dnid) === Number(state.selectedDnid))) state.selectedDnid = pickStartDnid(state.filteredOrders); }
+function getActionCriteria() { return { admctr: admctrFilterEl.value, projekt: projektFilterEl.value, status: statusFilterEl.value, queue: queueFilterEl.value, owner: ownerFilterEl.value, priority: priorityFilterEl.value, signalKind: signalKindFilterEl.value, search: searchEl.value }; }
+function filterActionRows(rows, criteria, excludeKey = "") { return (rows || []).filter((row) => (excludeKey === "admctr" || criteria.admctr === "ALL" || row.admctr === criteria.admctr) && (excludeKey === "projekt" || criteria.projekt === "ALL" || row.projekt === criteria.projekt) && (excludeKey === "status" || criteria.status === "ALL" || row.status_sifra === criteria.status) && (excludeKey === "queue" || criteria.queue === "ALL" || row.queue_type === criteria.queue) && (excludeKey === "owner" || criteria.owner === "ALL" || row.owner_role === criteria.owner) && (excludeKey === "priority" || criteria.priority === "ALL" || row.priority === criteria.priority) && (excludeKey === "signalKind" || criteria.signalKind === "ALL" || row.signal_kind === criteria.signalKind) && matchesActionSearch(row, criteria.search)); }
+function buildActionFacetOptions(rows, field) { const counts = new Map(); rows.forEach((row) => { const value = String(row[field] || "").trim() || "(blank)"; counts.set(value, (counts.get(value) || 0) + 1); }); return Array.from(counts.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => a.value.localeCompare(b.value)); }
+function refreshActionFacetControls() { const baseRows = (state.actionRows || []).filter((row) => isActionInTopic(row, state.actionTopic)); actionFacetConfigs.forEach((config) => { const filtered = filterActionRows(baseRows, getActionCriteria(), config.key); applyCommonFacet(config.el, buildActionFacetOptions(filtered, config.field)); }); }
+function applyActionFilters() { refreshActionFacetControls(); state.filteredActions = filterActionRows((state.actionRows || []).filter((row) => isActionInTopic(row, state.actionTopic)), getActionCriteria()).sort((a, b) => compareValues(a, b, queueSortKeyEl.value, queueSortDirEl.value) || String(a.sifradn || "").localeCompare(String(b.sifradn || ""))); if (!state.filteredActions.length) state.selectedActionId = null; else if (!state.filteredActions.some((row) => row.action_id === state.selectedActionId)) state.selectedActionId = state.filteredActions[0].action_id; }
+function applyFilters() { if (!state.windowData) return; actionTopicTitleEl.textContent = topicLabel(state.actionTopic); renderAdvancedFilterChip(); applyOrderFilters(); applyActionFilters(); renderSummary(); if (state.viewMode === "actions") renderActionQueue(); else { renderOrders(); renderDetail(); } }
+async function exportWowAsExcel() { if (!state.filteredOrders.length) { setStatus("Status: export skipped - nema redova za export"); return; } setStatus(`Status: exporting ${state.filteredOrders.length} WOW rows to Excel...`); const res = await fetch("/api/dnopr/v1/export-wow-xlsx", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: fromDateEl.value, to: toDateEl.value, rows: state.filteredOrders }) }); if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.message || `HTTP ${res.status}`); } const blob = await res.blob(); const url = URL.createObjectURL(blob); const a = document.createElement("a"); const disposition = res.headers.get("Content-Disposition") || ""; const match = /filename=\"([^\"]+)\"/.exec(disposition); a.href = url; a.download = match ? match[1] : "dnopr_wow.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); setStatus(`Status: exported ${state.filteredOrders.length} WOW rows`); }
+function renderOrders() { if (!state.filteredOrders.length) { ordersBodyEl.innerHTML = `<tr><td colspan="19"><div class="empty">Nema naloga za odabrani timeline i filtere.</div></td></tr>`; return; } ordersBodyEl.innerHTML = state.filteredOrders.map((row) => `<tr class="${Number(row.dnid) === Number(state.selectedDnid) ? "selected" : ""}" data-dnid="${row.dnid}"><td>${esc(row.termin_zac)}</td><td><strong>${esc(row.sifradn)}</strong></td><td>${esc(row.projekt || "-")}</td><td>${statusPill(row.status_sifra)}</td><td>${esc(row.admctr || "-")}</td><td>${esc(row.artikel_sifra || "-")}</td><td>${esc(row.artikel_naziv || "-")}</td><td>${esc(row.artikel_klas || "-")}</td><td>${esc(row.artikel_jm || "-")}</td><td>${fmtNum(row.kolicina)}</td><td>${row.artikel_ops || 0}</td><td>${fmtNum(row.artikel_min)}</td><td>${row.operation_count_window}</td><td>${row.feedback_rows_window}</td><td>${fmtNum(row.planned_minutes_window)}</td><td>${fmtNum(row.art_plan_variance_minutes)}</td><td>${fmtNum(row.actual_minutes_window)}</td><td>${row.signal_count ? `<div class="signal-stack">${row.signals.map((flag) => `<div class="signal-item"><span class="tag ${esc(flag.severity)} ${esc(flag.kind)}">${esc(flag.label)}</span><div class="signal-detail">${esc(flag.detail || "")}</div></div>`).join("")}</div>` : "-"}</td><td>${esc(row.last_feedback_at_window || "-")}</td></tr>`).join(""); Array.from(ordersBodyEl.querySelectorAll("tr[data-dnid]")).forEach((tr) => { tr.addEventListener("click", async () => { state.selectedDnid = Number(tr.getAttribute("data-dnid")); renderOrders(); await renderDetail(); }); }); const selectedRow = ordersBodyEl.querySelector(`tr[data-dnid="${state.selectedDnid}"]`); if (selectedRow) selectedRow.scrollIntoView({ block: "center" }); }
+function buildBatchSummaryRows(actions) { const byProjekt = new Map(); (actions || []).forEach((row) => { const projekt = String(row.projekt || "(blank)"); if (!byProjekt.has(projekt)) byProjekt.set(projekt, { projekt, rn: new Set(), statuses: new Map(), actions: [], terms: [], feedbacks: [], artikli: new Set() }); const bucket = byProjekt.get(projekt); bucket.rn.add(String(row.sifradn || "")); bucket.actions.push(row); bucket.artikli.add(String(row.artikel_sifra || "").trim()); if (row.status_sifra) bucket.statuses.set(row.status_sifra, (bucket.statuses.get(row.status_sifra) || 0) + 1); if (row.termin_zac) bucket.terms.push(String(row.termin_zac)); if (row.last_feedback_at_window) bucket.feedbacks.push(String(row.last_feedback_at_window)); }); return Array.from(byProjekt.values()).sort((a, b) => b.actions.length - a.actions.length || a.projekt.localeCompare(b.projekt)); }
+async function renderActionDetail() { const selected = (state.filteredActions || []).find((row) => row.action_id === state.selectedActionId) || null; const batchRows = state.filteredActions || []; if (!batchRows.length) { actionDetailBoxEl.innerHTML = `<div class="empty">Nema action redova za odabrani scope.</div>`; return; } const projectBatches = buildBatchSummaryRows(batchRows); const primaryBatch = selected ? projectBatches.find((item) => item.projekt === String(selected.projekt || "(blank)")) : projectBatches[0]; const batchStatuses = Array.from((primaryBatch && primaryBatch.statuses) ? primaryBatch.statuses.entries() : []).map(([status, count]) => `<span class="tag">status ${esc(status)}: ${count}</span>`).join(""); const previewRows = (primaryBatch ? primaryBatch.actions.slice(0, 12) : []).map((row) => `<tr><td><strong>${esc(row.sifradn)}</strong></td><td>${statusPill(row.status_sifra)}</td><td>${esc(row.signal_label)}</td><td>${esc(row.termin_zac || "-")}</td><td>${esc(row.last_feedback_at_window || "-")}</td></tr>`).join(""); const leadingAction = selected || (primaryBatch && primaryBatch.actions[0]) || null; const scopeFrom = primaryBatch && primaryBatch.terms.length ? primaryBatch.terms.slice().sort()[0] : ""; const scopeTo = primaryBatch && primaryBatch.terms.length ? primaryBatch.terms.slice().sort()[primaryBatch.terms.length - 1] : scopeFrom; const calendarScope = buildCalendarScope((state.windowData && state.windowData.calendar && state.windowData.calendar.days) || [], scopeFrom, scopeTo); const gosoftScope = `Status = ${leadingAction ? esc(leadingAction.status_sifra || "ALL") : "ALL"} | Projekt = ${primaryBatch ? esc(primaryBatch.projekt) : "ALL"}`; const recommended = leadingAction ? esc(leadingAction.recommended_action) : "Provjeriti batch i potvrditi sljedeci korak."; const nextStep = `U Gosoftu filtrirati isti scope (${gosoftScope}), oznaciti sve DN tog projekta i statusa te provesti grupnu obradu koja odgovara stvarnom stanju.`; actionDetailBoxEl.innerHTML = `<div class="action-card"><div class="action-hero"><div class="action-title">${primaryBatch ? esc(primaryBatch.projekt) : "Batch scope"}</div><div class="action-sub">${gosoftScope}</div><div class="tag-list"><span class="pill">${batchRows.length} actions</span><span class="pill">${primaryBatch ? primaryBatch.rn.size : 0} DN u projektu</span><span class="pill">${primaryBatch ? primaryBatch.artikli.size : 0} artikala</span>${leadingAction ? `<span class="pill ${esc(String(leadingAction.priority || "").toLowerCase())}">${esc(leadingAction.priority)}</span>` : ""}</div></div><div class="metric-grid"><div class="metric"><div class="k">Projekt batch</div><div class="v">${primaryBatch ? esc(primaryBatch.projekt) : "-"}</div></div><div class="metric"><div class="k">Status scope</div><div class="v">${leadingAction ? esc(leadingAction.status_sifra || "-") : "-"}</div></div><div class="metric"><div class="k">Actions u scopeu</div><div class="v">${batchRows.length}</div></div><div class="metric"><div class="k">RN u batchu</div><div class="v">${primaryBatch ? primaryBatch.rn.size : 0}</div></div><div class="metric"><div class="k">Earliest termin</div><div class="v">${scopeFrom ? esc(scopeFrom) : "-"}</div></div><div class="metric"><div class="k">Last feedback</div><div class="v">${primaryBatch && primaryBatch.feedbacks.length ? esc(primaryBatch.feedbacks.slice().sort().reverse()[0]) : "-"}</div></div><div class="metric"><div class="k">Radni dani</div><div class="v">${calendarScope.working_days}</div></div><div class="metric"><div class="k">Raspolozivi sati</div><div class="v">${fmtNum(calendarScope.available_hours)}</div></div><div class="metric"><div class="k">Raspolozive minute</div><div class="v">${fmtNum(calendarScope.available_minutes,0)}</div></div><div class="metric"><div class="k">Neradni / praznici / kolektivni</div><div class="v">${calendarScope.total_days - calendarScope.working_days} / ${calendarScope.holiday_days} / ${calendarScope.collective_days}</div></div></div><div class="tag-list">${batchStatuses || '<span class="tag">No status split</span>'}</div><div class="action-step"><strong>Preporucena Gosoft batch akcija</strong>${recommended}</div><div class="action-step"><strong>Sljedeci korak u radu</strong>${nextStep}</div><div class="note"><div><strong>Gosoft group processing</strong></div><div>DNOPR ovdje priprema isti skup koji zatim u Gosoftu filtrirate po statusu i projektu te obradujete grupno. Kalendar radnih dana koristi 7,5 h po radnom danu i iskljucuje praznike te kolektivni odmor iz Gosoft kalendara.</div></div><div class="table-wrap"><table><thead><tr><th>RN</th><th>Status</th><th>Signal</th><th>Termin</th><th>Last feedback</th></tr></thead><tbody>${previewRows || `<tr><td colspan="5"><div class="empty">Nema preview redova.</div></td></tr>`}</tbody></table></div></div>`; }
+function renderActionQueue() { if (!state.filteredActions.length) { queueBodyEl.innerHTML = `<tr><td colspan="14"><div class="empty">Nema action rows za odabrane filtere.</div></td></tr>`; actionDetailBoxEl.innerHTML = `<div class="empty">Nema action redova za odabrani topic i filtere.</div>`; return; } queueBodyEl.innerHTML = state.filteredActions.map((row) => `<tr class="${row.action_id === state.selectedActionId ? "selected" : ""}" data-action-id="${esc(row.action_id)}"><td><span class="pill ${esc(String(row.priority || "").toLowerCase())}">${esc(row.priority)}</span></td><td>${esc(row.queue_type)}</td><td>${esc(row.owner_role)}</td><td>${esc(row.admctr)}</td><td>${esc(row.projekt)}</td><td><strong>${esc(row.sifradn)}</strong></td><td>${statusPill(row.status_sifra)}</td><td>${esc(row.artikel_sifra)}</td><td>${esc(row.artikel_naziv || "-")}</td><td><span class="pill ${esc(String(row.priority || "").toLowerCase())} ${esc(row.signal_kind)}">${esc(row.signal_label)}</span></td><td><div class="signal-detail">${esc(row.signal_detail)}</div></td><td>${esc(row.recommended_action)}</td><td>${esc(row.termin_zac)}</td><td>${esc(row.last_feedback_at_window || "-")}</td></tr>`).join(""); Array.from(queueBodyEl.querySelectorAll("tr[data-action-id]")).forEach((tr) => { tr.addEventListener("click", async () => { state.selectedActionId = tr.getAttribute("data-action-id"); renderActionQueue(); await renderActionDetail(); }); }); renderActionDetail(); }
+async function ensureDetail(dnid) { if (state.detailByDnid.has(dnid)) return state.detailByDnid.get(dnid); setStatus(`Status: loading detail for dnid ${dnid}...`); const res = await fetch(`/api/dnopr/v1/order/${encodeURIComponent(dnid)}`, { cache: "no-store" }); const data = await res.json(); if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`); state.detailByDnid.set(dnid, data); setStatus(`Status: detail loaded for dnid ${dnid}`); return data; }
+async function renderDetail() { const selected = (state.filteredOrders || []).find((row) => Number(row.dnid) === Number(state.selectedDnid)); if (!selected) { detailBoxEl.innerHTML = `<div class="empty">Odaberite radni nalog iz liste.</div>`; operationsBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">Nema operacija.</div></td></tr>`; timelineBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">Nema ledger timelinea.</div></td></tr>`; return; } let detail; try { detail = await ensureDetail(selected.dnid); } catch (err) { detailBoxEl.innerHTML = `<div class="empty">${esc(err.message)}</div>`; operationsBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">${esc(err.message)}</div></td></tr>`; timelineBodyEl.innerHTML = `<tr><td colspan="10"><div class="empty">${esc(err.message)}</div></td></tr>`; return; } const header = detail.header || {}; const totals = detail.operation_totals || {}; const signals = detail.signals || []; detailBoxEl.innerHTML = `<div class="metric-grid"><div class="metric"><div class="k">RN</div><div class="v mono">${esc(header.sifradn || selected.sifradn || "-")}</div></div><div class="metric"><div class="k">DNID</div><div class="v mono">${header.dnid || selected.dnid}</div></div><div class="metric"><div class="k">Projekt</div><div class="v">${esc(header.nalog || selected.projekt || "-")}</div></div><div class="metric"><div class="k">Status</div><div class="v">${statusPill(header.status_sifra || selected.status_sifra)}</div></div><div class="metric"><div class="k">AdmCtr</div><div class="v">${esc(header.admctr || selected.admctr || "-")}</div></div><div class="metric"><div class="k">Artikal</div><div class="v">${esc(header.artikel_sifra || header.sifraid || selected.artikel_sifra || "-")}</div></div><div class="metric"><div class="k">Naziv artikla</div><div class="v">${esc(header.artikel_naziv || selected.artikel_naziv || "-")}</div></div><div class="metric"><div class="k">Klas</div><div class="v">${esc(header.artikel_klas || selected.artikel_klas || "-")}</div></div><div class="metric"><div class="k">JM</div><div class="v">${esc(header.artikel_jm || selected.artikel_jm || "-")}</div></div><div class="metric"><div class="k">Kol</div><div class="v">${fmtNum(header.kolicina || selected.kolicina)}</div></div><div class="metric"><div class="k">Artikal min</div><div class="v">${fmtNum(header.artikel_min || selected.artikel_min)}</div></div></div><div class="tag-list">${signals.length ? signals.map((flag) => `<div class="signal-item"><span class="tag ${esc(flag.severity)} ${esc(flag.kind)}">${esc(flag.label)}</span><div class="signal-detail">${esc(flag.detail || "")}</div></div>`).join("") : '<span class="tag">No signals</span>'}</div><div class="note"><div><strong>Plan naloga:</strong> ${esc(header.termin_zac || selected.termin_zac || "-")} -> ${esc(header.termin_kon || selected.termin_kon || "-")}</div><div><strong>Dat lansa / konac:</strong> ${esc(header.dat_lans || selected.dat_lans || "-")} -> ${esc(header.dat_konc || selected.dat_konc || "-")}</div><div><strong>Request:</strong> <span class="mono">${esc(detail.audit.request_id || "-")}</span></div></div>`; const ops = detail.operation_rows || []; operationsBodyEl.innerHTML = ops.length ? `${ops.map((row) => `<tr><td class="mono">${row.oper}</td><td>${esc(row.tekst)}</td><td>${statusPill(row.status)}</td><td>${esc(row.stdoper || "-")}</td><td>${esc(row.dm || "-")}</td><td>${row.artikel_minutes === null ? "" : fmtNum(row.artikel_minutes)}</td><td>${fmtNum(row.planned_minutes)}</td><td>${fmtNum(row.actual_minutes)}</td><td>${fmtNum(row.variance_minutes)}</td><td class="mono">${row.next_dnoprid || "-"}</td></tr>`).join("")}<tr class="summary-row"><td colspan="5">Ukupno</td><td>${fmtNum(totals.artikel_minutes)}</td><td>${fmtNum(totals.planned_minutes)}</td><td>${fmtNum(totals.actual_minutes)}</td><td>${fmtNum(totals.variance_minutes)}</td><td></td></tr>` : `<tr><td colspan="10"><div class="empty">Za ovaj nalog nema operacija.</div></td></tr>`; const timeline = detail.timeline_rows || []; timelineBodyEl.innerHTML = timeline.length ? timeline.map((row) => `<tr><td>${esc(row.timecr)}</td><td class="mono">${row.oper}</td><td>${esc(row.tekst)}</td><td>${statusPill(row.statusop)}</td><td>${statusPill(row.statusdn)}</td><td>${esc(row.casefstr || String(row.casefektf || ""))}</td><td>${esc(row.priimekime || "-")}</td><td>${esc(row.dm || "-")}</td><td>${esc(row.datzac || "-")}</td><td>${esc(row.datkon || "-")}</td></tr>`).join("") : `<tr><td colspan="10"><div class="empty">Za ovaj nalog nema ledger zapisa.</div></td></tr>`; }
+loadBtn.addEventListener("click", () => loadWindow().catch((err) => setStatus(`Status: load failed - ${err.message}`)));
+defaultBtn.addEventListener("click", () => { defaultWindow(); loadWindow().catch((err) => setStatus(`Status: load failed - ${err.message}`)); });
+viewLifecycleBtn.addEventListener("click", () => setViewMode("lifecycle"));
+viewActionsBtn.addEventListener("click", () => setViewMode("actions"));
+openFilterBtn.addEventListener("click", openAdvancedFilterDialog);
+exportWowBtn.addEventListener("click", () => exportWowAsExcel().catch((err) => setStatus(`Status: export failed - ${err.message}`)));
+applyFilterBtn.addEventListener("click", () => { state.advancedFilter = { field: advFieldEl.value, op: advOperatorEl.value, value: advValueEl.value }; closeAdvancedFilterDialog(); applyFilters(); });
+clearFilterBtn.addEventListener("click", () => { state.advancedFilter = null; closeAdvancedFilterDialog(); applyFilters(); });
+cancelFilterBtn.addEventListener("click", closeAdvancedFilterDialog);
+advOperatorEl.addEventListener("change", () => { advValueEl.disabled = advOperatorEl.value === "is_null" || advOperatorEl.value === "not_null"; });
+filterDialogBackdropEl.addEventListener("click", (event) => { if (event.target === filterDialogBackdropEl) closeAdvancedFilterDialog(); });
+searchEl.addEventListener("input", applyFilters); statusFilterEl.addEventListener("change", applyFilters); projektFilterEl.addEventListener("change", applyFilters); admctrFilterEl.addEventListener("change", () => { refreshLifecycleDependentFilters(); applyFilters(); }); sortKeyEl.addEventListener("change", applyFilters); sortDirEl.addEventListener("change", applyFilters); actionTopicFilterEl.addEventListener("change", () => { state.actionTopic = actionTopicFilterEl.value || "terminiranje"; applyFilters(); }); queueFilterEl.addEventListener("change", applyFilters); ownerFilterEl.addEventListener("change", applyFilters); priorityFilterEl.addEventListener("change", applyFilters); signalKindFilterEl.addEventListener("change", applyFilters); queueSortKeyEl.addEventListener("change", applyFilters); queueSortDirEl.addEventListener("change", applyFilters);
+Array.from(document.querySelectorAll("#ordersTable th[data-key]")).forEach((th) => th.addEventListener("click", () => { const key = th.getAttribute("data-key"); if (sortKeyEl.value === key) sortDirEl.value = sortDirEl.value === "asc" ? "desc" : "asc"; else sortKeyEl.value = key; applyFilters(); }));
+Array.from(document.querySelectorAll("#queueTable th[data-key]")).forEach((th) => th.addEventListener("click", () => { const key = th.getAttribute("data-key"); if (queueSortKeyEl.value === key) queueSortDirEl.value = queueSortDirEl.value === "asc" ? "desc" : "asc"; else queueSortKeyEl.value = key; applyFilters(); }));
+defaultWindow(); setViewMode("lifecycle"); loadWindow().catch((err) => { setStatus(`Status: load failed - ${err.message}`); detailBoxEl.innerHTML = `<div class="empty">${esc(err.message)}</div>`; });
+</script>
 </body>
 </html>
+
+
+
+
+
+
+

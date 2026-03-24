@@ -102,14 +102,34 @@ const QUERY_ALLOWLIST = {
     timeoutMs: 20000,
     maxRows: 10000
   },
+  DNOPR_CAL_RANGE: {
+    sql: `
+      SELECT datum, dandelovni, tekst, praznik
+      FROM KOLEDARDRZ
+      WHERE datum >= ? AND datum < ?
+      ORDER BY datum ASC;
+    `,
+    timeoutMs: 10000,
+    maxRows: 10000
+  },
   ARTIKEL_BY_ARTIKEL: {
     sql: `
-      SELECT artikel, naziv1, tehid, em
+      SELECT artikel, naziv1, tehid, em, artid
       FROM ARTIKEL
       WHERE artikel = ?;
     `,
     timeoutMs: 10000,
     maxRows: 5
+  },
+  ARTKLAS_BY_ARTID: {
+    sql: `
+      SELECT artid, kljuc
+      FROM ARTKLAS
+      WHERE artid = ?
+      ORDER BY kljuc ASC;
+    `,
+    timeoutMs: 10000,
+    maxRows: 50
   },
   V_TEHOPR_VAR_BY_TEHID: {
     sql: `
