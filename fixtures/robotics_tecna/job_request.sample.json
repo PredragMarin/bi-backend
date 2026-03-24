@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "robotics.tecna.job-request.v1",
+  "jobIdentity": {
+    "jobKey": "DYNAMIC_JOB_KEY",
+    "jobType": "tecna_spot_weld",
+    "robotCode": "TECNA_01",
+    "sourceSystem": "bi_backend",
+    "sourceModule": "robotics_tecna_smoke"
+  },
+  "productionContext": {
+    "workOrderRef": "RN-TECNA-DEMO-001",
+    "productRef": "KRILO-TECNA-DEMO-001",
+    "productFamily": "protuprovalna_vrata",
+    "routingOperationCode": "SPOT_WELD_FRAME"
+  },
+  "doorSpec": {
+    "vVis": 2100,
+    "vSir": 960,
+    "vTip": "pp_protuprovalna",
+    "sheetSetCode": "FRAME_STD_A"
+  },
+  "programSelection": {
+    "programCode": "TECNA_FRAME_V1",
+    "algorithmMode": "parametric_group_shift",
+    "revision": "demo-r1"
+  },
+  "processTargets": {
+    "expectedSpotCount": 112,
+    "targetCurrentKa": 11.8,
+    "targetForceKn": 2.5,
+    "cycleProfile": "standard_frame_cycle"
+  },
+  "trace": {
+    "requestedByUserId": "smoke_test",
+    "requestedAt": "DYNAMIC_REQUESTED_AT",
+    "comment": "Dummy outbound payload for Tecna DB smoke pilot."
+  }
+}

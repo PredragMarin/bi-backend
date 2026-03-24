@@ -1,0 +1,8 @@
+CREATE SCHEMA IF NOT EXISTS bi_smoke;
+
+CREATE TABLE IF NOT EXISTS bi_smoke.connection_smoke (
+  id BIGSERIAL PRIMARY KEY,
+  smoke_key TEXT NOT NULL UNIQUE,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

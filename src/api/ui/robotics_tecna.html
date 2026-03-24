@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Robot Tecna Sandbox</title>
+  <style>
+    :root{
+      --bg:#f3f1ea;
+      --paper:#fffdf8;
+      --ink:#1d2430;
+      --muted:#667085;
+      --line:#d8cfbf;
+      --accent:#9a3412;
+      --accent-soft:#f6d6bf;
+      --good:#166534;
+      --bad:#b42318;
+      --warn:#b54708;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Georgia, "Times New Roman", serif;background:linear-gradient(180deg,#f6f2e8 0%,#ece7dc 100%);color:var(--ink)}
+    .page{max-width:1400px;margin:0 auto;padding:24px;display:grid;gap:18px}
+    .hero,.card{background:var(--paper);border:1px solid var(--line);border-radius:20px;box-shadow:0 12px 32px rgba(29,36,48,.08)}
+    .hero{padding:24px;background:
+      radial-gradient(circle at top right, rgba(154,52,18,.15), transparent 30%),
+      linear-gradient(135deg, rgba(154,52,18,.06), rgba(255,253,248,.95))}
+    .hero h1{margin:0 0 8px;font-size:36px}
+    .hero p{margin:0;color:var(--muted);max-width:900px;line-height:1.5}
+    .grid{display:grid;grid-template-columns:420px 1fr;gap:18px}
+    .stack{display:grid;gap:18px}
+    .card{padding:18px}
+    h2{margin:0 0 12px;font-size:20px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    button{border:0;border-radius:999px;padding:11px 16px;background:var(--ink);color:#fff;cursor:pointer;font-weight:700}
+    button.secondary{background:#e7dfd0;color:var(--ink)}
+    button.warn{background:var(--warn)}
+    input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fffdfa;color:var(--ink);font:inherit}
+    textarea{min-height:160px;resize:vertical;font-family:Consolas, monospace;font-size:13px}
+    label{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .status{padding:12px 14px;border-radius:14px;background:var(--accent-soft);color:#7c2d12;font-size:14px}
+    .list{display:grid;gap:10px;max-height:680px;overflow:auto}
+    .job{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fffdfa;cursor:pointer}
+    .job.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(154,52,18,.12)}
+    .job-head{display:flex;justify-content:space-between;gap:10px;align-items:center}
+    .job-key{font-family:Consolas, monospace;font-size:12px}
+    .pill{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700}
+    .pill.queued{background:#efe7da;color:#7c2d12}
+    .pill.completed{background:#dcfce7;color:var(--good)}
+    .pill.failed,.pill.interrupted{background:#fee4e2;color:var(--bad)}
+    .meta{margin-top:8px;color:var(--muted);font-size:13px;display:grid;gap:4px}
+    .detail{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+    pre{margin:0;background:#1f2937;color:#f9fafb;border-radius:16px;padding:16px;overflow:auto;min-height:240px}
+    .empty{padding:28px;border:1px dashed var(--line);border-radius:16px;text-align:center;color:var(--muted)}
+    @media (max-width: 1100px){
+      .grid,.detail,.form-grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>Robot Tecna Sandbox</h1>
+      <p>Browser pregled za Tecna outbound job i inbound execution report sandbox nad PostgreSQL bazom. Ovo je izolirani pilot za hands-on testiranje JSONB payloada i envelope tablica, bez utjecaja na aktivne module.</p>
+      <div class="toolbar">
+        <button id="bootstrapBtn">Bootstrap Sandbox</button>
+        <button id="refreshBtn" class="secondary">Refresh Jobs</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="stack">
+        <div class="card">
+          <h2>Create Tecna Job</h2>
+          <div class="form-grid">
+            <label>Work Order Ref
+              <input id="jobWorkOrder" value="RN-TECNA-DEMO-001" />
+            </label>
+            <label>Product Ref
+              <input id="jobProductRef" value="KRILO-TECNA-DEMO-001" />
+            </label>
+            <label>V_VIS
+              <input id="jobHeight" type="number" value="2100" />
+            </label>
+            <label>V_SIR
+              <input id="jobWidth" type="number" value="960" />
+            </label>
+            <label>V_TIP
+              <input id="jobType" value="pp_protuprovalna" />
+            </label>
+            <label>Status
+              <select id="jobStatus">
+                <option value="queued">queued</option>
+                <option value="ready">ready</option>
+              </select>
+            </label>
+          </div>
+          <label style="margin-top:12px">Payload Overrides JSON
+            <textarea id="jobPayloadOverride">{}</textarea>
+          </label>
+          <div class="toolbar">
+            <button id="createJobBtn">Create Job</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Create Tecna Result</h2>
+          <label>Target Job Key
+            <input id="resultJobKey" placeholder="Select a job from the list or paste jobKey" />
+          </label>
+          <div class="form-grid" style="margin-top:12px">
+            <label>Result Status
+              <select id="resultStatus">
+                <option value="completed">completed</option>
+                <option value="failed">failed</option>
+                <option value="interrupted">interrupted</option>
+              </select>
+            </label>
+            <label>Operator ID
+              <input id="resultOperatorId" value="OP-TECNA-01" />
+            </label>
+            <label>Executed Spot Count
+              <input id="resultSpotCount" type="number" value="112" />
+            </label>
+            <label>Avg Current kA
+              <input id="resultAvgCurrent" type="number" step="0.1" value="11.6" />
+            </label>
+            <label>Avg Force kN
+              <input id="resultAvgForce" type="number" step="0.1" value="2.4" />
+            </label>
+            <label>Failure Code
+              <input id="resultFailureCode" value="" />
+            </label>
+          </div>
+          <label style="margin-top:12px">Result Payload Overrides JSON
+            <textarea id="resultPayloadOverride">{}</textarea>
+          </label>
+          <div class="toolbar">
+            <button id="createResultBtn" class="warn">Create Result</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <h2>Jobs</h2>
+          <div id="statusBox" class="status">Ready.</div>
+          <div id="jobList" class="list" style="margin-top:14px"></div>
+        </div>
+
+        <div class="card">
+          <h2>Selected Detail</h2>
+          <div id="detailBox" class="detail">
+            <div class="empty">Select a job to inspect outbound payload.</div>
+            <div class="empty">Select a job to inspect inbound result payload.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const state = { items: [], selectedJobKey: "" };
+    const jobListEl = document.getElementById("jobList");
+    const detailBoxEl = document.getElementById("detailBox");
+    const statusBoxEl = document.getElementById("statusBox");
+    const resultJobKeyEl = document.getElementById("resultJobKey");
+
+    function setStatus(message, tone) {
+      statusBoxEl.textContent = message;
+      statusBoxEl.style.background = tone === "error" ? "#fee4e2" : tone === "ok" ? "#dcfce7" : "#f6d6bf";
+      statusBoxEl.style.color = tone === "error" ? "#b42318" : tone === "ok" ? "#166534" : "#7c2d12";
+    }
+
+    function pretty(value) {
+      return JSON.stringify(value || {}, null, 2);
+    }
+
+    function parseJsonInput(text, label) {
+      try {
+        return JSON.parse(text || "{}");
+      } catch (error) {
+        throw new Error(`${label} is not valid JSON.`);
+      }
+    }
+
+    async function fetchJson(url, options) {
+      const res = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+      return data;
+    }
+
+    function renderJobs() {
+      if (!state.items.length) {
+        jobListEl.innerHTML = '<div class="empty">No Tecna sandbox jobs yet.</div>';
+        detailBoxEl.innerHTML = '<div class="empty">Create a job to inspect outbound payload.</div><div class="empty">Create a result to inspect inbound payload.</div>';
+        return;
+      }
+
+      jobListEl.innerHTML = state.items.map((item) => {
+        const job = item.job || {};
+        const result = item.result || null;
+        const status = String((result && result.status) || job.status || "queued").toLowerCase();
+        const active = job.jobKey === state.selectedJobKey ? "active" : "";
+        return `
+          <div class="job ${active}" data-job-key="${job.jobKey}">
+            <div class="job-head">
+              <div>
+                <strong>${job.externalProductRef || "-"}</strong>
+                <div class="job-key">${job.jobKey}</div>
+              </div>
+              <span class="pill ${status}">${status}</span>
+            </div>
+            <div class="meta">
+              <div>Robot: ${job.robotCode || "-"}</div>
+              <div>Type: ${job.jobType || "-"}</div>
+              <div>Requested: ${job.requestedAt || "-"}</div>
+              <div>Result: ${result ? result.resultKey : "pending"}</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      Array.from(jobListEl.querySelectorAll("[data-job-key]")).forEach((element) => {
+        element.addEventListener("click", () => {
+          state.selectedJobKey = element.getAttribute("data-job-key");
+          resultJobKeyEl.value = state.selectedJobKey;
+          renderJobs();
+          renderDetail();
+        });
+      });
+
+      if (!state.selectedJobKey && state.items[0] && state.items[0].job) {
+        state.selectedJobKey = state.items[0].job.jobKey;
+        resultJobKeyEl.value = state.selectedJobKey;
+      }
+      renderDetail();
+    }
+
+    function renderDetail() {
+      const item = state.items.find((entry) => entry.job && entry.job.jobKey === state.selectedJobKey);
+      if (!item) return;
+      detailBoxEl.innerHTML = `
+        <div>
+          <h3>Outbound Job Payload</h3>
+          <pre>${pretty(item.job.requestPayload)}</pre>
+        </div>
+        <div>
+          <h3>Inbound Result Payload</h3>
+          <pre>${item.result ? pretty(item.result.resultPayload) : "No result yet."}</pre>
+        </div>
+      `;
+    }
+
+    async function loadJobs() {
+      setStatus("Loading Tecna sandbox jobs...");
+      const data = await fetchJson("/api/robotics/v1/tecna/jobs?limit=50");
+      state.items = Array.isArray(data.items) ? data.items : [];
+      setStatus(`Loaded ${state.items.length} Tecna sandbox jobs.`, "ok");
+      renderJobs();
+    }
+
+    async function bootstrap() {
+      setStatus("Bootstrapping Tecna sandbox...");
+      const data = await fetchJson("/api/robotics/v1/tecna/bootstrap", { method: "POST", body: "{}" });
+      setStatus(data.message || "Sandbox is ready.", "ok");
+      await loadJobs();
+    }
+
+    async function createJob() {
+      const payloadOverride = parseJsonInput(document.getElementById("jobPayloadOverride").value, "Job payload override");
+      const payload = {
+        productionContext: {
+          workOrderRef: document.getElementById("jobWorkOrder").value,
+          productRef: document.getElementById("jobProductRef").value
+        },
+        doorSpec: {
+          vVis: Number(document.getElementById("jobHeight").value),
+          vSir: Number(document.getElementById("jobWidth").value),
+          vTip: document.getElementById("jobType").value
+        },
+        ...payloadOverride
+      };
+      setStatus("Creating Tecna job...");
+      const data = await fetchJson("/api/robotics/v1/tecna/jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          status: document.getElementById("jobStatus").value,
+          payload
+        })
+      });
+      state.selectedJobKey = data.job.jobKey;
+      resultJobKeyEl.value = data.job.jobKey;
+      setStatus(`Created job ${data.job.jobKey}.`, "ok");
+      await loadJobs();
+    }
+
+    async function createResult() {
+      const jobKey = String(resultJobKeyEl.value || "").trim();
+      if (!jobKey) throw new Error("Target Job Key is required.");
+      const payloadOverride = parseJsonInput(document.getElementById("resultPayloadOverride").value, "Result payload override");
+      const status = document.getElementById("resultStatus").value;
+      const payload = {
+        status,
+        executionContext: {
+          operatorId: document.getElementById("resultOperatorId").value
+        },
+        processSummary: {
+          executedSpotCount: Number(document.getElementById("resultSpotCount").value),
+          avgCurrentKa: Number(document.getElementById("resultAvgCurrent").value),
+          avgForceKn: Number(document.getElementById("resultAvgForce").value),
+          programInterrupted: status === "interrupted"
+        },
+        qualitySummary: {
+          failureCode: document.getElementById("resultFailureCode").value
+        },
+        ...payloadOverride
+      };
+      setStatus(`Creating result for ${jobKey}...`);
+      await fetchJson(`/api/robotics/v1/tecna/jobs/${encodeURIComponent(jobKey)}/result`, {
+        method: "POST",
+        body: JSON.stringify({ status, payload })
+      });
+      state.selectedJobKey = jobKey;
+      setStatus(`Created result for ${jobKey}.`, "ok");
+      await loadJobs();
+    }
+
+    document.getElementById("bootstrapBtn").addEventListener("click", () => bootstrap().catch((error) => setStatus(error.message, "error")));
+    document.getElementById("refreshBtn").addEventListener("click", () => loadJobs().catch((error) => setStatus(error.message, "error")));
+    document.getElementById("createJobBtn").addEventListener("click", () => createJob().catch((error) => setStatus(error.message, "error")));
+    document.getElementById("createResultBtn").addEventListener("click", () => createResult().catch((error) => setStatus(error.message, "error")));
+
+    loadJobs().catch((error) => setStatus(error.message, "error"));
+  </script>
+</body>
+</html>

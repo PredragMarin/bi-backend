@@ -9,16 +9,20 @@
     "fetch-cookie": "^3.2.0",
     "node-fetch": "^2.7.0",
     "odbc": "^2.4.9",
-    "tough-cookie": "^6.0.0",
+    "pg": "^8.20.0",
     "playwright": "^1.58.2",
+    "tough-cookie": "^6.0.0",
     "xlsx": "^0.18.5"
   },
   "description": "",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "db:smoke": "node scripts/postgres_smoke_test.js",
+    "db:smoke:cleanup": "node scripts/postgres_smoke_test.js --cleanup-schema",
+    "db:robotics:tecna:smoke": "node scripts/robotics_tecna_smoke_test.js",
+    "db:robotics:tecna:cleanup": "node scripts/robotics_tecna_smoke_test.js --cleanup-schema"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "devDependencies": {}
+  "license": "ISC"
 }

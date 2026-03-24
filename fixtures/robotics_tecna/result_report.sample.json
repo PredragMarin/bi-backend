@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "robotics.tecna.result-report.v1",
+  "status": "completed",
+  "jobIdentity": {
+    "jobKey": "DYNAMIC_JOB_KEY",
+    "resultKey": "DYNAMIC_RESULT_KEY",
+    "jobType": "tecna_spot_weld",
+    "robotCode": "TECNA_01"
+  },
+  "executionContext": {
+    "workOrderRef": "RN-TECNA-DEMO-001",
+    "productRef": "KRILO-TECNA-DEMO-001",
+    "operatorId": "OP-TECNA-01",
+    "executionMode": "automatic"
+  },
+  "executionWindow": {
+    "startedAt": "DYNAMIC_STARTED_AT",
+    "finishedAt": "DYNAMIC_FINISHED_AT",
+    "executionSeconds": 360
+  },
+  "processSummary": {
+    "executedSpotCount": 112,
+    "avgCurrentKa": 11.6,
+    "avgForceKn": 2.4,
+    "programInterrupted": false
+  },
+  "qualitySummary": {
+    "missedCurrentPointCount": 0,
+    "missedForcePointCount": 0,
+    "warningCodes": [],
+    "failureCode": ""
+  },
+  "trace": {
+    "reportedAt": "DYNAMIC_FINISHED_AT",
+    "comment": "Dummy inbound payload for Tecna DB smoke pilot."
+  }
+}
