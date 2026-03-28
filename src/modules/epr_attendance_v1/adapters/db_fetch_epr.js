@@ -1,6 +1,6 @@
 ﻿// src/dev/db_fetch_epr.js
 const { transformDataset } = require("../../../core/validate");
-const { executeAllowedBatch } = require("../../../core/erp_gateway/client");
+const { executeErpAllowedBatch } = require("../../../core_shell/services/erp_fetch_service");
 const { buildSyntheticRowsFromHzzo } = require("./hzzo_ingest");
 const { resolveIngestSource } = require("../../../core/excel_shell/ingest_sources");
 
@@ -65,7 +65,7 @@ async function fetchEprDatasets({
   const endExISO = `${endExclusive.getFullYear()}-${pad2(endExclusive.getMonth() + 1)}-${pad2(endExclusive.getDate())}`;
 
   const requestId = `epr_fetch_${Date.now()}`;
-  const dbResult = await executeAllowedBatch({
+  const dbResult = await executeErpAllowedBatch({
     moduleId: "epr_attendance_v1",
     requestId,
     dsnOverride: dsn,

@@ -1,9 +1,10 @@
 // src/core/sms_ledger.js
 const fs = require("fs");
 const path = require("path");
+const { resolveSmsLedgerRoot } = require("../core_shell/config/sms_config");
 
 const DEFAULT_LEDGER_ROOT =
-  process.env.BI_SMS_LEDGER_ROOT || "Z:\\014_Programi\\BI\\sms_ledger";
+  resolveSmsLedgerRoot();
 
 // --- helpers ---
 function ensureDir(p) {

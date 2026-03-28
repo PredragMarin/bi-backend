@@ -1,5 +1,6 @@
 // src/core/sms_outbox_contract.js
 const crypto = require("crypto");
+const { loadSmsContractConfig } = require("../core_shell/config/sms_config");
 
 const E164_RE = /^\+[1-9]\d{7,14}$/;
 
@@ -91,9 +92,10 @@ function validateOutboxRecord(record) {
 }
 
 function buildOutboxRecord({ previewRow, approvalRow, options = {} }) {
-  const originId = str(options.origin_id || "bi_core_shell");
-  const sourceEnv = str(options.source_env || process.env.BI_ENV || "prod");
-  const schemaVersion = str(options.schema_version || "sms_outbox.v1");
+  const config = loadSmsContractConfig(options);
+  const originId = str(config.origin_id || "bi_core_shell");
+  const sourceEnv = str(config.source_env || "prod");
+  const schemaVersion = str(config.schema_version || "sms_outbox.v1");
   const recipientKind = str(options.recipient_kind || "employee");
   const fallbackUseCase = str(options.use_case || "");
 

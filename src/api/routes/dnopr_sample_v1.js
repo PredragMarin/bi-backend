@@ -2,6 +2,7 @@
 
 const express = require("express");
 const XLSX = require("xlsx");
+const { resolveErpDsn } = require("../../core_shell/config/erp_config");
 const {
   fetchDnoprLifecycleWindow,
   fetchDnoprLifecycleOrderDetail,
@@ -49,7 +50,7 @@ function createDnoprSampleRouterV1() {
       const result = await fetchDnoprLifecycleWindow({
         fromISO: req.query && req.query.from ? String(req.query.from) : "",
         toISO: req.query && req.query.to ? String(req.query.to) : "",
-        dsn: req.query && req.query.dsn ? String(req.query.dsn) : (process.env.ERP_DSN || "ERP_POC_RO")
+        dsn: resolveErpDsn({ dsnOverride: req.query && req.query.dsn ? String(req.query.dsn) : "" })
       });
       res.json(result);
     } catch (err) {
@@ -68,7 +69,7 @@ function createDnoprSampleRouterV1() {
       }
       const result = await fetchDnoprLifecycleOrderDetail({
         dnid,
-        dsn: req.query && req.query.dsn ? String(req.query.dsn) : (process.env.ERP_DSN || "ERP_POC_RO")
+        dsn: resolveErpDsn({ dsnOverride: req.query && req.query.dsn ? String(req.query.dsn) : "" })
       });
       res.json(result);
     } catch (err) {
@@ -84,7 +85,7 @@ function createDnoprSampleRouterV1() {
       const result = await fetchDnoprLifecycleActions({
         fromISO: req.query && req.query.from ? String(req.query.from) : "",
         toISO: req.query && req.query.to ? String(req.query.to) : "",
-        dsn: req.query && req.query.dsn ? String(req.query.dsn) : (process.env.ERP_DSN || "ERP_POC_RO")
+        dsn: resolveErpDsn({ dsnOverride: req.query && req.query.dsn ? String(req.query.dsn) : "" })
       });
       res.json(result);
     } catch (err) {

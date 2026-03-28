@@ -1,6 +1,6 @@
 "use strict";
 
-const { executeAllowedBatch } = require("../../../core/erp_gateway/client");
+const { executeErpAllowedBatch } = require("../../../core_shell/services/erp_fetch_service");
 
 function normalizeRow(row) {
   const out = {};
@@ -438,7 +438,7 @@ function summarizeWindowRows({ vdnRows, vdnoprRows, feedbackRows, artikelMetaByS
 async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" }) {
   const win = resolveWindow({ fromISO, toISO });
   const requestId = `dnopr_window_${Date.now()}`;
-  const baseResult = await executeAllowedBatch({
+  const baseResult = await executeErpAllowedBatch({
     moduleId: "dnopr_lifecycle_v1",
     requestId,
     dsnOverride: dsn,
@@ -467,7 +467,7 @@ async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" })
   let tehDurationMs = 0;
   let tehRows = [];
   if (sifraids.length) {
-    const artikelResult = await executeAllowedBatch({
+    const artikelResult = await executeErpAllowedBatch({
       moduleId: "dnopr_lifecycle_v1",
       requestId: `${requestId}_artikel`,
       dsnOverride: dsn,
@@ -488,7 +488,7 @@ async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" })
     const artikelMetaBySifraid = buildArtikelMetaMap(artikelRows);
     const artids = Array.from(new Set(Array.from(artikelMetaBySifraid.values()).map((item) => trimValue(item.artid)).filter(Boolean))).sort();
     if (artids.length) {
-      const artklasResult = await executeAllowedBatch({
+      const artklasResult = await executeErpAllowedBatch({
         moduleId: "dnopr_lifecycle_v1",
         requestId: `${requestId}_artklas`,
         dsnOverride: dsn,
@@ -508,7 +508,7 @@ async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" })
     }
     const tehids = Array.from(new Set(Array.from(artikelMetaBySifraid.values()).map((item) => trimValue(item.tehid)).filter(Boolean))).sort();
     if (tehids.length) {
-      const tehResult = await executeAllowedBatch({
+      const tehResult = await executeErpAllowedBatch({
         moduleId: "dnopr_lifecycle_v1",
         requestId: `${requestId}_tehopr`,
         dsnOverride: dsn,
@@ -557,7 +557,7 @@ async function fetchDnoprLifecycleWindow({ fromISO, toISO, dsn = "ERP_POC_RO" })
 
 async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
   const requestId = `dnopr_detail_${dnid}_${Date.now()}`;
-  const dbResult = await executeAllowedBatch({
+  const dbResult = await executeErpAllowedBatch({
     moduleId: "dnopr_lifecycle_v1",
     requestId,
     dsnOverride: dsn,
@@ -585,7 +585,7 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
   let artikelOpsCount = 0;
 
   if (sifraid) {
-    const artikelResult = await executeAllowedBatch({
+    const artikelResult = await executeErpAllowedBatch({
       moduleId: "dnopr_lifecycle_v1",
       requestId: `${requestId}_artikel`,
       dsnOverride: dsn,
@@ -605,7 +605,7 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
     artikelJm = trimValue(artikelMeta && artikelMeta.em);
     artikelArtid = trimValue(artikelMeta && artikelMeta.artid);
     if (artikelArtid) {
-      const artklasResult = await executeAllowedBatch({
+      const artklasResult = await executeErpAllowedBatch({
         moduleId: "dnopr_lifecycle_v1",
         requestId: `${requestId}_artklas`,
         dsnOverride: dsn,
@@ -625,7 +625,7 @@ async function fetchDnoprLifecycleOrderDetail({ dnid, dsn = "ERP_POC_RO" }) {
   }
 
   if (artikelTehid && header) {
-    const tehResult = await executeAllowedBatch({
+    const tehResult = await executeErpAllowedBatch({
       moduleId: "dnopr_lifecycle_v1",
       requestId: `${requestId}_tehopr`,
       dsnOverride: dsn,

@@ -6,9 +6,13 @@ const fsp = fs.promises;
 const { publishApprovedSmsOutbox } = require("../../core/sms_outbox_publisher");
 const { parseCsvSemicolon } = require("../../core_shell/libs/csv_semicolon");
 const { ensureSafePeriodFolder, normalizeDecision } = require("../../core_shell/libs/sms_common");
+const {
+  resolveSmsGatewayOutboxDir,
+  loadSmsContractConfig
+} = require("../../core_shell/config/sms_config");
 
 const DEFAULT_GATEWAY_OUTBOX_DIR =
-  process.env.BI_SMS_GATEWAY_OUTBOX || "C:\\Users\\Marin\\bi-backend\\out\\_comm\\gateway_outbox_fake";
+  resolveSmsGatewayOutboxDir();
 // Production path: "\\\\192.168.100.95\\SMS_Gateway\\outbox"
 
 function ensureSafeNamespace(ns) {
@@ -200,11 +204,7 @@ module.exports = function createSmsApprovalsRouterV1({ outRoot }) {
         period: periodFolder,
         namespace,
         gatewayOutboxDir: DEFAULT_GATEWAY_OUTBOX_DIR,
-        contractOptions: {
-          origin_id: process.env.BI_SMS_ORIGIN_ID || process.env.BI_SMS_SOURCE_SYSTEM || "bi_core_shell",
-          source_env: process.env.BI_ENV || "prod",
-          schema_version: process.env.BI_SMS_SCHEMA_VERSION || "sms_outbox.v1"
-        }
+        contractOptions: loadSmsContractConfig()
       });
 
       res.json(result);

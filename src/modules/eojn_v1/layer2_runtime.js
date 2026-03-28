@@ -26,7 +26,7 @@ const {
   getLatestReviewDecisionsByTender
 } = require("../../core_shell/services/eojn_review_store");
 const { loadActiveCycle, saveActiveCycle } = require("../../core_shell/services/eojn_layer1_store");
-const { writeJsonAtomic } = require("../../core_shell/storage/fs_store");
+const { writeJsonAtomic } = require("../../core_shell/storage");
 const { resolveEojnConfigPath } = require("../../core_shell/services/eojn_config_service");
 const { downloadBudgetFilesForTender } = require("../../core_shell/services/eojn_budget_download_service");
 const { isSupportedWorkbookFile } = require("../../core_shell/services/workbook_ingest_service");

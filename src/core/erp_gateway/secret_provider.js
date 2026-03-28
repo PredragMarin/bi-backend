@@ -1,16 +1,18 @@
 // src/core/erp_gateway/secret_provider.js
 const fs = require("fs");
+const { loadErpConnectionConfig, resolveErpDsn } = require("../../core_shell/config/erp_config");
 
 function buildConnFromParts({ dsnOverride } = {}) {
-  const dsn = dsnOverride || process.env.ERP_DSN;
-  const uid = process.env.ERP_UID;
-  const pwd = process.env.ERP_PWD;
+  const cfg = loadErpConnectionConfig();
+  const dsn = resolveErpDsn({ dsnOverride, defaultDsn: "" });
+  const uid = cfg.uid;
+  const pwd = cfg.pwd;
   if (!dsn || !uid || !pwd) return null;
   return `DSN=${dsn};Authentication=Database;UID=${uid};PWD=${pwd};`;
 }
 
 function readConnFromSecretFile() {
-  const filePath = process.env.ERP_SECRET_FILE;
+  const { secretFilePath: filePath } = loadErpConnectionConfig();
   if (!filePath) return null;
 
   const raw = fs.readFileSync(filePath, "utf8");
@@ -28,8 +30,8 @@ function readConnFromSecretFile() {
 }
 
 function resolveErpConnectionString({ dsnOverride } = {}) {
-  const direct = process.env.ERP_CONN_STR;
-  if (direct && direct.trim()) return direct.trim();
+  const cfg = loadErpConnectionConfig();
+  if (cfg.connStr) return cfg.connStr;
 
   const fromParts = buildConnFromParts({ dsnOverride });
   if (fromParts) return fromParts;

@@ -3,7 +3,7 @@
 const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
-const { writeJsonAtomic } = require("../storage/fs_store");
+const { writeJsonAtomic } = require("../storage");
 
 function repoRootFromServiceDir() {
   return path.resolve(__dirname, "..", "..", "..");

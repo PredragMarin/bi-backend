@@ -8,6 +8,7 @@ const createSmsApprovalsRouterV1 = require("./routes/sms_approvals_v1");
 const createEojnLayer1RouterV1 = require("./routes/eojn_layer1_v1");
 const createDnoprSampleRouterV1 = require("./routes/dnopr_sample_v1");
 const createRoboticsTecnaRouterV1 = require("./routes/robotics_tecna_v1");
+const { resolveErpDsn } = require("../core_shell/config/erp_config");
 const { runUseCase } = require("../core/runtime");
 const { fetchEprDatasets } = require("../modules/epr_attendance_v1/adapters/db_fetch_epr");
 const { registerModules } = require("../bootstrap/register_modules");
@@ -112,7 +113,7 @@ app.post("/api/epr/run-db", async (req, res) => {
     const { epr_data, calendar, osebe_raw, meta } = await fetchEprDatasets({
       fromISO,
       toISO,
-      dsn: (process.env.ERP_DSN || "ERP_POC_RO"),
+      dsn: resolveErpDsn(),
       hzzoEnabled,
       hzzoDir,
       hzzoAsOfDate: hzzoAsOf || toISO

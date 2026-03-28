@@ -1,7 +1,7 @@
 ﻿"use strict";
 
 const path = require("path");
-const { createFsStorage } = require("./fs_store");
+const { createFsStorage, writeJsonAtomic } = require("./fs_store");
 
 function normalizeBackendName(name) {
   const v = String(name || "fs").trim().toLowerCase();
@@ -29,5 +29,6 @@ function resolveStoreRoot(storeRoot) {
 
 module.exports = {
   createStorage,
-  resolveStoreRoot
+  resolveStoreRoot,
+  writeJsonAtomic
 };
