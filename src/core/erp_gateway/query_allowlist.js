@@ -62,6 +62,15 @@ const QUERY_ALLOWLIST = {
     timeoutMs: 10000,
     maxRows: 20
   },
+  V_DN_BY_SIFRADN: {
+    sql: `
+      SELECT opombe, dnid, nalogid, nalog, sifraid, kolicina, admctr, status, status_sifra, sifradn
+      FROM V_DN
+      WHERE sifradn = ?;
+    `,
+    timeoutMs: 10000,
+    maxRows: 5
+  },
   V_DNOPR_WINDOW: {
     sql: `
       SELECT *

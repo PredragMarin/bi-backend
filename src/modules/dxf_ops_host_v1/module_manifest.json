@@ -1,0 +1,23 @@
+{
+  "identity": {
+    "use_case": "dxf_ops_host_v1",
+    "contract_version": "0.1.0-prototype",
+    "module_version": "0.1.0-prototype",
+    "owner": "Marn Expert d.o.o."
+  },
+  "runtime": {
+    "core_contract_ref": "core_contract_v1.0.x",
+    "status": "prototype_no_runtime_registration"
+  },
+  "entrypoints": {
+    "host_payload_adapter": "adapters/db_fetch_dxf_ops_host.js"
+  },
+  "contracts": {
+    "batch_start_contract": "contracts/dxf_ops_batch_start_contract.json",
+    "data_contract_validation_entry": "validate_contracts.js"
+  },
+  "notes": [
+    "This package is a host-side simulator for future DXF/OPS integration.",
+    "It is intentionally not wired into module registry or public API routes in this phase."
+  ]
+}
