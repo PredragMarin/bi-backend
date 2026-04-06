@@ -9,6 +9,7 @@ const createEojnLayer1RouterV1 = require("./routes/eojn_layer1_v1");
 const createDnoprSampleRouterV1 = require("./routes/dnopr_sample_v1");
 const createRoboticsTecnaRouterV1 = require("./routes/robotics_tecna_v1");
 const createDxfOpsBatchRouterV1 = require("./routes/dxf_ops_batch_v1");
+const createMotherDxfRouterV1 = require("./routes/mother_dxf_v1");
 const { resolveErpDsn } = require("../core_shell/config/erp_config");
 const { runUseCase } = require("../core/runtime");
 const { fetchEprDatasets } = require("../modules/epr_attendance_v1/adapters/db_fetch_epr");
@@ -25,6 +26,7 @@ app.use("/api/eojn/v1", createEojnLayer1RouterV1());
 app.use("/api/dnopr/v1", createDnoprSampleRouterV1());
 app.use("/api/robotics/v1/tecna", createRoboticsTecnaRouterV1());
 app.use("/api/dxf-ops/v1", createDxfOpsBatchRouterV1());
+app.use("/api/mother-dxf/v1", createMotherDxfRouterV1());
 // ---- Idle shutdown (minutes) ----
 const IDLE_SHUTDOWN_MINUTES = Number(process.env.IDLE_SHUTDOWN_MINUTES || 10);
 const IDLE_SHUTDOWN_MS = Number.isFinite(IDLE_SHUTDOWN_MINUTES) ? IDLE_SHUTDOWN_MINUTES * 60 * 1000 : 0;
@@ -66,6 +68,7 @@ const dnoprHtmlPath = path.join(uiDir, "dnopr.html");
 const dnoprActionsHtmlPath = path.join(uiDir, "dnopr_actions.html");
 const roboticsTecnaHtmlPath = path.join(uiDir, "robotics_tecna.html");
 const dxfOpsBatchHtmlPath = path.join(uiDir, "dxf_ops_batch.html");
+const motherDxfHtmlPath = path.join(uiDir, "mother_dxf.html");
 
 app.use("/ui", express.static(uiDir, { extensions: ["html"] }));
 
@@ -84,6 +87,8 @@ app.get("/ui/robotics-tecna", (req, res) => res.sendFile(roboticsTecnaHtmlPath))
 app.get("/ui/robotics_tecna.html", (req, res) => res.sendFile(roboticsTecnaHtmlPath));
 app.get("/ui/dxf-ops-batch", (req, res) => res.sendFile(dxfOpsBatchHtmlPath));
 app.get("/ui/dxf_ops_batch.html", (req, res) => res.sendFile(dxfOpsBatchHtmlPath));
+app.get("/ui/mother-dxf", (req, res) => res.sendFile(motherDxfHtmlPath));
+app.get("/ui/mother_dxf.html", (req, res) => res.sendFile(motherDxfHtmlPath));
 // health check
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
@@ -360,6 +365,7 @@ const server = app.listen(PORT, () => {
   console.log(`UI DNOPR Actions: http://localhost:${PORT}/ui/dnopr-actions`);
   console.log(`UI Robotics Tecna: http://localhost:${PORT}/ui/robotics-tecna`);
   console.log(`UI OPS/DXF Batch: http://localhost:${PORT}/ui/dxf-ops-batch`);
+  console.log(`UI MOTHER DXF: http://localhost:${PORT}/ui/mother-dxf`);
   console.log("EMPLOYEE_TAGS_V1 =", process.env.EMPLOYEE_TAGS_V1);
   if (IDLE_SHUTDOWN_MS > 0) {
     console.log(`Idle shutdown: ${IDLE_SHUTDOWN_MINUTES} min`);

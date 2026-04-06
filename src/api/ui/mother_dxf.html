@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MOTHER DXF v0.1</title>
+  <style>
+    :root{
+      --bg:#e9efe8;
+      --paper:#fbfdf8;
+      --ink:#182026;
+      --muted:#5a6a73;
+      --line:#c6d2c8;
+      --accent:#264653;
+      --accent-soft:#d8e4df;
+      --warn:#b45309;
+      --bad:#b42318;
+      --good:#166534;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#eef4ea 0%,#e0e7dd 100%);color:var(--ink);font-family:"Segoe UI",Tahoma,sans-serif}
+    .page{display:grid;gap:14px;padding:14px}
+    .hero,.card{background:var(--paper);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px rgba(24,32,38,.08)}
+    .hero{padding:18px;background:radial-gradient(circle at top right, rgba(38,70,83,.12), transparent 30%),linear-gradient(135deg, rgba(38,70,83,.08), rgba(251,253,248,.96))}
+    .hero h1{margin:0 0 6px;font-size:32px}
+    .hero p{margin:0;color:var(--muted);max-width:1100px;line-height:1.5}
+    .layout{display:grid;grid-template-columns:410px 1fr;gap:14px}
+    .stack{display:grid;gap:14px}
+    .card{padding:16px}
+    h2{margin:0 0 10px;font-size:18px}
+    textarea,input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;color:var(--ink)}
+    textarea{min-height:240px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
+    .editor-shell{display:grid;grid-template-columns:34px 1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+    .editor-shell.entity-focus{border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.14);background:#fff7f7}
+    .line-gutter{min-height:240px;max-height:240px;overflow:hidden;background:#f5f7f6;border-right:1px solid #e3e9e4;font-family:Consolas,monospace;font-size:11px;line-height:16px;padding:10px 4px 10px 0;text-align:right;color:#c1c9d4;user-select:none}
+    .line-gutter-row{height:16px;white-space:nowrap}
+    .line-gutter-row.active{color:#b42318;font-weight:700}
+    .editor-textarea{border:0;border-radius:0;min-height:240px;max-height:240px;resize:vertical;line-height:16px}
+    .editor-textarea:focus{outline:none}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap}
+    button{border:0;border-radius:999px;padding:10px 14px;background:var(--ink);color:#fff;font-weight:700;cursor:pointer}
+    button.secondary{background:#dfe8e0;color:var(--ink)}
+    button.good{background:#166534}
+    button.warn{background:#b45309}
+    button[disabled]{opacity:.5;cursor:not-allowed}
+    .status{padding:11px 12px;border-radius:12px;background:var(--accent-soft);color:#14323d}
+    .pill-row{display:flex;gap:8px;flex-wrap:wrap}
+    .pill{padding:5px 9px;border-radius:999px;font-size:11px;font-weight:700;background:#eef3ef;color:#2f4a38;border:1px solid #d8e3d8}
+    .viewer-shell{display:grid;grid-template-rows:auto auto 1fr;gap:12px;min-height:760px}
+    .canvas-wrap{position:relative;border:1px solid var(--line);border-radius:18px;background:#f8fbf7;overflow:hidden;min-height:620px}
+    canvas{display:block;width:100%;height:100%}
+    .legend{display:flex;gap:8px;flex-wrap:wrap}
+    .legend-item{display:flex;align-items:center;gap:6px;font-size:12px}
+    .swatch{width:14px;height:14px;border-radius:4px;border:1px solid rgba(0,0,0,.2)}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .meta{font-size:12px;color:var(--muted)}
+    pre{margin:0;background:#1f2937;color:#f9fafb;border-radius:14px;padding:14px;max-height:220px;overflow:auto;font-size:12px}
+    .selection{max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff}
+    .selection-item{padding:6px 0;border-bottom:1px solid #edf1ed;font-size:12px}
+    .selection-item:last-child{border-bottom:none}
+    .focus-note{margin-top:8px;padding:8px 10px;border:1px solid #ef4444;border-radius:12px;background:#fff1f2;color:#991b1b;font-size:12px;font-weight:700}
+    @media (max-width: 1180px){
+      .layout{grid-template-columns:1fr}
+      .viewer-shell{min-height:auto}
+      .canvas-wrap{min-height:520px}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>MOTHER DXF v0.1</h1>
+      <p>First useful slice za `raw DXF -> sanitized -> mother draft`. Ovdje se radi minimalni Stage 0 sanitize, bbox-based Stage 1 auto-suggestion, ručna CAD-like korekcija i export prvog mother DXF nacrta.</p>
+    </section>
+
+    <section class="layout">
+      <div class="stack">
+        <div class="card">
+          <h2>Input</h2>
+          <div class="row" style="margin-bottom:10px">
+            <input id="fileInput" type="file" accept=".dxf,text/plain" />
+          </div>
+          <div class="meta" style="margin-bottom:8px">Možeš učitati `.dxf` file ili zalijepiti sadržaj ručno.</div>
+          <div id="editorShell" class="editor-shell">
+            <div id="lineGutter" class="line-gutter"></div>
+            <textarea id="dxfInput" class="editor-textarea" placeholder="Paste raw DXF text here"></textarea>
+          </div>
+          <div id="inputFocusNote" class="focus-note" style="display:none"></div>
+        </div>
+
+        <div class="card">
+          <h2>4-band Auto-Suggestion</h2>
+          <div class="grid-2">
+            <label>Left band (mm)<input id="bandLeft" type="number" value="80" min="0" step="1" /></label>
+            <label>Right band (mm)<input id="bandRight" type="number" value="80" min="0" step="1" /></label>
+            <label>Top band (mm)<input id="bandTop" type="number" value="80" min="0" step="1" /></label>
+            <label>Bottom band (mm)<input id="bandBottom" type="number" value="80" min="0" step="1" /></label>
+          </div>
+          <div class="toolbar" style="margin-top:12px">
+            <button id="startBtn">Create Session</button>
+            <button id="reclassifyBtn" class="secondary" disabled>Re-run Auto-Suggest</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Selection</h2>
+          <div class="meta" style="margin-bottom:10px">Click za single select. Drag za rectangle select. Klik na prazno čisti selekciju.</div>
+          <div id="selectionBox" class="selection"><div class="meta">No selection.</div></div>
+        </div>
+
+        <div class="card">
+          <h2>Force Assign</h2>
+          <div class="toolbar" id="assignToolbar"></div>
+        </div>
+
+        <div class="card">
+          <h2>Status & Validation</h2>
+          <div id="statusBox" class="status">Ready.</div>
+          <div class="toolbar" style="margin-top:12px">
+            <button id="validateBtn" class="warn" disabled>Validate Mother Draft</button>
+            <button id="exportBtn" class="good" disabled>Export Mother DXF</button>
+          </div>
+          <pre id="validationOut">{"ok":false}</pre>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card viewer-shell">
+          <div class="row">
+            <strong>Viewer</strong>
+            <span id="sessionMeta" class="meta">No active session.</span>
+          </div>
+          <div id="legend" class="legend"></div>
+          <div class="canvas-wrap">
+            <canvas id="viewerCanvas"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      session: null,
+      selectedIds: new Set(),
+      hoverId: null,
+      dragStart: null,
+      dragRect: null,
+      view: { scale: 1, offsetX: 0, offsetY: 0 },
+      panning: null
+    };
+
+    const LAYERS = ["L","R","T","B","TL","TR","BL","BR","A"];
+    const canvas = document.getElementById("viewerCanvas");
+    const ctx = canvas.getContext("2d");
+    const selectionBox = document.getElementById("selectionBox");
+    const validationOut = document.getElementById("validationOut");
+    const statusBox = document.getElementById("statusBox");
+    const sessionMeta = document.getElementById("sessionMeta");
+    const dxfInput = document.getElementById("dxfInput");
+    const inputFocusNote = document.getElementById("inputFocusNote");
+    const lineGutter = document.getElementById("lineGutter");
+    const editorShell = document.getElementById("editorShell");
+
+    function setStatus(message, tone = "info") {
+      statusBox.textContent = message;
+      statusBox.style.background = tone === "error" ? "#fee4e2" : tone === "ok" ? "#dcfce7" : "#d8e4df";
+      statusBox.style.color = tone === "error" ? "#b42318" : tone === "ok" ? "#166534" : "#14323d";
+    }
+
+    function esc(value) {
+      return String(value === null || value === undefined ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;");
+    }
+
+    function bandsPayload() {
+      return {
+        left: Number(document.getElementById("bandLeft").value || 0),
+        right: Number(document.getElementById("bandRight").value || 0),
+        top: Number(document.getElementById("bandTop").value || 0),
+        bottom: Number(document.getElementById("bandBottom").value || 0)
+      };
+    }
+
+    function fileNameFromInput() {
+      const file = document.getElementById("fileInput").files[0];
+      return file ? file.name : "mother_dxf_input.dxf";
+    }
+
+    async function fetchJson(url, options) {
+      const response = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+      return data;
+    }
+
+    function initAssignToolbar() {
+      const toolbar = document.getElementById("assignToolbar");
+      toolbar.innerHTML = LAYERS.map((layer) => `<button type="button" data-layer="${layer}" class="secondary">${layer}</button>`).join("");
+      toolbar.querySelectorAll("button").forEach((button) => {
+        button.addEventListener("click", () => applyAssignment(button.dataset.layer));
+      });
+    }
+
+    function renderLegend() {
+      const colors = state.session ? state.session.semantic_colors : {};
+      document.getElementById("legend").innerHTML = ["L","R","T","B","TL","TR","BL","BR","A"].map((key) => `
+        <div class="legend-item">
+          <span class="swatch" style="background:${esc(colors[key] || "#ddd")}"></span>
+          <span>${esc(key)}</span>
+        </div>
+      `).join("");
+    }
+
+    function syncCanvasSize() {
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width * ratio);
+      canvas.height = Math.floor(rect.height * ratio);
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    function fitViewToDocument() {
+      if (!state.session || !state.session.document_bbox) return;
+      const bbox = state.session.document_bbox;
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(1, bbox.maxX - bbox.minX);
+      const height = Math.max(1, bbox.maxY - bbox.minY);
+      const scale = Math.min((rect.width - 40) / width, (rect.height - 40) / height);
+      state.view.scale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+      state.view.offsetX = 20 - bbox.minX * state.view.scale;
+      state.view.offsetY = 20 + bbox.maxY * state.view.scale;
+    }
+
+    function worldToScreen(point) {
+      return {
+        x: point.x * state.view.scale + state.view.offsetX,
+        y: -point.y * state.view.scale + state.view.offsetY
+      };
+    }
+
+    function screenToWorld(point) {
+      return {
+        x: (point.x - state.view.offsetX) / state.view.scale,
+        y: -(point.y - state.view.offsetY) / state.view.scale
+      };
+    }
+
+    function objectById(id) {
+      return state.session && Array.isArray(state.session.objects)
+        ? state.session.objects.find((item) => item.id === id) || null
+        : null;
+    }
+
+    function objectScreenBBox(object) {
+      if (!object || !object.bbox) return null;
+      const a = worldToScreen({ x: object.bbox.minX, y: object.bbox.minY });
+      const b = worldToScreen({ x: object.bbox.maxX, y: object.bbox.maxY });
+      return {
+        minX: Math.min(a.x, b.x),
+        minY: Math.min(a.y, b.y),
+        maxX: Math.max(a.x, b.x),
+        maxY: Math.max(a.y, b.y)
+      };
+    }
+
+    function drawShape(shape, color, width) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      if (shape.kind === "line") {
+        const a = worldToScreen({ x: shape.x1, y: shape.y1 });
+        const b = worldToScreen({ x: shape.x2, y: shape.y2 });
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      } else if (shape.kind === "circle") {
+        const center = worldToScreen({ x: shape.centerX, y: shape.centerY });
+        ctx.arc(center.x, center.y, Math.abs(shape.radius * state.view.scale), 0, Math.PI * 2);
+      } else if (shape.kind === "arc") {
+        const center = worldToScreen({ x: shape.centerX, y: shape.centerY });
+        const start = (-shape.startAngle * Math.PI) / 180;
+        const end = (-shape.endAngle * Math.PI) / 180;
+        ctx.arc(center.x, center.y, Math.abs(shape.radius * state.view.scale), start, end, true);
+      }
+      ctx.stroke();
+    }
+
+    function renderSelectionBox() {
+      if (!state.selectedIds.size) {
+        selectionBox.innerHTML = `<div class="meta">No selection.</div>`;
+        inputFocusNote.style.display = "none";
+        renderLineNumbers();
+        return;
+      }
+      const rows = Array.from(state.selectedIds).map((id) => {
+        const item = objectById(id);
+        if (!item) return "";
+        const linePrefix = item.source && item.source.line_start ? `Ln${item.source.line_start} | ` : "";
+        return `<div class="selection-item"><strong>${esc(linePrefix)}${esc(item.display_label || item.id)}</strong> | layer=${esc(item.primary_layer || "unclassified")} | origin=${esc(item.assignment_origin)}</div>`;
+      }).join("");
+      selectionBox.innerHTML = rows;
+    }
+
+    function activeSelectionLine() {
+      if (!state.selectedIds.size || !state.session) return null;
+      const firstId = Array.from(state.selectedIds)[0];
+      const item = objectById(firstId);
+      return item && item.source && item.source.line_start ? Number(item.source.line_start) : null;
+    }
+
+    function renderLineNumbers() {
+      const normalized = String(dxfInput.value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const lines = normalized.split("\n");
+      const activeLine = activeSelectionLine();
+      lineGutter.innerHTML = lines.map((_, index) => {
+        const lineNo = index + 1;
+        const activeClass = activeLine === lineNo ? " active" : "";
+        return `<div class="line-gutter-row${activeClass}">${lineNo}</div>`;
+      }).join("");
+      lineGutter.scrollTop = dxfInput.scrollTop;
+    }
+
+    function lineCharOffset(text, lineNumber) {
+      const normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const lines = normalized.split("\n");
+      const target = Math.max(1, Number(lineNumber || 1));
+      let offset = 0;
+      for (let i = 1; i < target && i <= lines.length; i += 1) {
+        offset += lines[i - 1].length + 1;
+      }
+      return offset;
+    }
+
+    function getTextareaLineHeight() {
+      const styles = window.getComputedStyle(dxfInput);
+      const raw = styles.lineHeight;
+      const numeric = Number.parseFloat(raw);
+      if (Number.isFinite(numeric)) return numeric;
+      const fontSize = Number.parseFloat(styles.fontSize || "12");
+      return Number.isFinite(fontSize) ? fontSize * 1.35 : 16;
+    }
+
+    function focusSelectedEntityInInput() {
+      editorShell.classList.remove("entity-focus");
+      if (!state.selectedIds.size || !state.session) {
+        inputFocusNote.style.display = "none";
+        renderLineNumbers();
+        return;
+      }
+      const firstId = Array.from(state.selectedIds)[0];
+      const item = objectById(firstId);
+      if (!item || !item.source || !item.source.line_start) {
+        inputFocusNote.style.display = "none";
+        renderLineNumbers();
+        return;
+      }
+
+      const start = lineCharOffset(dxfInput.value, item.source.line_start);
+      const end = lineCharOffset(dxfInput.value, (item.source.line_end || item.source.line_start) + 1);
+      const lineHeight = getTextareaLineHeight();
+      const targetTop = Math.max(0, (item.source.line_start - 2) * lineHeight);
+
+      editorShell.classList.add("entity-focus");
+      dxfInput.focus();
+      dxfInput.scrollTop = targetTop;
+      dxfInput.setSelectionRange(start, Math.max(start, end - 1));
+      requestAnimationFrame(() => {
+        dxfInput.scrollTop = targetTop;
+        dxfInput.setSelectionRange(start, Math.max(start, end - 1));
+        lineGutter.scrollTop = targetTop;
+        renderLineNumbers();
+      });
+
+      inputFocusNote.style.display = "block";
+      inputFocusNote.innerHTML = `<strong>Focused raw entity:</strong> ${esc(item.display_label || item.id)} | lines ${esc(item.source.line_start)}-${esc(item.source.line_end || item.source.line_start)} | ${esc(item.id)} je interni parsed ID.`;
+      renderLineNumbers();
+    }
+
+    function renderValidation(validation) {
+      validationOut.textContent = JSON.stringify(validation || { ok: false }, null, 2);
+    }
+
+    function renderSessionMeta() {
+      if (!state.session) {
+        sessionMeta.textContent = "No active session.";
+        return;
+      }
+      sessionMeta.textContent = `${state.session.source_name} | ${state.session.artifact_state} | objects ${state.session.objects.length}`;
+    }
+
+    function render() {
+      syncCanvasSize();
+      ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      renderSelectionBox();
+      focusSelectedEntityInInput();
+      renderSessionMeta();
+      renderLegend();
+
+      if (!state.session) return;
+      for (const object of state.session.objects) {
+        const isSelected = state.selectedIds.has(object.id);
+        const isHover = state.hoverId === object.id;
+        for (const shape of object.shapes || []) {
+          drawShape(shape, object.semantic_color || "#cbd5e1", isSelected ? 3 : 1.5);
+          if (isHover) drawShape(shape, "#111827", 3.5);
+        }
+        if (isSelected) {
+          const bbox = objectScreenBBox(object);
+          if (bbox) {
+            ctx.strokeStyle = "#111827";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([6, 4]);
+            ctx.strokeRect(bbox.minX, bbox.minY, bbox.maxX - bbox.minX, bbox.maxY - bbox.minY);
+            ctx.setLineDash([]);
+          }
+        }
+      }
+
+      if (state.dragRect) {
+        const rect = state.dragRect;
+        ctx.strokeStyle = "#264653";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
+        ctx.setLineDash([]);
+      }
+    }
+
+    function objectIdsInRect(screenRect) {
+      if (!state.session) return [];
+      return state.session.objects
+        .filter((object) => {
+          const bbox = objectScreenBBox(object);
+          if (!bbox) return false;
+          return !(bbox.maxX < screenRect.minX || bbox.minX > screenRect.maxX || bbox.maxY < screenRect.minY || bbox.minY > screenRect.maxY);
+        })
+        .map((object) => object.id);
+    }
+
+    function objectIdAtPoint(point) {
+      if (!state.session) return null;
+      const candidates = state.session.objects
+        .map((object) => ({ object, bbox: objectScreenBBox(object) }))
+        .filter((entry) => entry.bbox)
+        .filter((entry) =>
+          point.x >= entry.bbox.minX - 4 &&
+          point.x <= entry.bbox.maxX + 4 &&
+          point.y >= entry.bbox.minY - 4 &&
+          point.y <= entry.bbox.maxY + 4
+        )
+        .sort((a, b) => {
+          const areaA = (a.bbox.maxX - a.bbox.minX) * (a.bbox.maxY - a.bbox.minY);
+          const areaB = (b.bbox.maxX - b.bbox.minX) * (b.bbox.maxY - b.bbox.minY);
+          return areaA - areaB;
+        });
+      return candidates[0] ? candidates[0].object.id : null;
+    }
+
+    async function createSession() {
+      const dxfText = document.getElementById("dxfInput").value;
+      if (!dxfText.trim()) {
+        setStatus("DXF input is empty.", "error");
+        return;
+      }
+      setStatus("Creating sanitized Stage 0 session...");
+      const payload = {
+        dxf_text: dxfText,
+        source_name: fileNameFromInput(),
+        bands: bandsPayload()
+      };
+      const data = await fetchJson("/api/mother-dxf/v1/sessions", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      state.session = data.session;
+      state.selectedIds.clear();
+      state.hoverId = null;
+      fitViewToDocument();
+      renderValidation({ ok: false, note: "Validation not run yet." });
+      document.getElementById("reclassifyBtn").disabled = false;
+      document.getElementById("validateBtn").disabled = false;
+      document.getElementById("exportBtn").disabled = false;
+      setStatus("Session ready. Auto-suggestion applied.", "ok");
+      render();
+    }
+
+    async function rerunAutoSuggest() {
+      if (!state.session) return;
+      setStatus("Recomputing bbox-based auto-suggestion...");
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/bands`, {
+        method: "POST",
+        body: JSON.stringify({ bands: bandsPayload() })
+      });
+      state.session = data.session;
+      fitViewToDocument();
+      render();
+      setStatus("Auto-suggestion recomputed. Manual assignments were preserved.", "ok");
+    }
+
+    async function applyAssignment(layer) {
+      if (!state.session || !state.selectedIds.size) {
+        setStatus("Select one or more objects first.", "error");
+        return;
+      }
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/assign`, {
+        method: "POST",
+        body: JSON.stringify({
+          ids: Array.from(state.selectedIds),
+          layer
+        })
+      });
+      state.session = data.session;
+      render();
+      setStatus(`Assigned ${layer} to ${state.selectedIds.size} object(s).`, "ok");
+    }
+
+    async function validateMotherDraft() {
+      if (!state.session) return;
+      setStatus("Validating mother draft...");
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/validate`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      state.session = data.session;
+      renderValidation(data.validation);
+      render();
+      setStatus(data.validation.ok ? "Validation passed." : "Validation failed. See details below.", data.validation.ok ? "ok" : "error");
+    }
+
+    function exportMotherDraft() {
+      if (!state.session) return;
+      window.open(`/api/mother-dxf/v1/sessions/${state.session.session_id}/export`, "_blank");
+    }
+
+    canvas.addEventListener("mousemove", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+
+      if (state.panning) {
+        state.view.offsetX += point.x - state.panning.x;
+        state.view.offsetY += point.y - state.panning.y;
+        state.panning = point;
+        render();
+        return;
+      }
+
+      if (state.dragStart) {
+        state.dragRect = {
+          minX: Math.min(state.dragStart.x, point.x),
+          minY: Math.min(state.dragStart.y, point.y),
+          maxX: Math.max(state.dragStart.x, point.x),
+          maxY: Math.max(state.dragStart.y, point.y)
+        };
+        render();
+        return;
+      }
+
+      state.hoverId = objectIdAtPoint(point);
+      render();
+    });
+
+    canvas.addEventListener("mousedown", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      if (event.button === 1 || event.altKey) {
+        state.panning = point;
+        return;
+      }
+      state.dragStart = point;
+      state.dragRect = null;
+    });
+
+    canvas.addEventListener("mouseup", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      if (state.panning) {
+        state.panning = null;
+        return;
+      }
+      if (!state.dragStart) return;
+
+      const dx = point.x - state.dragStart.x;
+      const dy = point.y - state.dragStart.y;
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+        const hit = objectIdAtPoint(point);
+        state.selectedIds.clear();
+        if (hit) state.selectedIds.add(hit);
+      } else {
+        const ids = objectIdsInRect(state.dragRect);
+        state.selectedIds = new Set(ids);
+      }
+      state.dragStart = null;
+      state.dragRect = null;
+      render();
+    });
+
+    canvas.addEventListener("mouseleave", () => {
+      state.hoverId = null;
+      state.dragStart = null;
+      state.dragRect = null;
+      state.panning = null;
+      render();
+    });
+
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      if (!state.session) return;
+      const rect = canvas.getBoundingClientRect();
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      const worldBefore = screenToWorld(point);
+      const factor = event.deltaY < 0 ? 1.12 : 0.89;
+      state.view.scale = Math.max(0.05, Math.min(100, state.view.scale * factor));
+      const screenAfter = worldToScreen(worldBefore);
+      state.view.offsetX += point.x - screenAfter.x;
+      state.view.offsetY += point.y - screenAfter.y;
+      render();
+    }, { passive: false });
+
+    document.getElementById("fileInput").addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      document.getElementById("dxfInput").value = text;
+      renderLineNumbers();
+      setStatus(`Loaded ${file.name}.`, "ok");
+    });
+
+    dxfInput.addEventListener("input", renderLineNumbers);
+    dxfInput.addEventListener("scroll", () => {
+      lineGutter.scrollTop = dxfInput.scrollTop;
+    });
+
+    document.getElementById("startBtn").addEventListener("click", () => {
+      createSession().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("reclassifyBtn").addEventListener("click", () => {
+      rerunAutoSuggest().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("validateBtn").addEventListener("click", () => {
+      validateMotherDraft().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("exportBtn").addEventListener("click", exportMotherDraft);
+    window.addEventListener("resize", render);
+
+    initAssignToolbar();
+    renderValidation({ ok: false, note: "Validation not run yet." });
+    renderLineNumbers();
+    render();
+  </script>
+</body>
+</html>
