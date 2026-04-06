@@ -106,18 +106,18 @@ Fill this in during cutover:
 - Runtime user: `bi_app_user`
 - PM2 present: `yes` (per operator note)
 - Secrets kept outside repo: `yes`
-- External secrets path on server: ****\*\*****\_\_\_\_****\*\*****
-- External runtime resources outside repo: ****\*\*****\_\_\_\_****\*\*****
+- External secrets path on server: \***\*\*\*\*\***\_\_\_\_\***\*\*\*\*\***
+- External runtime resources outside repo: \***\*\*\*\*\***\_\_\_\_\***\*\*\*\*\***
 
 ## Rollback Record
 
 Before first cutover deploy, record:
 
-- Previous known-good server app source: ****\*\*****C:\Users\Marin\bi-backend\src\api\server.js****\*\*****
-- Previous known-good restart command: ****\*\*****\_\_\_\_****\*\*****
-- Previous known-good PM2 process name/id: ****\*\*****\_\_\_\_****\*\*****
-- Rollback owner: ****\*\*****\_\_\_\_****\*\*****
-- Rollback trigger condition: ****\*\*****\_\_\_\_****\*\*****
+- Previous known-good server app source: \***\*\*\*\*\***C:\Users\Marin\bi-backend\src\api\server.js\***\*\*\*\*\***
+- Previous known-good restart command: \***\*\*\*\*\***\_\_\_\_\***\*\*\*\*\***
+- Previous known-good PM2 process name/id: \***\*\*\*\*\***\_\_\_\_\***\*\*\*\*\***
+- Rollback owner: \***\*\*\*\*\***\_\_\_\_\***\*\*\*\*\***
+- Rollback trigger condition: \***\*\*\*\*\***\_\_\_\_\***\*\*\*\*\***
 
 ## Notes
 
@@ -145,3 +145,20 @@ src/api/server.js mora se pokrenuti bez fatalnih missing-env grešaka
 ključni Core Shell boundary dokumenti i module struktura moraju ostati prisutni
 
 Nemojte stavljati buduće DXF ekrane ako još nisu stvarno u repou.
+DO THIS NOW 2026 04 06 15: 03
+Na lokalnom računalu otvori MIGRATION_FREEZE_2026_04_06.md i dopuni ga kratko s ovim potvrđenim činjenicama:
+
+server repo path: /home/marin/app
+active branch on server: restructure/core-shell-v1
+active commit on server: e069eae08af5fb6cab4012ade9b4587bdc1deeb3
+PM2 process: bi-backend
+local server health check: GET http://127.0.0.1:3000/health -> 200 {"status":"ok"}
+public domain health path: iza Cloudflare Access 302 redirect, nije direktni anon health
+UI local checks OK:
+/ui/epr
+/ui/eojn
+/ui/dnopr
+/ui/robotics-tecna
+/ui/dxf-ops-batch
+/ui/mother-dxf
+Ako želiš, samo dodaj kratku sekciju Cutover Result pri dnu dokumenta.
