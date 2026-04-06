@@ -76,22 +76,22 @@ Suggested minimum cutover list:
 
 | Area        | Item                                                  | Priority | Expected Result                           | Checked By |
 | ----------- | ----------------------------------------------------- | -------- | ----------------------------------------- | ---------- |
-| App process | PM2 process starts app on port 3000                   | required | process online, no crash loop             |            |
-| Health      | `GET /health`                                         | required | HTTP 200 with `{ "status": "ok" }`        |            |
-| UI          | `/ui/epr`                                             | required | page loads                                |            |
-| UI          | `/ui/eojn`                                            | required | page loads                                |            |
-| UI          | `/ui/dnopr`                                           | required | page loads                                |            |
-| UI          | `/ui/robotics-tecna`                                  | required | page loads                                |            |
-| UI          | `/ui/dxf-ops-batch`                                   | required | page loads                                |            |
-| UI          | `/ui/mother-dxf`                                      | required | page loads                                |            |
-| Config      | server env loads                                      | required | app sees required env vars                |            |
-| Secrets     | external secret paths available                       | required | app can read needed external secret files |            |
-| Output      | app can access repo-local `out/` path if still needed | required | no write-path failure in normal flow      |            |
+| App process | PM2 process starts app on port 3000                   | required | process online, no crash loop             | Marin      |
+| Health      | `GET /health`                                         | required | HTTP 200 with `{ "status": "ok" }`        | Marin      |
+| UI          | `/ui/epr`                                             | required | page loads                                | Marin      |
+| UI          | `/ui/eojn`                                            | required | page loads                                | Marin      |
+| UI          | `/ui/dnopr`                                           | required | page loads                                | Marin      |
+| UI          | `/ui/robotics-tecna`                                  | required | page loads                                | Marin      |
+| UI          | `/ui/dxf-ops-batch`                                   | required | page loads                                | Marin      |
+| UI          | `/ui/mother-dxf`                                      | required | page loads                                | Marin      |
+| Config      | server env loads                                      | required | app sees required env vars                | Marin      |
+| Secrets     | external secret paths available                       | required | app can read needed external secret files | Marin      |
+| Output      | app can access repo-local `out/` path if still needed | required | no write-path failure in normal flow      | Marin      |
 
 Add module-specific functional checks below before migration:
 
-1. ***
-2. ***
+1. Da core shell radi sve svoje zadaće
+2. Da svi Moduli rade što su i do sada radili
 3. ***
 4. ***
 5. ***
@@ -106,18 +106,18 @@ Fill this in during cutover:
 - Runtime user: `bi_app_user`
 - PM2 present: `yes` (per operator note)
 - Secrets kept outside repo: `yes`
-- External secrets path on server: **********\_\_\_\_**********
-- External runtime resources outside repo: **********\_\_\_\_**********
+- External secrets path on server: ****\*\*****\_\_\_\_****\*\*****
+- External runtime resources outside repo: ****\*\*****\_\_\_\_****\*\*****
 
 ## Rollback Record
 
 Before first cutover deploy, record:
 
-- Previous known-good server app source: **********\_\_\_\_**********
-- Previous known-good restart command: **********\_\_\_\_**********
-- Previous known-good PM2 process name/id: **********\_\_\_\_**********
-- Rollback owner: **********\_\_\_\_**********
-- Rollback trigger condition: **********\_\_\_\_**********
+- Previous known-good server app source: ****\*\*****C:\Users\Marin\bi-backend\src\api\server.js****\*\*****
+- Previous known-good restart command: ****\*\*****\_\_\_\_****\*\*****
+- Previous known-good PM2 process name/id: ****\*\*****\_\_\_\_****\*\*****
+- Rollback owner: ****\*\*****\_\_\_\_****\*\*****
+- Rollback trigger condition: ****\*\*****\_\_\_\_****\*\*****
 
 ## Notes
 
