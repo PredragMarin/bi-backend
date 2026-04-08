@@ -1,0 +1,214 @@
+{
+  "identity": {
+    "platform_id": "bi_host_platform",
+    "platform_layer": "core_shell",
+    "contract_version": "0.1.0-draft",
+    "platform_version": "core-shell-v1-draft",
+    "owner": "Marin Expert d.o.o.",
+    "status": "current_state_draft"
+  },
+  "scope": {
+    "repository": "bi-backend",
+    "target_layer": "src/core_shell/*",
+    "compatibility_layer": "src/core/*",
+    "transport_layer": "src/api/*",
+    "module_layer": "src/modules/*"
+  },
+  "purpose": {
+    "summary": "Current-state host platform contract for modules integrating into BI Core Shell.",
+    "goals": [
+      "Declare currently supported Core Shell capabilities.",
+      "Give module owners a practical integration boundary.",
+      "Reduce direct coupling to legacy src/core compatibility code.",
+      "Make module manifests and host capabilities understandable as two sides of the same integration contract."
+    ]
+  },
+  "contract_status": {
+    "mode": "hybrid",
+    "notes": [
+      "Core Shell is the target platform layer for new shared/platform capabilities.",
+      "Runtime/orchestration is still partially hybrid because src/core/runtime.js remains active.",
+      "This manifest describes currently usable host capabilities and boundaries, not a target-state redesign."
+    ]
+  },
+  "capabilities": {
+    "available": [
+      {
+        "capability_id": "erp_sql_fetch",
+        "status": "available",
+        "entry_point": "src/core_shell/services/erp_fetch_service.js",
+        "summary": "Official access path for allowed ERP batch fetches."
+      },
+      {
+        "capability_id": "erp_config_access",
+        "status": "available",
+        "entry_point": "src/core_shell/config/erp_config.js",
+        "summary": "ERP DSN resolution and ERP credential/config access path."
+      },
+      {
+        "capability_id": "sms_config_access",
+        "status": "available",
+        "entry_point": "src/core_shell/config/sms_config.js",
+        "summary": "SMS gateway outbox dir, SMS ledger root, and SMS contract defaults."
+      },
+      {
+        "capability_id": "shared_json_storage",
+        "status": "available",
+        "entry_point": "src/core_shell/storage/index.js",
+        "summary": "Public durable JSON write entry point and storage backend facade."
+      },
+      {
+        "capability_id": "module_registry",
+        "status": "available",
+        "entry_point": "src/core_shell/kernel/module_registry.js",
+        "summary": "Module runtime registration and lookup by use_case."
+      },
+      {
+        "capability_id": "db_config_access",
+        "status": "available",
+        "entry_point": "src/core_shell/config/db_config.js",
+        "summary": "PostgreSQL and DB platform config loading."
+      },
+      {
+        "capability_id": "workbook_matrix_ingest",
+        "status": "available",
+        "entry_point": "src/core_shell/services/workbook_ingest_service.js",
+        "summary": "Node/XLSX workbook support checks and matrix extraction for EOJN-style analysis."
+      }
+    ],
+    "partial": [
+      {
+        "capability_id": "runtime_orchestration",
+        "status": "partial",
+        "entry_points": [
+          "src/bootstrap/register_modules.js",
+          "src/core_shell/kernel/module_registry.js",
+          "src/core/runtime.js"
+        ],
+        "summary": "Runtime registration is partly in Core Shell but compatibility runtime entry remains in legacy core."
+      },
+      {
+        "capability_id": "artifact_lifecycle",
+        "status": "partial",
+        "entry_point": "src/core_shell/storage/index.js",
+        "summary": "Shared durable JSON writes are normalized, but many module-specific artifact outputs remain specialized."
+      },
+      {
+        "capability_id": "sms_subsystem",
+        "status": "partial",
+        "entry_points": [
+          "src/core_shell/config/sms_config.js",
+          "src/core/sms_ledger.js",
+          "src/core/sms_outbox_publisher.js"
+        ],
+        "summary": "SMS config access is centralized, while ledger/outbox publish internals remain legacy."
+      }
+    ],
+    "intentionally_split": [
+      {
+        "capability_id": "workbook_ingest",
+        "status": "split",
+        "variants": [
+          {
+            "variant_id": "node_xlsx_matrix_reader",
+            "entry_point": "src/core_shell/services/workbook_ingest_service.js"
+          },
+          {
+            "variant_id": "legacy_excel_shell",
+            "entry_points": [
+              "src/core/excel_shell/run.js",
+              "src/core/excel_shell/extract.js",
+              "src/core/excel_shell/discover.js"
+            ]
+          }
+        ],
+        "summary": "Workbook ingest is not one unified host capability today and must not be merged casually."
+      }
+    ],
+    "not_generic_host_capabilities": [
+      {
+        "capability_id": "external_public_web_fetch",
+        "status": "module_specific",
+        "summary": "Public website/API fetches such as EOJN procurements/notices remain module-specific and are not declared as generic Core Shell fetch capabilities."
+      }
+    ],
+    "not_yet_implemented": [
+      "formal_auth_roles_contract",
+      "formal_logging_contract",
+      "formal_audit_contract",
+      "formal_job_runner_contract",
+      "normalized_artifact_lifecycle_contract",
+      "single_unified_workbook_ingest_contract"
+    ]
+  },
+  "official_entry_points": {
+    "erp_fetch": "src/core_shell/services/erp_fetch_service.js",
+    "erp_config": "src/core_shell/config/erp_config.js",
+    "sms_config": "src/core_shell/config/sms_config.js",
+    "storage_index": "src/core_shell/storage/index.js",
+    "module_registry": "src/core_shell/kernel/module_registry.js",
+    "db_config": "src/core_shell/config/db_config.js",
+    "workbook_matrix_ingest": "src/core_shell/services/workbook_ingest_service.js"
+  },
+  "module_requirements": {
+    "required_manifest_fields": [
+      "use_case",
+      "contract_version",
+      "module_version",
+      "owner"
+    ],
+    "required_contract_artifacts": [
+      "module_manifest.json",
+      "input_contract_or_schema_reference",
+      "output_contract_or_schema_reference",
+      "validation_entry"
+    ],
+    "integration_rules": [
+      "Keep business/domain logic inside src/modules/<module>/*.",
+      "Use Core Shell ERP fetch capability instead of a module-local ERP client.",
+      "Use Core Shell config access paths for shared/platform config values.",
+      "Use Core Shell storage entry points for shared durable JSON writes.",
+      "Do not import src/core_shell/storage/fs_store.js directly outside storage internals.",
+      "Do not add new shared/platform code to src/core/*.",
+      "Do not assume workbook ingest is one unified service.",
+      "Do not expand src/api/server.js with module-specific orchestration if an existing runtime/module path can be used."
+    ]
+  },
+  "supported_integration_patterns": {
+    "host_to_module": [
+      "business_ready_resource_payloads",
+      "registered_runtime_dispatch_by_use_case",
+      "shared_config_access_via_core_shell",
+      "shared_storage_access_via_core_shell"
+    ],
+    "module_to_host": [
+      "declared_module_manifest",
+      "validated_input_output_contracts",
+      "module_runtime_registration",
+      "host_visible_artifact_and_state_contracts"
+    ]
+  },
+  "boundary_rules": {
+    "allowed_dependency_flow": [
+      "api -> core_shell",
+      "api -> modules only through approved orchestration/runtime contract",
+      "modules -> core_shell/services",
+      "core_shell must not import from modules"
+    ],
+    "forbidden_patterns": [
+      "module_direct_low_level_erp_client_access",
+      "module_direct_shared_durable_fs_db_writes_outside_host_contract",
+      "new_shared_platform_code_in_src/core",
+      "new_shared_process_env_reads_where_core_shell_config_facade_exists",
+      "copy_paste_shared_helpers_across_layers"
+    ]
+  },
+  "known_open_gaps": [
+    "runtime contract is still hybrid",
+    "route-level orchestration is still heavy in src/api/server.js",
+    "artifact lifecycle is not normalized across all modules",
+    "logging and audit are not yet formalized as one Core Shell contract",
+    "SMS runtime/storage/publish internals remain partly legacy",
+    "some module-specific durable writes remain direct and specialized"
+  ]
+}
