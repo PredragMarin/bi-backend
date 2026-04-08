@@ -888,6 +888,7 @@ for (const d of dailyMap.values()) {
     );
     d.raw_on_site_minutes = Math.min(MINUTES_PER_WORKDAY, Math.max(0, Number(onSiteRaw || 0)));
     d.raw_wfh_minutes = Math.max(0, shiftedInside - d.raw_on_site_minutes);
+    d.presence_on_site_minutes_effective = d.raw_on_site_minutes;
     d.total_work_minutes = shiftedInside;
     d.daily_notes = (d.daily_notes ? (d.daily_notes + " | ") : "") + "SHIFT_WORKTIME_POLICY_5_2";
   }
@@ -1191,6 +1192,7 @@ for (const d of daily_summary_out) {
       payable_days_count: 0,
       raw_on_site_minutes_sum: 0,
       raw_wfh_minutes_sum: 0,
+      non_workday_overtime_minutes_sum: 0,
       // --- WORKDAY overtime signal dodane ove dvije linije 14/02 (early+after) for monthly settlement ---
       workday_overtime_signal_minutes_sum: 0,
       debt_covered_by_overtime_minutes: 0,
@@ -1265,6 +1267,9 @@ if (d.day_type === "WORKDAY") {
   p.raw_on_site_minutes_sum += Math.max(0, d.raw_on_site_minutes || 0);
   p.raw_wfh_minutes_sum     += Math.max(0, d.raw_wfh_minutes || 0);
 }
+  if (d.day_type === "NON_WORKDAY") {
+    p.non_workday_overtime_minutes_sum += Math.max(0, Number(d.overtime_150_minutes || 0));
+  }
   // kraj 07/02 monthly raw facts  
   // NEW 14/02: monthly settlement signal = work outside 07:30â€“15:30 on WORKDAY (make-up minutes)
   if (d.day_type === "WORKDAY") {
@@ -1374,14 +1379,16 @@ const period_summary = Array.from(periodMap.values())
 
   // 9) True overtime on WORKDAY = excess beyond regular cap (after fund fill)
   const workdayExcessGross = Math.max(0, totalWorkday - regularCapWorkday);
+  const nonWorkdayOvertime = Math.max(0, Number(p.non_workday_overtime_minutes_sum || 0));
 
-  // 10) Debt reduces ONLY pay_002 (not pay_005)
+  // 10) Debt reduces ONLY pay_002 (not pay_005); non-workday overtime joins the same 150% pool
   const debt = Math.max(0, Number(p.total_late_debt_minutes || 0));
-  p.pay_002_overtime_minutes = Math.max(0, workdayExcessGross - debt);
+  const overtime150Pool = workdayExcessGross + nonWorkdayOvertime;
+  p.pay_002_overtime_minutes = Math.max(0, overtime150Pool - debt);
 
   // Audit
-  p.debt_covered_by_overtime_minutes = Math.min(debt, workdayExcessGross);
-  p.uncovered_debt_minutes = Math.max(0, debt - workdayExcessGross);
+  p.debt_covered_by_overtime_minutes = Math.min(debt, overtime150Pool);
+  p.uncovered_debt_minutes = Math.max(0, debt - overtime150Pool);
 
   // Totals / audit fields
   p.overtime_payable_150_minutes =
@@ -1398,7 +1405,7 @@ const period_summary = Array.from(periodMap.values())
   p.paid_shortage_minutes = Math.max(0, fund - p.total_paid_minutes_base);
 
   p.overtime_policy =
-    "MONTHLY v5.1: fund=payable*480; pay001=min(inside+outside, fund-nonwork); pay002=max((inside+outside)-(fund-nonwork)-debt,0); pay005 always premium";
+    "MONTHLY v5.2: fund=payable*480; pay001=min(inside+outside, fund-nonwork); pay002=max((workday_excess+nonworkday_150)-debt,0); pay005 holiday-work only";
 }
 
 //  kraj zamjenjeno 14/02
@@ -1763,5 +1770,4 @@ const is_monthly_payroll = isFullMonthPayrollPeriod(period);
   };
 }
 module.exports = { computeEprOutputs };
-
 

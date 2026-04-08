@@ -5,7 +5,7 @@
       "value": "true",
       "domain": ".eojn.hr",
       "path": "/",
-      "expires": 1807156830,
+      "expires": 1807189583,
       "httpOnly": false,
       "secure": true,
       "sameSite": "Lax"
@@ -25,7 +25,7 @@
       "value": "GA1.1.88760517.1775510418",
       "domain": ".eojn.hr",
       "path": "/",
-      "expires": 1810180831.475129,
+      "expires": 1810213585.421277,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
@@ -52,10 +52,10 @@
     },
     {
       "name": "_ga_4DWT0P0KB9",
-      "value": "GS2.1.s1775620788$o4$g1$t1775620831$j17$l0$h0",
+      "value": "GS2.1.s1775653186$o5$g1$t1775653585$j60$l0$h0",
       "domain": ".eojn.hr",
       "path": "/",
-      "expires": 1810180831.498401,
+      "expires": 1810213585.451638,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
