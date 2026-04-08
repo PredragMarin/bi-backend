@@ -1,0 +1,75 @@
+{
+  "cookies": [
+    {
+      "name": "cookies-accepted",
+      "value": "true",
+      "domain": ".eojn.hr",
+      "path": "/",
+      "expires": 1807156830,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "theme",
+      "value": "light",
+      "domain": "eojn.hr",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga",
+      "value": "GA1.1.88760517.1775510418",
+      "domain": ".eojn.hr",
+      "path": "/",
+      "expires": 1810180831.475129,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "ASP.NET_SessionId",
+      "value": "oehpwrx5cviibzfltax5cbsy",
+      "domain": "eojn.hr",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": ".ASPXFORMSAUTH",
+      "value": "",
+      "domain": "eojn.hr",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "_ga_4DWT0P0KB9",
+      "value": "GS2.1.s1775620788$o4$g1$t1775620831$j17$l0$h0",
+      "domain": ".eojn.hr",
+      "path": "/",
+      "expires": 1810180831.498401,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://eojn.hr",
+      "localStorage": [
+        {
+          "name": "AdminLTE:IFrame:Options",
+          "value": "{\"autoIframeMode\":false}"
+        }
+      ]
+    }
+  ]
+}
