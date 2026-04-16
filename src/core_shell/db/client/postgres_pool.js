@@ -2,6 +2,8 @@
 
 const { Pool } = require("pg");
 
+let _sharedPool = null;
+
 function createDbPool(connectionConfig) {
   return new Pool({
     host: connectionConfig.host,
@@ -22,7 +24,29 @@ async function closeDbPool(pool) {
   }
 }
 
+function getSharedPool(connectionConfig) {
+  if (_sharedPool) {
+    return _sharedPool;
+  }
+
+  if (!connectionConfig) {
+    throw new Error("connectionConfig is required when creating the shared pool.");
+  }
+
+  _sharedPool = createDbPool(connectionConfig);
+  return _sharedPool;
+}
+
+async function closeSharedPool() {
+  if (_sharedPool && typeof _sharedPool.end === "function") {
+    await _sharedPool.end();
+  }
+  _sharedPool = null;
+}
+
 module.exports = {
   createDbPool,
-  closeDbPool
+  closeDbPool,
+  getSharedPool,
+  closeSharedPool
 };

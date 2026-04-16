@@ -130,6 +130,15 @@ const QUERY_ALLOWLIST = {
     timeoutMs: 10000,
     maxRows: 5
   },
+  ARTIKEL_BY_ARTID: {
+    sql: `
+      SELECT artid, artikel, naziv1, naziv2, admid, barkoda, em
+      FROM ARTIKEL
+      WHERE artid = ?;
+    `,
+    timeoutMs: 10000,
+    maxRows: 5
+  },
   ARTKLAS_BY_ARTID: {
     sql: `
       SELECT artid, kljuc
@@ -139,6 +148,37 @@ const QUERY_ALLOWLIST = {
     `,
     timeoutMs: 10000,
     maxRows: 50
+  },
+  POTREBA_BY_DNID: {
+    sql: `
+      SELECT
+        potrid,
+        dnid,
+        ident,
+        status,
+        kolicina,
+        koltrn,
+        pozicija,
+        tehn,
+        termin,
+        opombe,
+        dnoprid,
+        izmetkolnakos,
+        kolvhod,
+        timecr,
+        timemod,
+        usercr,
+        usermod,
+        zamikvgr,
+        osebid,
+        potrdil,
+        kontr_pod
+      FROM POTREBA
+      WHERE dnid = ?
+      ORDER BY potrid ASC;
+    `,
+    timeoutMs: 15000,
+    maxRows: 10000
   },
   V_TEHOPR_VAR_BY_TEHID: {
     sql: `

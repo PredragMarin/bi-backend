@@ -1,0 +1,25 @@
+{
+  "identity": {
+    "use_case": "gosoft_request_module_v1",
+    "contract_version": "poc-v1",
+    "module_version": "0.1.0-poc",
+    "owner": "Marin Expert d.o.o."
+  },
+  "runtime": {
+    "core_contract_ref": "core_contract_v1_draft",
+    "status": "prototype_host_side_not_registered"
+  },
+  "entrypoints": {
+    "runtime": "runtime.js",
+    "config": "config/grm_config.js"
+  },
+  "contracts": {
+    "request_contract_doc": "../../../docs/GRM_POC_CONTRACT_v1.md",
+    "outline_doc": "../../../docs/GRM_IMPLEMENTATION_OUTLINE_v1.md"
+  },
+  "notes": [
+    "Host-side Gosoft request broker for file-drop POC workflows.",
+    "Owns ERP SQL semantics and child enrichment logic for downstream consumers.",
+    "Not wired into module registry or public API routes in this phase."
+  ]
+}

@@ -5,7 +5,7 @@
       "value": "true",
       "domain": ".eojn.hr",
       "path": "/",
-      "expires": 1807189583,
+      "expires": 1807795180,
       "httpOnly": false,
       "secure": true,
       "sameSite": "Lax"
@@ -25,14 +25,14 @@
       "value": "GA1.1.88760517.1775510418",
       "domain": ".eojn.hr",
       "path": "/",
-      "expires": 1810213585.421277,
+      "expires": 1810819182.81714,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
     },
     {
       "name": "ASP.NET_SessionId",
-      "value": "oehpwrx5cviibzfltax5cbsy",
+      "value": "lagvujc1xp1xdhqquvzfgymd",
       "domain": "eojn.hr",
       "path": "/",
       "expires": -1,
@@ -52,10 +52,10 @@
     },
     {
       "name": "_ga_4DWT0P0KB9",
-      "value": "GS2.1.s1775653186$o5$g1$t1775653585$j60$l0$h0",
+      "value": "GS2.1.s1776258007$o13$g1$t1776259182$j43$l0$h0",
       "domain": ".eojn.hr",
       "path": "/",
-      "expires": 1810213585.451638,
+      "expires": 1810819182.852189,
       "httpOnly": false,
       "secure": false,
       "sameSite": "Lax"
