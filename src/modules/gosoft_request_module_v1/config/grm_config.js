@@ -8,7 +8,8 @@ const TARGET_DROPS = {
   ALDO_POC: path.join(INTEGRATION_ROOT, "ALDO_POC"),
   BOJAN_POC: path.join(INTEGRATION_ROOT, "BOJAN_POC"),
   ANTONIJA_POC: path.join(INTEGRATION_ROOT, "ANTONIJA_POC"),
-  ZORAN_POC: path.join(INTEGRATION_ROOT, "ZORAN_POC")
+  ZORAN_POC: path.join(INTEGRATION_ROOT, "ZORAN_POC"),
+  DXF_MANIPULATION: path.join(INTEGRATION_ROOT, "DXF_MANIPULATION")
 };
 const TARGET_SUBDIRS = ["responses", "errors", "archive_processed", "archive_failed"];
 

@@ -1,0 +1,38 @@
+{
+  "request_id": "dxf-manipulation_2026_04_16_smoke_001",
+  "module_id": "dxf_ops_payload_v1",
+  "target_drop": "DXF_MANIPULATION",
+  "contract_version": "poc-v1",
+  "requested_at": "2026-04-16T22:49:34Z",
+  "fetch_mode": "sifradn_list",
+  "params": {
+    "admctr": "P MAXD",
+    "sifradn_list": [
+      "26T16V50",
+      "26T16V51",
+      "26T16V52",
+      "26T16V53",
+      "26T16V54",
+      "26T16V55",
+      "26T16V56",
+      "26T16V57",
+      "26T16V58",
+      "26T16V59"
+    ],
+    "part_name_list": [
+      "KSKR",
+      "OBRA",
+      "OBRIT",
+      "OSPY",
+      "OMET",
+      "LBRA",
+      "LBRIT",
+      "LHOR",
+      "LMET",
+      "SBRA",
+      "SBRIT",
+      "SHOR",
+      "PS"
+    ]
+  }
+}

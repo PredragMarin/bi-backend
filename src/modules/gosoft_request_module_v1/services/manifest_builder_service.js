@@ -6,7 +6,9 @@ function buildManifest({
   files,
   vDnRows,
   potrebaRows,
-  warnings
+  warnings,
+  countsOverride,
+  lineageOverride
 }) {
   const uniqueDnid = new Set(vDnRows.map((row) => String(row.DNID ?? row.dnid ?? ""))).size;
   const uniquePotrid = new Set(potrebaRows.map((row) => String(row.potrid ?? row.POTRID ?? ""))).size;
@@ -21,7 +23,7 @@ function buildManifest({
     fetch_mode: request.fetch_mode,
     params: request.params,
     files,
-    counts: {
+    counts: countsOverride || {
       v_dn_rows: vDnRows.length,
       potreba_rows: potrebaRows.length,
       unique_dnid: uniqueDnid,
@@ -29,7 +31,7 @@ function buildManifest({
       warning_count: safeWarnings.length
     },
     warnings: safeWarnings,
-    lineage: {
+    lineage: lineageOverride || {
       source_system: "gosoft",
       parent_source: "V_DN",
       child_source: "POTREBA",

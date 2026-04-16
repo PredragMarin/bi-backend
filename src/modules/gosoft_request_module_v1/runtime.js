@@ -1,15 +1,17 @@
 "use strict";
 
 const fs = require("fs");
-const path = require("path");
 const { getGrmConfig } = require("./config/grm_config");
 const { validateRequest } = require("./domain/request_validator");
+const { getRequestRoute } = require("./domain/request_router");
+const { WARNING_CODES } = require("./domain/warning_codes");
 const { ensureBaseFolders, resolveTargetFolders } = require("./services/target_folder_service");
 const { fetchParentRows } = require("./adapters/erp_parent_fetch");
 const { fetchChildRows } = require("./adapters/erp_child_fetch");
 const { enrichChildRows } = require("./adapters/erp_child_enrichment");
-const { writeCsv } = require("./services/csv_export_service");
+const { buildDxfArtifact } = require("./adapters/erp_child_dxf_parse");
 const { buildManifest } = require("./services/manifest_builder_service");
+const { writeJson, writeCsvBundle, writeJsonPayloadPackage } = require("./services/response_package_service");
 
 const VDN_COLUMNS = [
   "DNID", "SIFRADN", "NALOGID", "Nalog", "Nalog_Naziv", "SifraID", "KOLICINA",
@@ -25,9 +27,15 @@ const POTREBA_COLUMNS = [
   "artikel_admid", "artikel_barkoda", "artikel_em", "artklas_kljucevi"
 ];
 
-function writeJson(outPath, value) {
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, JSON.stringify(value, null, 2), "utf8");
+function groupChildRowsByDnid(rows) {
+  const out = new Map();
+  for (const row of rows) {
+    const dnid = Number(row.dnid ?? row.DNID);
+    if (!Number.isFinite(dnid)) continue;
+    if (!out.has(dnid)) out.set(dnid, []);
+    out.get(dnid).push(row);
+  }
+  return out;
 }
 
 function archiveRequestFile({ requestFilePath, archiveDir }) {
@@ -42,6 +50,7 @@ async function processRequest({ request, requestFilePath }) {
   ensureBaseFolders(config);
 
   const validated = validateRequest({ request, config });
+  const route = getRequestRoute(validated);
   const folders = resolveTargetFolders({
     config,
     targetDrop: validated.target_drop,
@@ -49,33 +58,90 @@ async function processRequest({ request, requestFilePath }) {
   });
 
   try {
-    const parentRows = await fetchParentRows({ request: validated });
-    const childRows = await fetchChildRows({ request: validated, parentRows });
-    const enrichment = await enrichChildRows({ request: validated, childRows });
+    const parentResult = await fetchParentRows({ request: validated });
+    const parentRows = parentResult.rows || [];
+    const childResult = await fetchChildRows({ request: validated, parentRows });
+    const childRows = childResult.rows || [];
+    const baseWarnings = []
+      .concat(parentResult.warnings || [])
+      .concat(childResult.warnings || []);
 
     const manifestName = `${validated.request_id}.manifest.json`;
-    const vDnName = `${validated.request_id}.v_dn.csv`;
-    const potrebaName = `${validated.request_id}.potreba.csv`;
+    const manifestPath = `${folders.responsePackageDir}/${manifestName}`;
+    let artifact = null;
+    let manifest = null;
+    let outputPaths = {};
 
-    const vDnPath = path.join(folders.responsePackageDir, vDnName);
-    const potrebaPath = path.join(folders.responsePackageDir, potrebaName);
-    const manifestPath = path.join(folders.responsePackageDir, manifestName);
+    if (route.kind === "dxf_manipulation_json") {
+      const childRowsByDnid = groupChildRowsByDnid(childRows);
+      const dxfWarnings = [...baseWarnings];
+      for (const row of parentRows) {
+        const dnid = Number(row.DNID);
+        const dnidRows = childRowsByDnid.get(dnid) || [];
+        if (!dnidRows.length) {
+          dxfWarnings.push({
+            code: WARNING_CODES.SIFRADN_NO_PARTS,
+            message: `SIFRADN ${row.SIFRADN} matched V_DN but has no POTREBA rows with # opombe`
+          });
+        }
+      }
 
-    writeCsv({ rows: parentRows, columns: VDN_COLUMNS, outPath: vDnPath });
-    writeCsv({ rows: enrichment.rows, columns: POTREBA_COLUMNS, outPath: potrebaPath });
-
-    const manifest = buildManifest({
-      request: validated,
-      processedAt: new Date().toISOString(),
-      files: {
-        v_dn: vDnName,
-        potreba: potrebaName
-      },
-      vDnRows: parentRows,
-      potrebaRows: enrichment.rows,
-      warnings: enrichment.warnings
-    });
-    writeJson(manifestPath, manifest);
+      const dxfArtifact = buildDxfArtifact({
+        request: validated,
+        parentRows,
+        childRowsByDnid
+      });
+      artifact = dxfArtifact.payload;
+      dxfWarnings.push(...dxfArtifact.warnings);
+      const payloadPackage = writeJsonPayloadPackage({
+        responsePackageDir: folders.responsePackageDir,
+        requestId: validated.request_id,
+        payload: artifact
+      });
+      outputPaths = payloadPackage.paths;
+      manifest = buildManifest({
+        request: validated,
+        processedAt: new Date().toISOString(),
+        files: payloadPackage.files,
+        vDnRows: parentRows,
+        potrebaRows: childRows,
+        warnings: dxfWarnings,
+        countsOverride: {
+          requested_sifradn: validated.params.sifradn_list.length,
+          matched_v_dn_rows: parentRows.length,
+          total_parts: artifact.items.reduce((acc, item) => acc + item.parts.length, 0),
+          warning_count: dxfWarnings.length
+        },
+        lineageOverride: {
+          source_system: "gosoft",
+          parent_source: "V_DN",
+          child_source: "POTREBA",
+          child_filter: "part_name_list matched in opombe after #",
+          child_parse_rule: "functional payload from V_DN opombe plus ordered parts selected from POTREBA"
+        }
+      });
+      writeJson(manifestPath, manifest);
+    } else {
+      const enrichment = await enrichChildRows({ request: validated, childRows });
+      const csvPackage = writeCsvBundle({
+        responsePackageDir: folders.responsePackageDir,
+        requestId: validated.request_id,
+        vDnRows: parentRows,
+        vDnColumns: VDN_COLUMNS,
+        potrebaRows: enrichment.rows,
+        potrebaColumns: POTREBA_COLUMNS
+      });
+      outputPaths = csvPackage.paths;
+      manifest = buildManifest({
+        request: validated,
+        processedAt: new Date().toISOString(),
+        files: csvPackage.files,
+        vDnRows: parentRows,
+        potrebaRows: enrichment.rows,
+        warnings: baseWarnings.concat(enrichment.warnings || [])
+      });
+      writeJson(manifestPath, manifest);
+    }
 
     archiveRequestFile({
       requestFilePath,
@@ -87,8 +153,7 @@ async function processRequest({ request, requestFilePath }) {
       request_id: validated.request_id,
       response_dir: folders.responsePackageDir,
       manifest_path: manifestPath,
-      v_dn_path: vDnPath,
-      potreba_path: potrebaPath,
+      ...outputPaths,
       counts: manifest.counts,
       warnings: manifest.warnings
     };

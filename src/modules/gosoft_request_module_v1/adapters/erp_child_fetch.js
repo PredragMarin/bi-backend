@@ -4,7 +4,12 @@ const { executeErpAllowedBatch } = require("../../../core_shell/services/erp_fet
 
 async function fetchChildRows({ request, parentRows }) {
   const dnids = [...new Set(parentRows.map((row) => Number(row.DNID)).filter((n) => Number.isFinite(n)))];
-  if (!dnids.length) return [];
+  if (!dnids.length) {
+    return {
+      rows: [],
+      warnings: []
+    };
+  }
 
   const items = dnids.map((dnid) => ({
     key: `dnid_${dnid}`,
@@ -28,7 +33,10 @@ async function fetchChildRows({ request, parentRows }) {
     const rows = result.rowsByKey[`dnid_${dnid}`] || [];
     out.push(...rows);
   }
-  return out;
+  return {
+    rows: out,
+    warnings: []
+  };
 }
 
 module.exports = {

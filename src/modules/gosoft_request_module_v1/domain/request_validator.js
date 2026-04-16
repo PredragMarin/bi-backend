@@ -1,5 +1,9 @@
 "use strict";
 
+function normalizeList(values) {
+  return values.map((value) => String(value || "").trim()).filter(Boolean);
+}
+
 function assertString(value, name) {
   if (!String(value || "").trim()) {
     throw new Error(`Missing required field: ${name}`);
@@ -32,14 +36,44 @@ function validateRequest({ request, config }) {
     throw new Error(`Unsupported target_drop: ${request.target_drop}`);
   }
 
-  if (request.fetch_mode !== "date_window") {
+  if (request.fetch_mode !== "date_window" && request.fetch_mode !== "sifradn_list") {
     throw new Error(`Unsupported fetch_mode for poc-v1: ${request.fetch_mode}`);
   }
 
   const params = request.params || {};
-  assertISODate(params.from, "params.from");
-  assertISODate(params.to, "params.to");
   assertString(params.admctr, "params.admctr");
+
+  if (request.fetch_mode === "date_window") {
+    assertISODate(params.from, "params.from");
+    assertISODate(params.to, "params.to");
+  }
+
+  if (request.fetch_mode === "sifradn_list") {
+    if (!Array.isArray(params.sifradn_list) || !params.sifradn_list.length) {
+      throw new Error("Invalid params.sifradn_list; expected non-empty array.");
+    }
+    if (!Array.isArray(params.part_name_list) || !params.part_name_list.length) {
+      throw new Error("Invalid params.part_name_list; expected non-empty array.");
+    }
+  }
+
+  const normalizedParams = {
+    admctr: String(params.admctr).trim()
+  };
+
+  if (request.fetch_mode === "date_window") {
+    normalizedParams.from = String(params.from).trim();
+    normalizedParams.to = String(params.to).trim();
+  } else {
+    normalizedParams.sifradn_list = normalizeList(params.sifradn_list);
+    normalizedParams.part_name_list = normalizeList(params.part_name_list).map((value) => value.toUpperCase());
+    if (!normalizedParams.sifradn_list.length) {
+      throw new Error("Invalid params.sifradn_list; no usable values after normalization.");
+    }
+    if (!normalizedParams.part_name_list.length) {
+      throw new Error("Invalid params.part_name_list; no usable values after normalization.");
+    }
+  }
 
   return {
     request_id: String(request.request_id).trim(),
@@ -47,12 +81,8 @@ function validateRequest({ request, config }) {
     target_drop: String(request.target_drop).trim(),
     contract_version: String(request.contract_version).trim(),
     requested_at: String(request.requested_at).trim(),
-    fetch_mode: "date_window",
-    params: {
-      from: String(params.from).trim(),
-      to: String(params.to).trim(),
-      admctr: String(params.admctr).trim()
-    }
+    fetch_mode: String(request.fetch_mode).trim(),
+    params: normalizedParams
   };
 }
 
