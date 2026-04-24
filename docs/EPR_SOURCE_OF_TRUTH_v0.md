@@ -145,6 +145,8 @@ Poznati rizici:
 
 Početno pravilo:
 - identity polja su autoritativna ako dolaze direktno iz ERP mastera.
+- za povezivanje zaposlenika između Gosofta i PostgreSQL BI registra primarni identity ključ treba biti `OIB` kad je valjan i prisutan.
+- ostala identity polja kao `ime`, `priimek`, `osebid`, `alt_id`, `e_mail` i slični identifikatori služe za provjeru konzistentnosti i warninge, a ne za tihi correction canonical employee zapisa.
 - transformirana grupna polja moraju kasnije biti posebno deklarirana ili kao canonical policy input ili kao implementacijska pomoć.
 
 ### 4.4 HZZO Excel ingest

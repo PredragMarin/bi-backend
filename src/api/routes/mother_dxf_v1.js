@@ -6,6 +6,30 @@ const motherDxfRuntime = require("../../modules/mother_dxf_v1/module_runtime");
 function createMotherDxfRouterV1() {
   const router = express.Router();
 
+  function buildSessionResponse(session) {
+    return {
+      ok: true,
+      session: motherDxfRuntime.projectViewModel(session),
+      dxf_text: motherDxfRuntime.serializeDocument(session.document),
+      validation: session.validation || null
+    };
+  }
+
+  router.get("/sessions", async (req, res) => {
+    try {
+      const sessions = await motherDxfRuntime.listSessionSummaries({});
+      res.json({
+        ok: true,
+        sessions
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_LIST_SESSIONS_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.post("/sessions", async (req, res) => {
     try {
       const session = await motherDxfRuntime.createSession({
@@ -13,10 +37,7 @@ function createMotherDxfRouterV1() {
         sourceName: String(req.body?.source_name || "mother_dxf_input.dxf"),
         bands: req.body?.bands || {}
       });
-      res.json({
-        ok: true,
-        session: motherDxfRuntime.projectViewModel(session)
-      });
+      res.json(buildSessionResponse(session));
     } catch (err) {
       res.status(400).json({
         error: "MOTHER_DXF_CREATE_SESSION_FAILED",
@@ -30,11 +51,7 @@ function createMotherDxfRouterV1() {
       const session = await motherDxfRuntime.getSession({
         sessionId: String(req.params.sessionId || "")
       });
-      res.json({
-        ok: true,
-        session: motherDxfRuntime.projectViewModel(session),
-        validation: session.validation || null
-      });
+      res.json(buildSessionResponse(session));
     } catch (err) {
       res.status(404).json({
         error: "MOTHER_DXF_SESSION_NOT_FOUND",
@@ -49,10 +66,7 @@ function createMotherDxfRouterV1() {
         sessionId: String(req.params.sessionId || ""),
         bands: req.body?.bands || {}
       });
-      res.json({
-        ok: true,
-        session: motherDxfRuntime.projectViewModel(session)
-      });
+      res.json(buildSessionResponse(session));
     } catch (err) {
       res.status(400).json({
         error: "MOTHER_DXF_UPDATE_BANDS_FAILED",
@@ -68,13 +82,95 @@ function createMotherDxfRouterV1() {
         ids: Array.isArray(req.body?.ids) ? req.body.ids.map((id) => String(id)) : [],
         layer: String(req.body?.layer || "")
       });
-      res.json({
-        ok: true,
-        session: motherDxfRuntime.projectViewModel(session)
-      });
+      res.json(buildSessionResponse(session));
     } catch (err) {
       res.status(400).json({
         error: "MOTHER_DXF_ASSIGN_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/config", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.updateConfigParameterSet({
+        sessionId: String(req.params.sessionId || ""),
+        configParameterSet: req.body?.config_parameter_set || {}
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_UPDATE_CONFIG_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/simulate", async (req, res) => {
+    try {
+      const result = await motherDxfRuntime.simulateSession({
+        sessionId: String(req.params.sessionId || ""),
+        configParameterSet: req.body?.config_parameter_set || null
+      });
+      res.json({
+        ...buildSessionResponse(result.session),
+        simulation: result.simulation
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_SIMULATE_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/meta", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.updateSessionMeta({
+        sessionId: String(req.params.sessionId || ""),
+        title: req.body?.title,
+        status: req.body?.status
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_UPDATE_META_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/metadata", async (req, res) => {
+    try {
+      const result = await motherDxfRuntime.authorSemanticMetadata({
+        sessionId: String(req.params.sessionId || ""),
+        entityId: String(req.body?.entity_id || ""),
+        operation: String(req.body?.operation || ""),
+        parameter: String(req.body?.parameter || ""),
+        expectedValue: req.body?.expected_value
+      });
+      res.json({
+        ...buildSessionResponse(result.session),
+        semantic_comment: result.semantic_comment
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_AUTHOR_METADATA_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.delete("/sessions/:sessionId/metadata/:entityId", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.clearSemanticMetadata({
+        sessionId: String(req.params.sessionId || ""),
+        entityId: String(req.params.entityId || "")
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_CLEAR_METADATA_FAILED",
         message: err && err.message ? err.message : String(err)
       });
     }
@@ -86,9 +182,9 @@ function createMotherDxfRouterV1() {
         sessionId: String(req.params.sessionId || "")
       });
       res.json({
+        ...buildSessionResponse(result.session),
         ok: result.validation.ok,
-        validation: result.validation,
-        session: motherDxfRuntime.projectViewModel(result.session)
+        validation: result.validation
       });
     } catch (err) {
       res.status(400).json({

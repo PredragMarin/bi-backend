@@ -389,6 +389,71 @@ Pravila:
 - write prava moraju biti stroža od read prava
 - svaka promjena nad `HR_PAYROLL_CONFIDENTIAL` podacima mora imati puni audit trag
 
+## 5F. Identity Linkage Contract
+
+Za employee povezivanje između vanjskog ERP sustava i PostgreSQL BI baze treba postojati jedan primarni linking ključ.
+
+Početna odluka v0:
+- primarni employee linkage ključ je `OIB`, kad je valjan i prisutan
+
+Pravila:
+- `OIB` je primarni ključ za matching employee zapisa između Gosofta i PostgreSQL canonical employee sloja
+- ERP interni numerički identifikatori poput `osebid` ostaju važni kao vanjske reference i audit trag, ali nisu glavni cross-system identity ključ
+- ostala identity polja kao `ime`, `prezime`, `osebid`, `alt_id`, `e_mail` i slična polja koriste se za provjeru konzistentnosti
+- razlike na tim poljima trebaju otvoriti warning ili review signal, ali ne smiju po defaultu automatski prepisivati canonical employee zapis
+- canonical employee sloj mora čuvati i `OIB` i relevantne vanjske identifikatore radi traceabilityja
+
+## 5G. Faza 1 Minimalni PostgreSQL Baseline
+
+Faza 1 treba biti strogo ograničena.
+Cilj nije implementirati cijeli budući model, nego najtanji zdravi operativni sloj.
+
+### 5G.1 Obavezni objekti za Fazu 1
+
+- `employee_profile`
+  Razlog: opći canonical employee identitet i employment period
+
+- `employee_payroll_context`
+  Razlog: izdvajanje payroll/HR konteksta izvan ERP `skype_name` stringa
+
+- `attendance_import_raw`
+  Razlog: sirovi attendance import trag iz Gosofta bez ručnog uređivanja
+
+- `attendance_event_current`
+  Razlog: current attendance state nad kojim će kasnije raditi compute
+
+- `audit_log`
+  Razlog: minimalni audit trag za ručne promjene i bitne operativne odluke
+
+### 5G.2 Ne ulazi još u Fazu 1
+
+- `attendance_override`
+- `attendance_review_case`
+- `attendance_event_history`
+- `hzzo_import_raw`
+- `hzzo_import_batch`
+- `payroll_run`
+- `payroll_run_employee`
+- `payroll_export_artifact`
+- specijalizirani role-based view modeli
+- lookup katalog tablice koje još mogu ostati kao check constraints ili aplikacijske konstante
+
+### 5G.3 Operativna Namjera Faze 1
+
+Faza 1 treba uspostaviti samo ovaj tok:
+
+1. canonical employee identitet i payroll kontekst
+2. raw attendance import trag
+3. current attendance state
+4. minimalni audit
+
+Faza 1 još ne pokušava zatvoriti:
+- puni review workflow
+- puni override lifecycle
+- HZZO raw storage baseline
+- puni payroll run lifecycle
+- kompletan role-based read model kroz vieweve
+
 ## 6. Provenance Contract
 
 Svaki poslovno bitan zapis mora imati podrijetlo.

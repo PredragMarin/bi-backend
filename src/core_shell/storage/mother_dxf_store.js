@@ -17,6 +17,10 @@ function sessionFile(rootDir, sessionId) {
   return path.join(rootDir, "sessions", `${sessionId}.json`);
 }
 
+function sessionsDir(rootDir) {
+  return path.join(rootDir, "sessions");
+}
+
 function exportFile(rootDir, sessionId) {
   return path.join(rootDir, "exports", `${sessionId}_mother.dxf`);
 }
@@ -35,6 +39,31 @@ async function loadSession({ rootDir, sessionId }) {
   return JSON.parse(text);
 }
 
+async function listSessions({ rootDir }) {
+  const base = rootDir || defaultRoot();
+  const dirPath = sessionsDir(base);
+  await ensureDir(dirPath);
+  const entries = await fsp.readdir(dirPath, { withFileTypes: true });
+  const sessions = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    const filePath = path.join(dirPath, entry.name);
+    try {
+      const text = await fsp.readFile(filePath, "utf8");
+      const session = JSON.parse(text);
+      sessions.push(session);
+    } catch (err) {
+      sessions.push({
+        session_id: entry.name.replace(/\.json$/i, ""),
+        status: "corrupt",
+        source_name: entry.name,
+        load_error: err && err.message ? err.message : String(err)
+      });
+    }
+  }
+  return sessions;
+}
+
 async function saveExport({ rootDir, sessionId, dxfText }) {
   const base = rootDir || defaultRoot();
   const filePath = exportFile(base, sessionId);
@@ -47,5 +76,6 @@ module.exports = {
   defaultRoot,
   saveSession,
   loadSession,
+  listSessions,
   saveExport
 };

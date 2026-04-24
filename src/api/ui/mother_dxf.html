@@ -104,6 +104,31 @@
         </div>
 
         <div class="card">
+          <h2>Session Lifecycle</h2>
+          <div class="grid-2">
+            <label>Session title<input id="sessionTitle" type="text" placeholder="KSKR smoke 001" /></label>
+            <label>Status
+              <select id="sessionStatus">
+                <option value="draft">draft</option>
+                <option value="in_review">in_review</option>
+                <option value="finished">finished</option>
+              </select>
+            </label>
+          </div>
+          <div class="toolbar" style="margin-top:12px">
+            <button id="saveSessionMetaBtn" class="secondary" disabled>Save Title/Status</button>
+            <button id="refreshSessionsBtn" class="secondary">Refresh Sessions</button>
+          </div>
+          <div class="meta" style="margin:10px 0 6px">Saved sessions</div>
+          <select id="sessionSelect" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff">
+            <option value="">No saved sessions loaded yet</option>
+          </select>
+          <div class="toolbar" style="margin-top:12px">
+            <button id="loadSessionBtn" class="secondary">Load Selected Session</button>
+          </div>
+        </div>
+
+        <div class="card">
           <h2>Selection</h2>
           <div class="meta" style="margin-bottom:10px">Click za single select. Drag za rectangle select. Klik na prazno čisti selekciju.</div>
           <div id="selectionBox" class="selection"><div class="meta">No selection.</div></div>
@@ -115,6 +140,44 @@
         </div>
 
         <div class="card">
+          <h2>Metadata Authoring</h2>
+          <div id="metadataTargetBox" class="meta" style="margin-bottom:10px">Select one relevant object to author `999` metadata.</div>
+          <div class="grid-2">
+            <label>Operation
+              <select id="metadataOperation">
+                <option value="show_if">show_if</option>
+                <option value="hide_if">hide_if</option>
+              </select>
+            </label>
+            <label>Parameter
+              <select id="metadataParameter">
+                <option value="">No parameter set loaded</option>
+              </select>
+            </label>
+          </div>
+          <div class="grid-2" style="margin-top:10px">
+            <label>Expected value<input id="metadataExpectedValue" type="text" placeholder="Lijeva (SX)" /></label>
+            <label>Generated `999`
+              <input id="metadataPreview" type="text" readonly />
+            </label>
+          </div>
+          <div class="toolbar" style="margin-top:12px">
+            <button id="applyMetadataBtn" class="secondary" disabled>Apply Metadata</button>
+            <button id="clearMetadataBtn" class="secondary" disabled>Clear Metadata</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Config Parameter Set</h2>
+          <div class="meta" style="margin-bottom:8px">Ovdje se unosi životni konfiguracijski JSON artefakt za smoke simulaciju prije child DXF generacije.</div>
+          <textarea id="configInput" style="min-height:180px" placeholder='{"technology_profile":"OPS_S4P4","product_code":"KSKR","parameters":{"BRAVA":"TIP1","LIMITATOR":false}}'></textarea>
+          <div class="toolbar" style="margin-top:12px">
+            <button id="saveConfigBtn" class="secondary" disabled>Save Config</button>
+            <button id="simulateBtn" class="good" disabled>Simulate Pre-Child Preview</button>
+          </div>
+        </div>
+
+        <div class="card">
           <h2>Status & Validation</h2>
           <div id="statusBox" class="status">Ready.</div>
           <div class="toolbar" style="margin-top:12px">
@@ -122,6 +185,12 @@
             <button id="exportBtn" class="good" disabled>Export Mother DXF</button>
           </div>
           <pre id="validationOut">{"ok":false}</pre>
+        </div>
+
+        <div class="card">
+          <h2>Simulation Preview</h2>
+          <div class="meta" style="margin-bottom:8px">Preview povezuje relevant objecte, 9-layer klasifikaciju, `999` metadata i konfiguracijski parameter set. Ovo još nije child DXF generation.</div>
+          <pre id="simulationOut">{"ok":false,"note":"Simulation not run yet."}</pre>
         </div>
       </div>
 
@@ -143,6 +212,7 @@
   <script>
     const state = {
       session: null,
+      simulation: null,
       selectedIds: new Set(),
       hoverId: null,
       dragStart: null,
@@ -159,9 +229,19 @@
     const statusBox = document.getElementById("statusBox");
     const sessionMeta = document.getElementById("sessionMeta");
     const dxfInput = document.getElementById("dxfInput");
+    const configInput = document.getElementById("configInput");
+    const sessionTitleInput = document.getElementById("sessionTitle");
+    const sessionStatusSelect = document.getElementById("sessionStatus");
+    const sessionSelect = document.getElementById("sessionSelect");
     const inputFocusNote = document.getElementById("inputFocusNote");
     const lineGutter = document.getElementById("lineGutter");
     const editorShell = document.getElementById("editorShell");
+    const simulationOut = document.getElementById("simulationOut");
+    const metadataTargetBox = document.getElementById("metadataTargetBox");
+    const metadataOperation = document.getElementById("metadataOperation");
+    const metadataParameter = document.getElementById("metadataParameter");
+    const metadataExpectedValue = document.getElementById("metadataExpectedValue");
+    const metadataPreview = document.getElementById("metadataPreview");
 
     function setStatus(message, tone = "info") {
       statusBox.textContent = message;
@@ -302,10 +382,23 @@
       const rows = Array.from(state.selectedIds).map((id) => {
         const item = objectById(id);
         if (!item) return "";
+        const simulationItem = simulationItemByObjectId(id);
         const linePrefix = item.source && item.source.line_start ? `Ln${item.source.line_start} | ` : "";
-        return `<div class="selection-item"><strong>${esc(linePrefix)}${esc(item.display_label || item.id)}</strong> | layer=${esc(item.primary_layer || "unclassified")} | origin=${esc(item.assignment_origin)}</div>`;
+        const visibilitySuffix = simulationItem ? ` | visible=${esc(simulationItem.preview?.visible ? "true" : "false")}` : "";
+        return `<div class="selection-item"><strong>${esc(linePrefix)}${esc(item.display_label || item.id)}</strong> | layer=${esc(item.primary_layer || "unclassified")} | origin=${esc(item.assignment_origin)}${visibilitySuffix}</div>`;
       }).join("");
       selectionBox.innerHTML = rows;
+    }
+
+    function simulationItemByObjectId(objectId) {
+      const items = state.simulation && Array.isArray(state.simulation.items) ? state.simulation.items : [];
+      return items.find((item) => item.object_id === objectId) || null;
+    }
+
+    function isObjectVisibleInSimulation(objectId) {
+      const item = simulationItemByObjectId(objectId);
+      if (!item || !item.preview) return true;
+      return item.preview.visible !== false;
     }
 
     function activeSelectionLine() {
@@ -387,12 +480,107 @@
       validationOut.textContent = JSON.stringify(validation || { ok: false }, null, 2);
     }
 
+    function renderSimulation(simulation) {
+      simulationOut.textContent = JSON.stringify(simulation || {
+        ok: false,
+        note: "Simulation not run yet."
+      }, null, 2);
+    }
+
+    function selectedObject() {
+      if (!state.selectedIds.size) return null;
+      return objectById(Array.from(state.selectedIds)[0]);
+    }
+
     function renderSessionMeta() {
       if (!state.session) {
         sessionMeta.textContent = "No active session.";
+        sessionTitleInput.value = "";
+        sessionStatusSelect.value = "draft";
         return;
       }
-      sessionMeta.textContent = `${state.session.source_name} | ${state.session.artifact_state} | objects ${state.session.objects.length}`;
+      sessionMeta.textContent = `${state.session.source_name} | ${state.session.artifact_state} | ${state.session.status} | objects ${state.session.objects.length}`;
+      sessionTitleInput.value = state.session.title || "";
+      sessionStatusSelect.value = state.session.status || "draft";
+    }
+
+    function syncConfigInputFromSession() {
+      if (!state.session || !state.session.config_parameter_set) return;
+      configInput.value = JSON.stringify(state.session.config_parameter_set, null, 2);
+      renderMetadataParameterOptions();
+    }
+
+    function readConfigInput() {
+      const text = String(configInput.value || "").trim();
+      if (!text) {
+        throw new Error("Config parameter set is empty.");
+      }
+      return JSON.parse(text);
+    }
+
+    function currentParameterEntries() {
+      const config = state.session && state.session.config_parameter_set && state.session.config_parameter_set.parameters
+        ? state.session.config_parameter_set.parameters
+        : null;
+      return config && typeof config === "object" ? Object.entries(config) : [];
+    }
+
+    function renderMetadataParameterOptions() {
+      const entries = currentParameterEntries();
+      if (!entries.length) {
+        metadataParameter.innerHTML = `<option value="">No parsed parameters</option>`;
+        return;
+      }
+      metadataParameter.innerHTML = entries.map(([key, value]) => `<option value="${esc(key)}">${esc(key)} = ${esc(typeof value === "object" ? JSON.stringify(value) : value)}</option>`).join("");
+      if (!metadataParameter.value || !entries.some(([key]) => key === metadataParameter.value)) {
+        metadataParameter.value = entries[0][0];
+      }
+      syncMetadataExpectedValueFromSelection();
+    }
+
+    function syncMetadataExpectedValueFromSelection() {
+      const entries = Object.fromEntries(currentParameterEntries());
+      const value = entries[metadataParameter.value];
+      metadataExpectedValue.value = value == null ? "" : String(typeof value === "object" ? JSON.stringify(value) : value);
+      renderMetadataPreview();
+    }
+
+    function renderMetadataPreview() {
+      const parameter = String(metadataParameter.value || "").trim();
+      const expected = String(metadataExpectedValue.value || "").trim();
+      const operation = String(metadataOperation.value || "").trim();
+      if (!parameter || !expected || !operation) {
+        metadataPreview.value = "";
+        return;
+      }
+      metadataPreview.value = `SEM:op=${operation};param=${parameter};eq=${expected}`;
+    }
+
+    function renderMetadataTarget() {
+      const object = selectedObject();
+      if (!object) {
+        metadataTargetBox.textContent = "Select one relevant object to author `999` metadata.";
+        document.getElementById("applyMetadataBtn").disabled = true;
+        document.getElementById("clearMetadataBtn").disabled = true;
+        return;
+      }
+      const semantic = object.semantic_metadata && Array.isArray(object.semantic_metadata.raw_comments) && object.semantic_metadata.raw_comments.length
+        ? ` | existing=${object.semantic_metadata.raw_comments.join(" | ")}`
+        : "";
+      metadataTargetBox.textContent = `Target: ${object.display_label} | entity_id=${object.entity_id}${semantic}`;
+      document.getElementById("applyMetadataBtn").disabled = false;
+      document.getElementById("clearMetadataBtn").disabled = false;
+    }
+
+    function renderSessionOptions(sessions) {
+      const items = Array.isArray(sessions) ? sessions : [];
+      if (!items.length) {
+        sessionSelect.innerHTML = `<option value="">No saved sessions found</option>`;
+        return;
+      }
+      sessionSelect.innerHTML = [`<option value="">Select session</option>`]
+        .concat(items.map((session) => `<option value="${esc(session.session_id)}">${esc(session.title || session.session_id)} | ${esc(session.status || "draft")} | ${esc(session.updated_at || "")}</option>`))
+        .join("");
     }
 
     function render() {
@@ -401,10 +589,13 @@
       renderSelectionBox();
       focusSelectedEntityInInput();
       renderSessionMeta();
+      renderMetadataTarget();
+      renderMetadataPreview();
       renderLegend();
 
       if (!state.session) return;
       for (const object of state.session.objects) {
+        if (!isObjectVisibleInSimulation(object.id)) continue;
         const isSelected = state.selectedIds.has(object.id);
         const isHover = state.hoverId === object.id;
         for (const shape of object.shapes || []) {
@@ -480,14 +671,21 @@
         body: JSON.stringify(payload)
       });
       state.session = data.session;
+      state.simulation = null;
       state.selectedIds.clear();
       state.hoverId = null;
       fitViewToDocument();
       renderValidation({ ok: false, note: "Validation not run yet." });
+      renderSimulation({ ok: false, note: "Simulation not run yet." });
       document.getElementById("reclassifyBtn").disabled = false;
       document.getElementById("validateBtn").disabled = false;
       document.getElementById("exportBtn").disabled = false;
+      document.getElementById("saveConfigBtn").disabled = false;
+      document.getElementById("simulateBtn").disabled = false;
+      syncConfigInputFromSession();
+      document.getElementById("saveSessionMetaBtn").disabled = false;
       setStatus("Session ready. Auto-suggestion applied.", "ok");
+      await refreshSessionList();
       render();
     }
 
@@ -499,6 +697,7 @@
         body: JSON.stringify({ bands: bandsPayload() })
       });
       state.session = data.session;
+      state.simulation = null;
       fitViewToDocument();
       render();
       setStatus("Auto-suggestion recomputed. Manual assignments were preserved.", "ok");
@@ -517,6 +716,7 @@
         })
       });
       state.session = data.session;
+      state.simulation = null;
       render();
       setStatus(`Assigned ${layer} to ${state.selectedIds.size} object(s).`, "ok");
     }
@@ -529,9 +729,128 @@
         body: JSON.stringify({})
       });
       state.session = data.session;
+      state.simulation = null;
       renderValidation(data.validation);
       render();
       setStatus(data.validation.ok ? "Validation passed." : "Validation failed. See details below.", data.validation.ok ? "ok" : "error");
+    }
+
+    async function saveConfigParameterSet() {
+      if (!state.session) return;
+      const config_parameter_set = readConfigInput();
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/config`, {
+        method: "POST",
+        body: JSON.stringify({ config_parameter_set })
+      });
+      state.session = data.session;
+      syncConfigInputFromSession();
+      render();
+      setStatus("Config parameter set saved to session.", "ok");
+    }
+
+    async function saveSessionMeta() {
+      if (!state.session) return;
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/meta`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: sessionTitleInput.value,
+          status: sessionStatusSelect.value
+        })
+      });
+      state.session = data.session;
+      document.getElementById("dxfInput").value = data.dxf_text || document.getElementById("dxfInput").value;
+      await refreshSessionList();
+      render();
+      setStatus("Session title/status saved.", "ok");
+    }
+
+    async function refreshSessionList() {
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions`, {
+        method: "GET"
+      });
+      renderSessionOptions(data.sessions || []);
+    }
+
+    async function loadSelectedSession() {
+      const sessionId = String(sessionSelect.value || "").trim();
+      if (!sessionId) {
+        setStatus("Select a saved session first.", "error");
+        return;
+      }
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${sessionId}`, {
+        method: "GET"
+      });
+      state.session = data.session;
+      state.simulation = null;
+      state.selectedIds.clear();
+      document.getElementById("dxfInput").value = data.dxf_text || "";
+      syncConfigInputFromSession();
+      renderValidation(data.validation || { ok: false, note: "Validation not run yet." });
+      renderSimulation({ ok: false, note: "Simulation not run yet." });
+      document.getElementById("reclassifyBtn").disabled = false;
+      document.getElementById("validateBtn").disabled = false;
+      document.getElementById("exportBtn").disabled = false;
+      document.getElementById("saveConfigBtn").disabled = false;
+      document.getElementById("simulateBtn").disabled = false;
+      document.getElementById("saveSessionMetaBtn").disabled = false;
+      fitViewToDocument();
+      renderLineNumbers();
+      render();
+      setStatus("Session loaded.", "ok");
+    }
+
+    async function applyMetadataRule() {
+      const object = selectedObject();
+      if (!state.session || !object) {
+        setStatus("Select one relevant object first.", "error");
+        return;
+      }
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/metadata`, {
+        method: "POST",
+        body: JSON.stringify({
+          entity_id: object.entity_id,
+          operation: metadataOperation.value,
+          parameter: metadataParameter.value,
+          expected_value: metadataExpectedValue.value
+        })
+      });
+      state.session = data.session;
+      document.getElementById("dxfInput").value = data.dxf_text || document.getElementById("dxfInput").value;
+      renderLineNumbers();
+      render();
+      setStatus(`Metadata applied: ${data.semantic_comment}`, "ok");
+    }
+
+    async function clearMetadataRule() {
+      const object = selectedObject();
+      if (!state.session || !object) {
+        setStatus("Select one relevant object first.", "error");
+        return;
+      }
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/metadata/${encodeURIComponent(object.entity_id)}`, {
+        method: "DELETE"
+      });
+      state.session = data.session;
+      document.getElementById("dxfInput").value = data.dxf_text || document.getElementById("dxfInput").value;
+      renderLineNumbers();
+      render();
+      setStatus("Semantic metadata cleared.", "ok");
+    }
+
+    async function simulatePreChildPreview() {
+      if (!state.session) return;
+      setStatus("Running pre-child simulation...");
+      const config_parameter_set = readConfigInput();
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/simulate`, {
+        method: "POST",
+        body: JSON.stringify({ config_parameter_set })
+      });
+      state.session = data.session;
+      state.simulation = data.simulation || null;
+      renderSimulation(data.simulation);
+      syncConfigInputFromSession();
+      render();
+      setStatus("Pre-child simulation ready.", "ok");
     }
 
     function exportMotherDraft() {
@@ -636,6 +955,9 @@
     dxfInput.addEventListener("scroll", () => {
       lineGutter.scrollTop = dxfInput.scrollTop;
     });
+    metadataParameter.addEventListener("change", syncMetadataExpectedValueFromSelection);
+    metadataOperation.addEventListener("change", renderMetadataPreview);
+    metadataExpectedValue.addEventListener("input", renderMetadataPreview);
 
     document.getElementById("startBtn").addEventListener("click", () => {
       createSession().catch((error) => setStatus(error.message, "error"));
@@ -646,11 +968,42 @@
     document.getElementById("validateBtn").addEventListener("click", () => {
       validateMotherDraft().catch((error) => setStatus(error.message, "error"));
     });
+    document.getElementById("saveConfigBtn").addEventListener("click", () => {
+      saveConfigParameterSet().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("saveSessionMetaBtn").addEventListener("click", () => {
+      saveSessionMeta().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("refreshSessionsBtn").addEventListener("click", () => {
+      refreshSessionList().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("loadSessionBtn").addEventListener("click", () => {
+      loadSelectedSession().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("simulateBtn").addEventListener("click", () => {
+      simulatePreChildPreview().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("applyMetadataBtn").addEventListener("click", () => {
+      applyMetadataRule().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("clearMetadataBtn").addEventListener("click", () => {
+      clearMetadataRule().catch((error) => setStatus(error.message, "error"));
+    });
     document.getElementById("exportBtn").addEventListener("click", exportMotherDraft);
     window.addEventListener("resize", render);
 
     initAssignToolbar();
     renderValidation({ ok: false, note: "Validation not run yet." });
+    renderSimulation({ ok: false, note: "Simulation not run yet." });
+    configInput.value = JSON.stringify({
+      technology_profile: "OPS_S4P4",
+      product_code: "KSKR",
+      parameters: {
+        BRAVA: "TIP1",
+        LIMITATOR: false
+      }
+    }, null, 2);
+    refreshSessionList().catch(() => {});
     renderLineNumbers();
     render();
   </script>

@@ -556,3 +556,23 @@ Future changes to this contract should explicitly state:
 - whether it changes first useful slice behavior
 - whether it is backward-compatible for stored mother drafts
 
+## 18. Structural Invariant
+
+Mother DXF is enriched raw DXF. It is not a derived format or parsed intermediate.
+
+The runtime may write exclusively:
+- Layer assignment on an existing entity
+- 999 comment lines as metadata carrier
+
+The runtime must never:
+- add an entity that was not present in the source
+- delete an entity
+- modify geometry (coordinates, radii, shapes)
+
+Criteria for downstream operations (deletion, geometry change) are carried
+exclusively through metadata and are executed only during child DXF generation.
+
+Mother DXF must be a valid, non-parametrised DXF at all times —
+functional in any viewer or postprocessor without prior transformation.
+
+This is a contract without exception.
