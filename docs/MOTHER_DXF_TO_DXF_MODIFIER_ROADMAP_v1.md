@@ -24,6 +24,40 @@ Praktični cilj je:
 
 ---
 
+## Current Implementation Snapshot
+
+As of 2026-04-26, `mother_dxf_v1` has moved beyond passive Mother DXF preparation and now contains an early guided authoring slice for DCM.
+
+Currently implemented:
+
+- canonical `SEM:` syntax for conditional presence metadata
+- guided Metadata Authoring UI
+- Parameter Catalog JSON artifact
+- MXD Rule Catalog JSON artifact
+- UI rendering for Parameter Catalog and Rule Catalog
+- metadata authoring modes:
+  - presence condition
+  - geometry role
+  - operation reference
+- direct attachment of generated `999` / `SEM:` metadata to an existing DXF entity
+- pre-child simulation preview for simple `presence=conditional` logic
+
+Still not implemented:
+
+- full `InstructionSet` contract artifact
+- `ChildPlan`
+- rule expression evaluator
+- Operation Catalog
+- transform/materialization engine
+- DBR
+- approval-grade validator
+
+Therefore this roadmap is no longer only a future migration idea.
+
+It now also tracks how the current DCM authoring implementation should grow without inheriting the shape problems of `dxf-modifier`.
+
+---
+
 ## 2. Pozadina
 
 Već postoje dva odvojena asseta:
@@ -39,10 +73,17 @@ Jake strane:
 - manual correction workflow
 - čist interni contract
 - očuvan `999` metadata passthrough
+- guided `999` metadata authoring
+- canonical `SEM:feature=...;presence=conditional;when=...` syntax
+- Parameter Catalog and Rule Catalog visibility in UI
+- simple pre-child presence simulation
 
 Trenutno ograničenje:
 
 - staje prije Stage 2 child generation sloja
+- nema `ChildPlan`
+- nema Operation Catalog
+- nema transform/materialization engine
 
 ### `dxf-modifier`
 
@@ -103,6 +144,9 @@ Cilj je:
 - 9-layer dimenzionalna klasifikacija je first-class
 - metadata se tretira kao sekundarni exception layer
 - validation granica je eksplicitna
+- guided authoring može vezati metadata na postojeći entity kroz `999`
+- parameter i rule vocabulary mogu biti contract artefakti, ne runtime hardcode
+- current UI već izdvaja presence, geometry role i operation reference intent
 
 ### Što `dxf-modifier` već radi bolje
 
@@ -117,7 +161,9 @@ Gap nije u osnovnoj semantičkoj filozofiji.
 
 Glavni gap je:
 
-- `mother_dxf_v1` nema izvedbene Stage 2 layere
+- `mother_dxf_v1` nema izvedbene `ChildPlan` / Stage 2 layere
+- `mother_dxf_v1` nema Operation Catalog
+- `mother_dxf_v1` nema rule expression evaluator
 - `dxf-modifier` već ima Stage 2-like praktično ponašanje, ali ugrađeno u teži orchestration shell
 
 ---
@@ -127,15 +173,21 @@ Glavni gap je:
 Ciljni canonical flow trebao bi biti:
 
 1. host payload ili manual order payload input
-2. canonical order normalization
-3. mother DXF load
-4. Stage 0 sanitize
-5. Stage 1 semantic preparation
-6. Stage 1.5 metadata / `999` instruction parse
-7. Stage 2 child planning
-8. Stage 3 child DXF materialization
-9. output packaging
-10. downstream handoff
+2. profile selection
+3. Parameter Catalog load
+4. Rule Catalog load
+5. future Operation Catalog load
+6. canonical order normalization
+7. mother DXF load
+8. Stage 0 sanitize
+9. Stage 1 semantic preparation
+10. Stage 1.5 guided metadata authoring
+11. Stage 1.5 metadata / `999` instruction parse
+12. rule / operation reference binding
+13. Stage 2 child planning
+14. Stage 3 child DXF materialization
+15. output packaging
+16. downstream handoff
 
 Važno načelo:
 
@@ -153,6 +205,7 @@ Odgovornosti:
 - primiti upstream payload
 - validirati payload contract
 - normalizirati transport-level shape u jedan interni canonical order model
+- povezati order context s odabranim DCM profileom
 
 Ne smije raditi:
 
@@ -180,12 +233,16 @@ Odgovornosti:
 - parse `999` metadata u strukturirane instruction objekte
 - interpretacija jednostavnih feature flagova
 - interpretacija dediciranih code-specific direktiva
+- binding prema Parameter Catalogu
+- binding prema Rule Catalogu
+- binding prema future Operation Catalogu
 - zadržavanje pravila da je dimenzionalna klasifikacija primarna, a metadata sekundarna
 
 Važno pravilo:
 
 - instruction layer nadograđuje Stage 1
 - instruction layer ne zamjenjuje Stage 1
+- rule expression evaluation pripada instruction/planning granici, ne UI string manipulaciji
 
 ### Layer D: Child Planning Layer
 
@@ -194,6 +251,9 @@ Odgovornosti:
 - odlučiti koji child partovi se moraju generirati
 - izvesti transformation intent po childu
 - mapirati canonical order podatke + semantic model + instruction set u child planove
+- odlučiti koju geometry variantu aktivirati
+- odlučiti kada prototype geometry zahtijeva placement plan
+- pretvoriti `rule_ref` i `operation_ref` u izvršive plan stavke
 
 Output:
 
@@ -272,6 +332,9 @@ Nosi:
 - parsane `999` direktive
 - feature flagove
 - part-specific operation direktive
+- geometry role direktive
+- `rule_ref` reference
+- `operation_ref` reference
 - validation nalaze
 
 ### `ChildPlan`
@@ -283,6 +346,23 @@ Nosi:
 - potrebni transformation intent
 - potrebne parametre
 - output naming seed
+- resolved rule decisions
+- geometry variant selection
+- prototype placement decisions
+
+### `CatalogSet`
+
+Nosi:
+
+- profile identifier
+- Parameter Catalog version
+- Rule Catalog version
+- future Operation Catalog version
+- validation state cataloga
+
+`CatalogSet` je dio DCM contexta.
+
+Ne smije biti skriven kao hardcoded runtime table.
 
 ### `ChildArtifact`
 
@@ -308,6 +388,9 @@ Glavno design pravilo je:
 - naming logiku koja je još važeća
 - downstream output očekivanja
 - validirane payload zahtjeve
+- poznate parameter vocabularyje
+- poznate rule slučajeve
+- poznate operation familyje
 
 ### Preseliti u čišće layere
 
@@ -317,6 +400,9 @@ Glavno design pravilo je:
 - part selection i child intent -> Layer D
 - stvarni child generation -> Layer E
 - manifest/export/report logika -> Layer F
+- parameter vocabulary -> Parameter Catalog
+- business rules -> Rule Catalog
+- geometry operations -> Operation Catalog
 
 ### Ne prenositi direktno
 
@@ -325,6 +411,8 @@ Glavno design pravilo je:
 - ponavljane identity translation korake
 - hardcoded fallback lance koji služe samo kao operativni shortcutovi
 - backup/test runtime foldere kao dio production strukture
+- free-typed rule stringove bez catalog entryja
+- UI-only business logic
 
 ---
 
@@ -343,8 +431,27 @@ Potrebno:
 
 Trenutni status:
 
-- komentari se čuvaju
-- execution semantika još nije implementirana
+- canonical conditional presence metadata je djelomično implementirana
+- metadata se može vezati na existing DXF entity kroz `999`
+- pre-child simulator čita simple `presence=conditional` logic
+- full `InstructionSet` contract još nije implementiran
+
+### Capability grupa 1B: Catalog-Driven Authoring
+
+Potrebno:
+
+- Parameter Catalog contract po profileu
+- Rule Catalog contract po profileu
+- Operation Catalog contract po profileu
+- UI izbor parametara, rules i operacija bez slobodnog tipkanja canonical sintakse
+- catalog validation prije approval-grade korištenja
+
+Trenutni status:
+
+- postoji legacy door Parameter Catalog JSON seed
+- postoji MXD Rule Catalog JSON seed
+- UI prikazuje Parameter Catalog i Rule Catalog
+- Operation Catalog još ne postoji
 
 ### Capability grupa 2: Child Planning
 
@@ -353,6 +460,9 @@ Potrebno:
 - mapiranje iz semantic object + order config + instruction set u child plan
 - part selection strategija
 - stabilan child plan model
+- geometry variant selection
+- prototype placement planning
+- resolved rule and operation references
 
 Trenutni status:
 
@@ -365,6 +475,7 @@ Potrebno:
 - dedicated script hookovi po podržanom kodu ili part tipu
 - kontrolirana operation library za jednostavne on/off ili param-driven promjene
 - eksplicitna granica između generic enginea i per-code skripte
+- operation references koje dolaze iz Operation Cataloga, ne iz ad hoc UI stringova
 
 Trenutni status:
 
@@ -376,6 +487,8 @@ Potrebno:
 
 - engine koji primjenjuje transformacije na mother geometriju i emitira child DXF
 - robusna veza između child plana i generiranog outputa
+- očuvanje Structural Invariant pravila: Mother DXF ne mijenja geometriju
+- delete / transform / add izvedbe samo tijekom child generationa
 
 Trenutni status:
 
@@ -416,12 +529,35 @@ Zadaci:
 Cilj:
 
 - pretvoriti `999` passthrough u strukturirani instruction parsing
+- povezati authoring s Parameter Catalogom i Rule Catalogom
 
 Zadaci:
 
 - definirati podržani instruction vocabulary
 - implementirati strict instruction parser
 - attachati instruction set na semantic objekte
+- validirati `feature`, `rule_ref` i budući `operation_ref` prema catalogima
+
+Trenutni status:
+
+- canonical presence metadata je započeta
+- guided authoring je započet
+- catalog UI visibility je započeta
+
+### Phase 2B: Profile and Catalog Contract Formalization
+
+Cilj:
+
+- formalizirati profile-specific cataloge prije širenja Stage 2 logike
+
+Zadaci:
+
+- definirati Profile Catalog
+- zaključati Parameter Catalog contract
+- zaključati Rule Catalog contract
+- definirati Operation Catalog contract
+- uvesti catalog validation path
+- maknuti slobodno tipkanje rule/operation referenci iz production authoring puta
 
 ### Phase 3: Dodavanje child planning modela
 
@@ -434,6 +570,8 @@ Zadaci:
 - definirati `ChildPlan`
 - dodati plan derivation iz semantic modela + order configa + instructions
 - zadržati plan generation determinističkim i testabilnim
+- podržati variant geometry presence pattern
+- podržati prototype geometry + placement plan pattern
 
 ### Phase 4: Dodavanje child materialization enginea
 
@@ -446,6 +584,7 @@ Zadaci:
 - definirati kontrolirani transformation API
 - prvo implementirati jednostavne feature on/off operacije
 - zatim dodati code-specific script hookove
+- zatim dodati Operation Catalog driven transformacije
 
 ### Phase 5: Dodavanje packaging i handoff sloja
 
@@ -508,6 +647,71 @@ Zadaci:
 
 - per-code skripte moraju se priključivati kroz bounded operation contract, a ne ad hoc mutirati cijeli engine
 
+### Guardrail 9
+
+- catalogi su profile-specific contract artefakti, ne engine hardcode
+
+### Guardrail 10
+
+- Mother DXF UI je authoring UI, ne dugoročni Catalog Admin
+
+### Guardrail 11
+
+- `rule_ref` i `operation_ref` ne smiju ostati slobodno tipkani production stringovi
+
+---
+
+## 11A. Geometry Strategy Patterns
+
+Roadmap mora podržati dva različita authoring patterna.
+
+### Pattern A: Variant Geometry Presence
+
+Koristi se kada je broj alternativnih geometrija mali i CAD-operativno prihvatljiv.
+
+Primjer:
+
+- treća spojnica iznad druge
+- treća spojnica ispod druge
+
+Mother DXF sadrži obje postojeće geometrije.
+
+Metadata nosi:
+
+- `feature`
+- `presence`
+- `role=variant`
+- `variant`
+- optional `rule_ref`
+
+ChildPlan bira aktivnu varijantu.
+
+### Pattern B: Prototype Geometry + Placement Plan
+
+Koristi se kada bi ucrtavanje svih kombinacija proizvelo previše preklopljenih blockova.
+
+Primjer:
+
+- worktop / sink cutout
+- više prototype cutout blockova
+- mirror
+- translate
+- calculated offset
+- left/right placement
+
+Mother DXF sadrži prototype geometry na canonical insertion lokaciji.
+
+Metadata nosi:
+
+- `role=prototype`
+- `feature`
+- `variant`
+- `operation_ref`
+
+ChildPlan odlučuje koliko instanci nastaje i gdje se materializiraju.
+
+Stvarna transformacija događa se tek u child generationu.
+
 ---
 
 ## 12. Što sačuvati iz postojećeg rada
@@ -523,6 +727,9 @@ Sačuvati:
 - poznate code-specific operacije
 - dokazana output očekivanja
 - dokazane edge caseove koji utječu na realne fileove
+- poznate parameter cataloge
+- poznata rule pravila
+- poznate operation familyje
 
 Ne sačuvati slijepo:
 
@@ -530,6 +737,7 @@ Ne sačuvati slijepo:
 - additive shortcut flowove
 - velike mixed-purpose fileove
 - flat hardcoded strukture u kojima je domain meaning skriven
+- runtime hardcode koji bi trebao biti catalog entry
 
 ---
 
@@ -541,6 +749,9 @@ Preporučeni arhitekturni smjer je:
 - koristiti `dxf-modifier` kao referencu ponašanja, a ne kao dugoročni engine blueprint
 - razvijati `mother_dxf_v1` kroz eksplicitne Stage 2 layere
 - migrirati capability, a ne code mass
+- migrirati domain vocabulary u cataloge
+- migrirati rules u Rule Catalog
+- migrirati transform operations u Operation Catalog
 
 Željeno krajnje stanje je:
 
@@ -549,6 +760,7 @@ Preporučeni arhitekturni smjer je:
   - eksplicitne stageove
   - stabilne domain objekte
   - bounded instruction handling
+  - profile-specific cataloge
   - tanji orchestration
 
 ---
@@ -559,8 +771,9 @@ Sljedeći koristan arhitekturni korak nije broad coding.
 
 To je:
 
-- definirati budući `InstructionSet` contract za `999` metadata
+- formalizirati `InstructionSet` contract za canonical `SEM:` metadata
+- formalizirati Profile / Parameter / Rule / Operation Catalog contracte
 - definirati budući `ChildPlan` contract
-- zatim provesti jedan ili dva stvarna parta kroz taj novi canonical flow
+- zatim provesti jedan MXD door part i jedan prototype/placement part kroz novi canonical flow
 
 To daje kontrolirani dokaz da `mother_dxf_v1` može postati čišći nasljednik.

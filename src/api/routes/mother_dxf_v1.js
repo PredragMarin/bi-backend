@@ -147,7 +147,8 @@ function createMotherDxfRouterV1() {
         entityId: String(req.body?.entity_id || ""),
         operation: String(req.body?.operation || ""),
         parameter: String(req.body?.parameter || ""),
-        expectedValue: req.body?.expected_value
+        expectedValue: req.body?.expected_value,
+        semanticComment: req.body?.semantic_comment
       });
       res.json({
         ...buildSessionResponse(result.session),

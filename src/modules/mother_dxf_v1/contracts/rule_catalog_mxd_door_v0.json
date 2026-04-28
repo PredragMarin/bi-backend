@@ -1,0 +1,26 @@
+{
+  "catalog_id": "rule_catalog_mxd_door_v0",
+  "schema_version": "rule_catalog.v0",
+  "profile_id": "MXD_DOOR_V0",
+  "source": "initial_mxd_kskr_authoring",
+  "rules": {
+    "THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT": {
+      "rule_id": "THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT",
+      "label": "Treca spojnica iznad druge - minimalna visina",
+      "feature": "TRECA_SPOJNICA",
+      "applies_to_variant": "IZNAD_DRUGE",
+      "expression": "VISINA_VRATA>=204cm",
+      "result": "eligible",
+      "status": "draft"
+    },
+    "THIRD_HINGE_BELOW_SECOND_FALLBACK": {
+      "rule_id": "THIRD_HINGE_BELOW_SECOND_FALLBACK",
+      "label": "Treca spojnica ispod druge - fallback",
+      "feature": "TRECA_SPOJNICA",
+      "applies_to_variant": "ISPOD_DRUGE",
+      "expression": "VISINA_VRATA<204cm",
+      "result": "eligible",
+      "status": "draft"
+    }
+  }
+}

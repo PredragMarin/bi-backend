@@ -1,0 +1,175 @@
+{
+  "catalog_id": "legacy_door_configurator_catalog_v0",
+  "schema_version": "parameter_catalog.v0",
+  "source": "legacy_table_user_supplied",
+  "parameters": {
+    "MODEL_VRATA": {
+      "key": "MODEL_VRATA",
+      "code": "1",
+      "label": "Model vrata",
+      "type": "enum",
+      "values": ["Europa", "EuroMax", "ECO", "PPV30S200"]
+    },
+    "SIRINA_VRATA": {
+      "key": "SIRINA_VRATA",
+      "code": "2",
+      "label": "Sirina vrata",
+      "type": "enum",
+      "values": ["80cm"]
+    },
+    "VISINA_VRATA": {
+      "key": "VISINA_VRATA",
+      "code": "3",
+      "label": "Visina vrata",
+      "type": "enum",
+      "values": ["204cm"]
+    },
+    "VANJSKA_VRATA": {
+      "key": "VANJSKA_VRATA",
+      "code": "9",
+      "label": "Vanjska vrata",
+      "type": "enum",
+      "values": ["Ne", "Da"]
+    },
+    "SKRACENJE": {
+      "key": "SKRACENJE",
+      "code": "4",
+      "label": "Skracenje",
+      "type": "enum",
+      "values": ["0mm"]
+    },
+    "SPIJUNKA_VISINA": {
+      "key": "SPIJUNKA_VISINA",
+      "code": "9A",
+      "label": "Spijunka visina",
+      "type": "enum",
+      "values": ["150cm"]
+    },
+    "TRECA_SPOJNICA": {
+      "key": "TRECA_SPOJNICA",
+      "code": "8",
+      "label": "Treca Spojnica",
+      "type": "enum",
+      "values": ["Ne", "Da"]
+    },
+    "STRANA_OTVARANJA": {
+      "key": "STRANA_OTVARANJA",
+      "code": "10",
+      "label": "Strana otvaranja",
+      "type": "enum",
+      "values": ["Desna (DX)", "Lijeva (SX)", "Inverzna desna (INV DX)", "Inverzna lijeva (INV SX)"]
+    },
+    "BOJA_DOVRATNIKA": {
+      "key": "BOJA_DOVRATNIKA",
+      "code": "11",
+      "label": "Boja dovratnika",
+      "type": "enum",
+      "values": ["D Antracit sivo RAL7016", "D Avorio RAL1013", "D Bijelo RAL9003", "D Crno RAL9005", "D Specijalni RAL", "D Smede RAL8019"]
+    },
+    "BOJA_METALNIH_DRZACA_PANELA": {
+      "key": "BOJA_METALNIH_DRZACA_PANELA",
+      "code": "12",
+      "label": "Boja metalnih drzaca panela",
+      "type": "enum",
+      "values": ["L Antracit sivo RAL7016", "L Avorio RAL1013", "L Bijelo RAL9003", "L Crno RAL9005", "L Inox", "L Specijalni RAL", "L Smede RAL8019"]
+    },
+    "VANJSKI_PANEL": {
+      "key": "VANJSKI_PANEL",
+      "code": "16",
+      "label": "Vanjski panel",
+      "type": "enum",
+      "values": ["pv Avorio", "pv Alu profil  9mm", "pv Antracit sivo", "pv Arbor", "pv Bijelo", "pv Brijest Svijetli", "pv Brijest Tamni", "pv Hrast Caleo", "pv Hrast Izbjeljeni", "pv Hrast Nobile", "pv Hrast Silver", "pv Mahagonij", "pv Mina Boreal", "pv Orah", "pv Palisandro", "Panel od kupca", "Privremeni panel", "Specijalni panel", "Bez panela", "pv Tresnja", "pv Wenge", "pv Lim antracit", "pv Lim avorio", "pv Lim bijeli", "pv Lim smedi", "pv Lim crni"]
+    },
+    "UNUTARNJI_PANEL": {
+      "key": "UNUTARNJI_PANEL",
+      "code": "17",
+      "label": "Unutarnji panel",
+      "type": "enum",
+      "values": ["pu Avorio", "pu Alu profil  9mm", "pu Antracit sivo", "pu Arbor", "pu Bijelo", "pu Brijest Svijetli", "pu Brijest Tamni", "pu Hrast Caleo", "pu Hrast Izbjeljeni", "pu Hrast Nobile", "pu Hrast Silver", "pu Mina Boreal", "pu Orah", "pu Palisandro", "Panel od kupca", "Privremeni panel", "Specijalni panel", "Bez panela", "pu Tresnja", "pu Wenge", "pu Lim antracit", "pu Lim avorio", "pu Lim bijeli", "pu Lim smedi", "pu Lim crni"]
+    },
+    "VANJSKE_UKRASNE_LETVE": {
+      "key": "VANJSKE_UKRASNE_LETVE",
+      "code": "19",
+      "label": "Vanjske ukrasne letve",
+      "type": "enum",
+      "values": ["Bez ukrasnih letvi", "lv Antracit sivo", "lv Antracit sivo XL", "lv Arbor", "Lv Arbor XL", "Lv Avorio", "Lv Bijelo", "Lv Bijelo XL", "Lv Brijest svijetli XL", "Lv Brijest tamni XL", "Lv Hrast Caleo", "lv Hrast Caleo XL", "Lv Hrast Silver", "Lv Hrast Silver XL", "Lv Hrast Izbijeljeni XL", "Lv Hrast Nobile", "Lv Hrast Nobile XL", "Lv Mahagonij", "Lv Mahagonij XL", "Lv Mina Boreal XL", "Lv Orah", "Lv Orah XL", "Lv Palisandro", "Lv Tresnja", "Lv Tresnja XL", "Lv Wenge", "Lv Wenge XL", "Lv sirova XL"]
+    },
+    "UNUTARNJE_UKRASNE_LETVE": {
+      "key": "UNUTARNJE_UKRASNE_LETVE",
+      "code": "20",
+      "label": "Unutarnje ukrasne letve",
+      "type": "enum",
+      "values": ["Bez ukrasnih letvi", "Lu Antracit sivo", "Lu Antracit sivo XL", "Lu Arbor", "Lu Arbor XL", "Lu Avorio", "Lu Bijelo", "Lu Bijelo XL", "Lu Brijest svijetli XL", "Lu Brijest tamni XL", "Lu Hrast Caleo", "Lu Hrast Caleo XL", "Lu Hrast Silver", "Lu Hrast Silver XL", "Lu Hrast izbijeljeni XL", "Lu Hrast Nobile", "Lu Hrast Nobile XL", "Lu Mahagonij", "Lu Mahagonij XL", "Lu Mina Boreal XL", "Lu Orah", "Lu Orah XL", "Lu Palisandro", "Lu Tresnja", "Lu Tresnja XL", "Lu Wenge", "Lu Wenge XL", "Lu sirova XL"]
+    },
+    "BRAVA": {
+      "key": "BRAVA",
+      "code": "21",
+      "label": "Brava",
+      "type": "enum",
+      "values": ["CILINDAR", "Comfortlock", "Europa+", "elektricna D-smart", "elektricna NUKI"]
+    },
+    "CILINDAR": {
+      "key": "CILINDAR",
+      "code": "22",
+      "label": "Cilindar",
+      "type": "enum",
+      "values": ["kljuc - kljuc K22 30-50", "Leptir K22 30-30", "Obostrani kljuc K64 30-50", "Leptir K64 30-30", "Kljuc - kljuc K22 40-50", "Leptir K22 40-30", "Obostrani kljuc K64 40-50", "leptir K64 40-30", "Bez cilindra", "Specijalni cilindar"]
+    },
+    "FUNKCIJA_OKOVA": {
+      "key": "FUNKCIJA_OKOVA",
+      "code": "23",
+      "label": "Funkcija okova",
+      "type": "enum",
+      "values": ["Fiksna kugla", "Pokretna kugLa", "Kvaka - kvaka", "Rukohvat", "Antipanik", "Specijalni okov"]
+    },
+    "BOJA_OKOVA_IZNUTRA": {
+      "key": "BOJA_OKOVA_IZNUTRA",
+      "code": "25",
+      "label": "Boja okova iznutra",
+      "type": "enum",
+      "values": ["Bronca", "Srebro", "Crom Satinirani", "Crom Sjajni", "Mesing", "Crom Satinirani Kvadratni", "Crom Sjaj Kvadratni", "Crno", "Bez okova"]
+    },
+    "BOJA_OKOVA_IZVANA": {
+      "key": "BOJA_OKOVA_IZVANA",
+      "code": "24",
+      "label": "Boja okova izvana",
+      "type": "enum",
+      "values": ["Bronca", "Srebro", "Crom Satinirani", "Crom Sjajni", "Mesing", "Crom Satinirani Kvadratni", "Crom Sjaj Kvadratni", "Crno", "Bez okova"]
+    },
+    "METLICA": {
+      "key": "METLICA",
+      "code": "26",
+      "label": "Metlica",
+      "type": "enum",
+      "values": ["Jednostruka", "Dvostruka", "Bez metlice"]
+    },
+    "LIMITATOR": {
+      "key": "LIMITATOR",
+      "code": "27",
+      "label": "Limitator",
+      "type": "enum",
+      "values": ["Ne", "Da", "Opcija limitator"]
+    },
+    "ELEKTROPRIHVATNIK": {
+      "key": "ELEKTROPRIHVATNIK",
+      "code": "28",
+      "label": "Elektroprihvatnik",
+      "type": "enum",
+      "values": ["Ne", "Da"]
+    },
+    "HIDRAULICKI_ZATVARAC": {
+      "key": "HIDRAULICKI_ZATVARAC",
+      "code": "29",
+      "label": "Hidraulicki zatvarac",
+      "type": "enum",
+      "values": ["Bez zatvaraca", "Priprema vidni", "Skriveni"]
+    },
+    "SLIJEPI_STOK": {
+      "key": "SLIJEPI_STOK",
+      "code": "35",
+      "label": "SLIJEPI STOK",
+      "type": "enum",
+      "values": ["Da", "Ne"]
+    }
+  }
+}

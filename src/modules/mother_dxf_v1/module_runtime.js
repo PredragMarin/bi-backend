@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const {
   ALLOWED_PRIMARY_LAYERS,
   sanitizeDocument,
+  reindexDocumentSources,
   serializeDocument,
   listRelevantObjects,
   applyPrimaryLayer
@@ -19,6 +20,8 @@ const {
   listSessions,
   saveExport
 } = require("../../core_shell/storage/mother_dxf_store");
+const DEFAULT_PARAMETER_CATALOG = require("./contracts/parameter_catalog_legacy_door_v0.json");
+const DEFAULT_RULE_CATALOG = require("./contracts/rule_catalog_mxd_door_v0.json");
 
 const DEFAULT_BANDS = {
   left: 80,
@@ -91,7 +94,11 @@ function normalizeSessionTitle(value, fallback) {
 
 function normalizeConfigParameterSet(input) {
   const source = input && typeof input === "object" ? input : {};
-  const parameters = source.parameters && typeof source.parameters === "object" ? source.parameters : {};
+  const parameters = source.parameters && typeof source.parameters === "object"
+    ? source.parameters
+    : source.configuratorData && typeof source.configuratorData === "object"
+      ? source.configuratorData
+      : {};
   return {
     technology_profile: String(source.technology_profile || DEFAULT_CONFIG_PARAMETER_SET.technology_profile),
     product_code: String(source.product_code || DEFAULT_CONFIG_PARAMETER_SET.product_code),
@@ -118,6 +125,21 @@ function valuesEqualForInstruction(actual, expected) {
     return actualBool === expectedBool;
   }
   return String(actual == null ? "" : actual).trim().toUpperCase() === String(expected == null ? "" : expected).trim().toUpperCase();
+}
+
+function parseWhenExpression(value) {
+  const raw = String(value || "").trim();
+  const operator = raw.includes("!=") ? "!=" : raw.includes("==") ? "==" : null;
+  if (!operator) return null;
+  const [parameter, expected] = raw.split(operator);
+  const normalizedParameter = String(parameter || "").trim();
+  const normalizedExpected = String(expected || "").trim();
+  if (!normalizedParameter || !normalizedExpected) return null;
+  return {
+    parameter: normalizedParameter,
+    operator,
+    expected: normalizedExpected
+  };
 }
 
 function parseSemanticComment(rawValue) {
@@ -163,10 +185,19 @@ function parseSemanticComment(rawValue) {
     keys[key] = value;
   }
 
+  const when_expression = keys.when ? parseWhenExpression(keys.when) : null;
+  if (keys.when && !when_expression) {
+    errors.push({
+      code: "INVALID_SEM_WHEN",
+      message: `Invalid SEM when expression: ${keys.when}`
+    });
+  }
+
   return {
     namespace: "SEM",
     raw_comment: raw,
     keys,
+    when_expression,
     validation: {
       ok: errors.length === 0,
       errors,
@@ -176,6 +207,13 @@ function parseSemanticComment(rawValue) {
 }
 
 function buildSemanticCommentFromRule(rule) {
+  const semanticComment = String(rule?.semantic_comment || "").trim();
+  if (semanticComment) {
+    if (!semanticComment.toUpperCase().startsWith("SEM:")) {
+      throw new Error("Semantic comment must start with SEM:.");
+    }
+    return semanticComment;
+  }
   const operation = String(rule?.operation || "show_if").trim();
   const parameter = String(rule?.parameter || "").trim();
   const expectedValue = String(rule?.expected_value || "").trim();
@@ -188,7 +226,21 @@ function buildSemanticCommentFromRule(rule) {
   if (!operation) {
     throw new Error("Missing metadata operation.");
   }
-  return `SEM:op=${operation};param=${parameter};eq=${expectedValue}`;
+  const operator = operation === "hide_if" ? "!=" : "==";
+  return `SEM:feature=${parameter};presence=conditional;when=${parameter}${operator}${expectedValue}`;
+}
+
+function semanticCommentFamily(rawComment) {
+  const parsed = parseSemanticComment(rawComment);
+  if (!parsed) return null;
+  const keys = parsed.keys || {};
+  if (String(keys.document || "").trim().toLowerCase() === "true") return "document";
+  if (keys.operation_ref) return "operation_ref";
+  if (keys.geometry) return "geometry";
+  if (keys.role) return "geometry_role";
+  if (keys.presence) return "presence";
+  if (keys.variant) return "variant";
+  return `raw:${parsed.raw_comment.toUpperCase()}`;
 }
 
 function findEntity(document, entityId) {
@@ -204,10 +256,16 @@ function upsertSemanticComment(document, entityId, rawComment) {
   if (!nextComment) {
     throw new Error("Missing semantic comment.");
   }
+  const nextFamily = semanticCommentFamily(nextComment);
   const preComments = Array.isArray(entity.preComments) ? entity.preComments : [];
   const nextPreComments = preComments.filter((pair) => {
-    const value = String(pair?.value || "").trim().toUpperCase();
-    return !(String(pair?.code) === "999" && value.startsWith("SEM:"));
+    if (String(pair?.code) !== "999") return true;
+    const value = String(pair?.value || "").trim();
+    if (!value.toUpperCase().startsWith("SEM:")) return true;
+    if (value === nextComment) return false;
+    const family = semanticCommentFamily(value);
+    if (!nextFamily || !family) return true;
+    return family !== nextFamily;
   });
   nextPreComments.push({ code: "999", value: nextComment });
   entity.preComments = nextPreComments;
@@ -242,6 +300,133 @@ function collectSemanticMetadata(document, entityId) {
       warnings: []
     }
   };
+}
+
+function evaluatePresenceInstruction(parsedSemRecords, parameters) {
+  const presenceRecord = (Array.isArray(parsedSemRecords) ? parsedSemRecords : []).find((record) => {
+    const presence = String(record?.keys?.presence || "").trim().toLowerCase();
+    return presence === "conditional" || presence === "always" || presence === "never";
+  }) || null;
+  if (!presenceRecord) {
+    return {
+      record: null,
+      included: true,
+      exclusion_reason: null,
+      visibility_reason: "default_visible",
+      operation_hint: null,
+      conditional_param: null,
+      conditional_expected: null,
+      conditional_operator: null,
+      conditional_actual: null
+    };
+  }
+  const keys = presenceRecord.keys || {};
+  const presence = String(keys.presence || "").trim().toLowerCase();
+  const whenExpression = presenceRecord.when_expression || null;
+  const conditionalParamName = whenExpression?.parameter || keys.feature || null;
+  const conditionalExpected = whenExpression?.expected || null;
+  const conditionalOperator = whenExpression?.operator || null;
+  const conditionalActual = conditionalParamName ? parameters[conditionalParamName] : null;
+  if (presence === "never") {
+    return {
+      record: presenceRecord,
+      included: false,
+      exclusion_reason: "presence",
+      visibility_reason: "presence_never",
+      operation_hint: presence,
+      conditional_param: conditionalParamName,
+      conditional_expected: conditionalExpected,
+      conditional_operator: conditionalOperator,
+      conditional_actual: conditionalActual
+    };
+  }
+  if (presence === "always") {
+    return {
+      record: presenceRecord,
+      included: true,
+      exclusion_reason: null,
+      visibility_reason: "presence_always",
+      operation_hint: presence,
+      conditional_param: conditionalParamName,
+      conditional_expected: conditionalExpected,
+      conditional_operator: conditionalOperator,
+      conditional_actual: conditionalActual
+    };
+  }
+  if (conditionalParamName && conditionalExpected !== null && conditionalOperator) {
+    const equal = valuesEqualForInstruction(conditionalActual, conditionalExpected);
+    const included = conditionalOperator === "!=" ? !equal : equal;
+    return {
+      record: presenceRecord,
+      included,
+      exclusion_reason: included ? null : "presence",
+      visibility_reason: included
+        ? `condition_matched:${conditionalParamName}`
+        : `condition_not_matched:${conditionalParamName}`,
+      operation_hint: presence,
+      conditional_param: conditionalParamName,
+      conditional_expected: conditionalExpected,
+      conditional_operator: conditionalOperator,
+      conditional_actual: conditionalActual
+    };
+  }
+  return {
+    record: presenceRecord,
+    included: true,
+    exclusion_reason: null,
+    visibility_reason: "presence_without_condition",
+    operation_hint: presence,
+    conditional_param: conditionalParamName,
+    conditional_expected: conditionalExpected,
+    conditional_operator: conditionalOperator,
+    conditional_actual: conditionalActual
+  };
+}
+
+function evaluateVariantInstruction(parsedSemRecords, parameters) {
+  const variantRecord = (Array.isArray(parsedSemRecords) ? parsedSemRecords : []).find((record) => {
+    const variant = String(record?.keys?.variant || "").trim();
+    return Boolean(variant);
+  }) || null;
+  if (!variantRecord) {
+    return {
+      record: null,
+      included: true,
+      exclusion_reason: null,
+      variant: null,
+      feature: null,
+      actual: null
+    };
+  }
+  const keys = variantRecord.keys || {};
+  const feature = String(keys.feature || "").trim() || null;
+  const expectedVariant = String(keys.variant || "").trim() || null;
+  const actualValue = feature ? parameters[feature] : null;
+  const included = feature && expectedVariant
+    ? valuesEqualForInstruction(actualValue, expectedVariant)
+    : true;
+  return {
+    record: variantRecord,
+    included,
+    exclusion_reason: included ? null : "variant",
+    variant: expectedVariant,
+    feature,
+    actual: actualValue
+  };
+}
+
+function collectGeometryOperations(parsedSemRecords) {
+  return (Array.isArray(parsedSemRecords) ? parsedSemRecords : [])
+    .filter((record) => {
+      const geometry = String(record?.keys?.geometry || "").trim().toLowerCase();
+      return geometry === "offset";
+    })
+    .map((record) => ({
+      geometry: record.keys.geometry,
+      axis: record.keys.axis || null,
+      ref: record.keys.ref || null,
+      raw_comment: record.raw_comment
+    }));
 }
 
 function suggestLayerForBBox(objectBBox, documentBBox, bands) {
@@ -305,6 +490,7 @@ function buildRelevantState(document, bands, priorAssignments) {
 }
 
 function projectViewModel(session) {
+  reindexDocumentSources(session.document);
   const state = buildRelevantState(session.document, session.bands, session.assignments);
   session.assignments = state.assignments;
   session.document_bbox = state.document_bbox;
@@ -346,6 +532,8 @@ function projectViewModel(session) {
     bands: session.bands,
     document_bbox: session.document_bbox,
     config_parameter_set: session.config_parameter_set || cloneJson(DEFAULT_CONFIG_PARAMETER_SET),
+    parameter_catalog: cloneJson(session.parameter_catalog || DEFAULT_PARAMETER_CATALOG),
+    rule_catalog: cloneJson(session.rule_catalog || DEFAULT_RULE_CATALOG),
     objects,
     allowed_layers: Array.from(ALLOWED_PRIMARY_LAYERS.values()),
     semantic_colors: SEMANTIC_COLORS
@@ -413,23 +601,36 @@ function simulateChildPreview(session) {
   const limitator = normalizeBooleanLike(config.parameters.LIMITATOR);
   const brava = config.parameters.BRAVA == null ? null : String(config.parameters.BRAVA);
   const items = view.objects.map((object) => {
-    const firstSem = Array.isArray(object.semantic_metadata?.parsed) && object.semantic_metadata.parsed.length
-      ? object.semantic_metadata.parsed[0]
-      : null;
+    const parsedSemRecords = Array.isArray(object.semantic_metadata?.parsed) ? object.semantic_metadata.parsed : [];
+    const firstSem = parsedSemRecords.length ? parsedSemRecords[0] : null;
     const semKeys = firstSem?.keys || {};
     const partHint = semKeys.part || semKeys.target || config.product_code || null;
-    const opHint = semKeys.op || semKeys.action || null;
-    const conditionalParamName = semKeys.param || semKeys.if_param || null;
-    const conditionalExpected = semKeys.eq || semKeys.equals || semKeys.value || null;
-    const conditionalActual = conditionalParamName ? config.parameters[conditionalParamName] : null;
-    let visible = true;
-    let visibilityReason = "default_visible";
-    if ((opHint === "show_if" || opHint === "visible_if") && conditionalParamName && conditionalExpected !== null) {
-      visible = valuesEqualForInstruction(conditionalActual, conditionalExpected);
-      visibilityReason = visible
-        ? `condition_matched:${conditionalParamName}`
-        : `condition_not_matched:${conditionalParamName}`;
-    }
+    const presenceEval = evaluatePresenceInstruction(parsedSemRecords, config.parameters);
+    const variantEval = presenceEval.included
+      ? evaluateVariantInstruction(parsedSemRecords, config.parameters)
+      : {
+          record: null,
+          included: true,
+          exclusion_reason: null,
+          variant: null,
+          feature: null,
+          actual: null
+        };
+    const geometryOps = presenceEval.included && variantEval.included
+      ? collectGeometryOperations(parsedSemRecords)
+      : [];
+    const aggregated = {
+      included: presenceEval.included && variantEval.included,
+      exclusion_reason: presenceEval.included ? variantEval.exclusion_reason : presenceEval.exclusion_reason,
+      geometry_ops: geometryOps
+    };
+    const opHint = presenceEval.operation_hint || semKeys.presence || null;
+    const conditionalParamName = presenceEval.conditional_param;
+    const conditionalExpected = presenceEval.conditional_expected;
+    const conditionalOperator = presenceEval.conditional_operator;
+    const conditionalActual = presenceEval.conditional_actual;
+    const visible = aggregated.included;
+    const visibilityReason = presenceEval.visibility_reason;
     const preview_actions = [];
     if (object.primary_layer) preview_actions.push(`LAYER=${object.primary_layer}`);
     if (partHint) preview_actions.push(`PART=${partHint}`);
@@ -438,6 +639,8 @@ function simulateChildPreview(session) {
     if (opHint) preview_actions.push(`OP=${opHint}`);
     if (conditionalParamName) preview_actions.push(`PARAM=${conditionalParamName}`);
     if (conditionalExpected !== null) preview_actions.push(`EQ=${conditionalExpected}`);
+    if (variantEval.variant) preview_actions.push(`VARIANT=${variantEval.variant}`);
+    if (geometryOps.length) preview_actions.push(`GEOMETRY_OPS=${geometryOps.length}`);
     preview_actions.push(`VISIBLE=${visible ? "TRUE" : "FALSE"}`);
     return {
       entity_id: object.entity_id,
@@ -457,9 +660,13 @@ function simulateChildPreview(session) {
         operation_hint: opHint,
         conditional_param: conditionalParamName,
         conditional_expected: conditionalExpected,
+        conditional_operator: conditionalOperator,
         conditional_actual: conditionalActual,
         visible,
         visibility_reason: visibilityReason,
+        included: aggregated.included,
+        exclusion_reason: aggregated.exclusion_reason,
+        geometry_ops: aggregated.geometry_ops,
         preview_actions,
         ready_for_child_planning: object.classification_state === "classified" && Boolean(object.primary_layer)
       }
@@ -567,12 +774,13 @@ async function updateSessionMeta({ sessionId, title, status, storeRoot }) {
   return session;
 }
 
-async function authorSemanticMetadata({ sessionId, entityId, operation, parameter, expectedValue, storeRoot }) {
+async function authorSemanticMetadata({ sessionId, entityId, operation, parameter, expectedValue, semanticComment, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   const rawComment = buildSemanticCommentFromRule({
     operation,
     parameter,
-    expected_value: expectedValue
+    expected_value: expectedValue,
+    semantic_comment: semanticComment
   });
   upsertSemanticComment(session.document, entityId, rawComment);
   session.updated_at = new Date().toISOString();

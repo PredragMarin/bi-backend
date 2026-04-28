@@ -19,16 +19,16 @@
     }
     *{box-sizing:border-box}
     body{margin:0;background:linear-gradient(180deg,#eef4ea 0%,#e0e7dd 100%);color:var(--ink);font-family:"Segoe UI",Tahoma,sans-serif}
-    .page{display:grid;gap:14px;padding:14px}
+    .page{display:grid;gap:14px;padding:14px;overflow-x:auto}
     .hero,.card{background:var(--paper);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px rgba(24,32,38,.08)}
     .hero{padding:18px;background:radial-gradient(circle at top right, rgba(38,70,83,.12), transparent 30%),linear-gradient(135deg, rgba(38,70,83,.08), rgba(251,253,248,.96))}
     .hero h1{margin:0 0 6px;font-size:32px}
     .hero p{margin:0;color:var(--muted);max-width:1100px;line-height:1.5}
-    .layout{display:grid;grid-template-columns:410px 1fr;gap:14px}
-    .stack{display:grid;gap:14px}
-    .card{padding:16px}
+    .layout{display:grid;grid-template-columns:360px 390px minmax(520px,1fr);gap:14px;align-items:start;min-width:1298px;width:max-content;max-width:none}
+    .stack{display:grid;gap:14px;align-content:start;grid-auto-rows:max-content;min-width:0}
+    .card{padding:16px;min-width:0}
     h2{margin:0 0 10px;font-size:18px}
-    textarea,input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;color:var(--ink)}
+    textarea,input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;color:var(--ink)}
     textarea{min-height:240px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
     .editor-shell{display:grid;grid-template-columns:34px 1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
     .editor-shell.entity-focus{border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.14);background:#fff7f7}
@@ -61,7 +61,10 @@
     .selection-item:last-child{border-bottom:none}
     .focus-note{margin-top:8px;padding:8px 10px;border:1px solid #ef4444;border-radius:12px;background:#fff1f2;color:#991b1b;font-size:12px;font-weight:700}
     @media (max-width: 1180px){
+      .page{overflow-x:visible}
+      .layout{min-width:0}
       .layout{grid-template-columns:1fr}
+      .side-stack{grid-template-columns:1fr}
       .viewer-shell{min-height:auto}
       .canvas-wrap{min-height:520px}
     }
@@ -104,6 +107,17 @@
         </div>
 
         <div class="card">
+          <h2>Selection</h2>
+          <div class="meta" style="margin-bottom:10px">Click za single select. Drag za rectangle select. Klik na prazno čisti selekciju.</div>
+          <div id="selectionBox" class="selection"><div class="meta">No selection.</div></div>
+        </div>
+
+        <div class="card">
+          <h2>Force Assign</h2>
+          <div class="toolbar" id="assignToolbar"></div>
+        </div>
+
+        <div class="card">
           <h2>Session Lifecycle</h2>
           <div class="grid-2">
             <label>Session title<input id="sessionTitle" type="text" placeholder="KSKR smoke 001" /></label>
@@ -127,21 +141,31 @@
             <button id="loadSessionBtn" class="secondary">Load Selected Session</button>
           </div>
         </div>
+      </div>
 
+      <div class="stack side-stack">
         <div class="card">
-          <h2>Selection</h2>
-          <div class="meta" style="margin-bottom:10px">Click za single select. Drag za rectangle select. Klik na prazno čisti selekciju.</div>
-          <div id="selectionBox" class="selection"><div class="meta">No selection.</div></div>
+          <h2>Parameter Catalog</h2>
+          <div id="parameterCatalogMeta" class="meta" style="margin-bottom:8px">No active catalog.</div>
+          <pre id="parameterCatalogOut">{"ok":false,"note":"Catalog not loaded yet."}</pre>
         </div>
 
         <div class="card">
-          <h2>Force Assign</h2>
-          <div class="toolbar" id="assignToolbar"></div>
+          <h2>Rule Catalog</h2>
+          <div id="ruleCatalogMeta" class="meta" style="margin-bottom:8px">No active rule catalog.</div>
+          <pre id="ruleCatalogOut">{"ok":false,"note":"Rule catalog not loaded yet."}</pre>
         </div>
 
         <div class="card">
           <h2>Metadata Authoring</h2>
           <div id="metadataTargetBox" class="meta" style="margin-bottom:10px">Select one relevant object to author `999` metadata.</div>
+          <label>Authoring mode
+            <select id="metadataMode">
+              <option value="presence">Presence condition</option>
+              <option value="geometry_role">Geometry role</option>
+              <option value="operation_ref">Operation reference</option>
+            </select>
+          </label>
           <div class="grid-2">
             <label>Operation
               <select id="metadataOperation">
@@ -151,12 +175,34 @@
             </label>
             <label>Parameter
               <select id="metadataParameter">
-                <option value="">No parameter set loaded</option>
+                <option value="">No catalog loaded</option>
               </select>
             </label>
           </div>
           <div class="grid-2" style="margin-top:10px">
-            <label>Expected value<input id="metadataExpectedValue" type="text" placeholder="Lijeva (SX)" /></label>
+            <label>Geometry role
+              <select id="metadataRole">
+                <option value="variant">variant</option>
+                <option value="prototype">prototype</option>
+                <option value="anchor">anchor</option>
+                <option value="reference">reference</option>
+              </select>
+            </label>
+            <label>Variant / operation id
+              <input id="metadataVariant" type="text" placeholder="ABOVE_SECOND or WORKTOP_SINK_PAIR_PLACEMENT" />
+            </label>
+          </div>
+          <label style="margin-top:10px;display:block">Rule ref
+            <select id="metadataRuleRef">
+              <option value="">No rule ref</option>
+            </select>
+          </label>
+          <div class="grid-2" style="margin-top:10px">
+            <label>Expected value
+              <select id="metadataExpectedValue">
+                <option value="">No catalog value loaded</option>
+              </select>
+            </label>
             <label>Generated `999`
               <input id="metadataPreview" type="text" readonly />
             </label>
@@ -238,10 +284,18 @@
     const editorShell = document.getElementById("editorShell");
     const simulationOut = document.getElementById("simulationOut");
     const metadataTargetBox = document.getElementById("metadataTargetBox");
+    const metadataMode = document.getElementById("metadataMode");
     const metadataOperation = document.getElementById("metadataOperation");
     const metadataParameter = document.getElementById("metadataParameter");
+    const metadataRole = document.getElementById("metadataRole");
+    const metadataVariant = document.getElementById("metadataVariant");
+    const metadataRuleRef = document.getElementById("metadataRuleRef");
     const metadataExpectedValue = document.getElementById("metadataExpectedValue");
     const metadataPreview = document.getElementById("metadataPreview");
+    const parameterCatalogMeta = document.getElementById("parameterCatalogMeta");
+    const parameterCatalogOut = document.getElementById("parameterCatalogOut");
+    const ruleCatalogMeta = document.getElementById("ruleCatalogMeta");
+    const ruleCatalogOut = document.getElementById("ruleCatalogOut");
 
     function setStatus(message, tone = "info") {
       statusBox.textContent = message;
@@ -518,42 +572,132 @@
       return JSON.parse(text);
     }
 
-    function currentParameterEntries() {
-      const config = state.session && state.session.config_parameter_set && state.session.config_parameter_set.parameters
-        ? state.session.config_parameter_set.parameters
+    function currentCatalogParameters() {
+      const catalog = state.session && state.session.parameter_catalog && state.session.parameter_catalog.parameters
+        ? state.session.parameter_catalog.parameters
         : null;
-      return config && typeof config === "object" ? Object.entries(config) : [];
+      return catalog && typeof catalog === "object"
+        ? Object.values(catalog).sort((a, b) => String(a.code || "").localeCompare(String(b.code || ""), undefined, { numeric: true }))
+        : [];
+    }
+
+    function selectedCatalogParameter() {
+      return currentCatalogParameters().find((item) => item.key === metadataParameter.value) || null;
+    }
+
+    function currentRuleEntries() {
+      const rules = state.session && state.session.rule_catalog && state.session.rule_catalog.rules
+        ? state.session.rule_catalog.rules
+        : null;
+      return rules && typeof rules === "object"
+        ? Object.values(rules).sort((a, b) => String(a.rule_id || "").localeCompare(String(b.rule_id || "")))
+        : [];
+    }
+
+    function renderParameterCatalog() {
+      if (!state.session || !state.session.parameter_catalog) {
+        parameterCatalogMeta.textContent = "No active catalog.";
+        parameterCatalogOut.textContent = JSON.stringify({ ok: false, note: "Catalog not loaded yet." }, null, 2);
+        return;
+      }
+      const catalog = state.session.parameter_catalog;
+      const parameters = currentCatalogParameters();
+      parameterCatalogMeta.textContent = `${catalog.catalog_id || "parameter_catalog"} | parameters ${parameters.length}`;
+      parameterCatalogOut.textContent = JSON.stringify(parameters.map((item) => ({
+        code: item.code,
+        key: item.key,
+        label: item.label,
+        type: item.type,
+        value_count: Array.isArray(item.values) ? item.values.length : 0
+      })), null, 2);
+    }
+
+    function renderRuleCatalog() {
+      if (!state.session || !state.session.rule_catalog) {
+        ruleCatalogMeta.textContent = "No active rule catalog.";
+        ruleCatalogOut.textContent = JSON.stringify({ ok: false, note: "Rule catalog not loaded yet." }, null, 2);
+        metadataRuleRef.innerHTML = `<option value="">No rule ref</option>`;
+        return;
+      }
+      const catalog = state.session.rule_catalog;
+      const rules = currentRuleEntries();
+      ruleCatalogMeta.textContent = `${catalog.catalog_id || "rule_catalog"} | rules ${rules.length}`;
+      ruleCatalogOut.textContent = JSON.stringify(rules.map((item) => ({
+        rule_id: item.rule_id,
+        label: item.label,
+        feature: item.feature,
+        variant: item.applies_to_variant,
+        expression: item.expression,
+        status: item.status
+      })), null, 2);
+      metadataRuleRef.innerHTML = [`<option value="">No rule ref</option>`]
+        .concat(rules.map((item) => `<option value="${esc(item.rule_id)}">${esc(item.rule_id)} | ${esc(item.label || "")}</option>`))
+        .join("");
     }
 
     function renderMetadataParameterOptions() {
-      const entries = currentParameterEntries();
-      if (!entries.length) {
-        metadataParameter.innerHTML = `<option value="">No parsed parameters</option>`;
+      const parameters = currentCatalogParameters();
+      if (!parameters.length) {
+        metadataParameter.innerHTML = `<option value="">No catalog parameters</option>`;
+        metadataExpectedValue.innerHTML = `<option value="">No catalog value loaded</option>`;
         return;
       }
-      metadataParameter.innerHTML = entries.map(([key, value]) => `<option value="${esc(key)}">${esc(key)} = ${esc(typeof value === "object" ? JSON.stringify(value) : value)}</option>`).join("");
-      if (!metadataParameter.value || !entries.some(([key]) => key === metadataParameter.value)) {
-        metadataParameter.value = entries[0][0];
+      metadataParameter.innerHTML = parameters
+        .map((item) => `<option value="${esc(item.key)}">${esc(item.code)} | ${esc(item.label)}</option>`)
+        .join("");
+      if (!metadataParameter.value || !parameters.some((item) => item.key === metadataParameter.value)) {
+        metadataParameter.value = parameters[0].key;
       }
       syncMetadataExpectedValueFromSelection();
     }
 
     function syncMetadataExpectedValueFromSelection() {
-      const entries = Object.fromEntries(currentParameterEntries());
-      const value = entries[metadataParameter.value];
-      metadataExpectedValue.value = value == null ? "" : String(typeof value === "object" ? JSON.stringify(value) : value);
+      const parameter = selectedCatalogParameter();
+      const values = parameter && Array.isArray(parameter.values) ? parameter.values : [];
+      if (!values.length) {
+        metadataExpectedValue.innerHTML = `<option value="">No catalog values</option>`;
+        renderMetadataPreview();
+        return;
+      }
+      const previous = metadataExpectedValue.value;
+      metadataExpectedValue.innerHTML = values.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
+      metadataExpectedValue.value = values.includes(previous) ? previous : values[0];
       renderMetadataPreview();
     }
 
     function renderMetadataPreview() {
+      const mode = String(metadataMode.value || "presence").trim();
       const parameter = String(metadataParameter.value || "").trim();
       const expected = String(metadataExpectedValue.value || "").trim();
       const operation = String(metadataOperation.value || "").trim();
+      const role = String(metadataRole.value || "").trim();
+      const variant = String(metadataVariant.value || "").trim();
+      const ruleRef = String(metadataRuleRef.value || "").trim();
+      if (mode === "geometry_role") {
+        if (!parameter || !role || !variant) {
+          metadataPreview.value = "";
+          return;
+        }
+        metadataPreview.value = `SEM:role=${role};feature=${parameter};variant=${variant}${ruleRef ? `;rule_ref=${ruleRef}` : ""}`;
+        return;
+      }
+      if (mode === "operation_ref") {
+        const operationRef = ruleRef || variant;
+        if (!operationRef) {
+          metadataPreview.value = "";
+          return;
+        }
+        metadataPreview.value = parameter
+          ? `SEM:operation_ref=${operationRef};feature=${parameter}`
+          : `SEM:operation_ref=${operationRef}`;
+        return;
+      }
       if (!parameter || !expected || !operation) {
         metadataPreview.value = "";
         return;
       }
-      metadataPreview.value = `SEM:op=${operation};param=${parameter};eq=${expected}`;
+      const operator = operation === "hide_if" ? "!=" : "==";
+      metadataPreview.value = `SEM:feature=${parameter};presence=conditional;when=${parameter}${operator}${expected}`;
     }
 
     function renderMetadataTarget() {
@@ -589,6 +733,8 @@
       renderSelectionBox();
       focusSelectedEntityInInput();
       renderSessionMeta();
+      renderParameterCatalog();
+      renderRuleCatalog();
       renderMetadataTarget();
       renderMetadataPreview();
       renderLegend();
@@ -811,7 +957,8 @@
           entity_id: object.entity_id,
           operation: metadataOperation.value,
           parameter: metadataParameter.value,
-          expected_value: metadataExpectedValue.value
+          expected_value: metadataExpectedValue.value,
+          semantic_comment: metadataPreview.value
         })
       });
       state.session = data.session;
@@ -955,9 +1102,13 @@
     dxfInput.addEventListener("scroll", () => {
       lineGutter.scrollTop = dxfInput.scrollTop;
     });
+    metadataMode.addEventListener("change", renderMetadataPreview);
     metadataParameter.addEventListener("change", syncMetadataExpectedValueFromSelection);
     metadataOperation.addEventListener("change", renderMetadataPreview);
-    metadataExpectedValue.addEventListener("input", renderMetadataPreview);
+    metadataRole.addEventListener("change", renderMetadataPreview);
+    metadataVariant.addEventListener("input", renderMetadataPreview);
+    metadataRuleRef.addEventListener("change", renderMetadataPreview);
+    metadataExpectedValue.addEventListener("change", renderMetadataPreview);
 
     document.getElementById("startBtn").addEventListener("click", () => {
       createSession().catch((error) => setStatus(error.message, "error"));

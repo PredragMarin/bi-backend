@@ -22,6 +22,31 @@ This document defines the internal contract for `MOTHER DXF` in `bi-backend`.
 
 ---
 
+## Current Implementation Snapshot
+
+As of 2026-04-26, the repository implementation has moved beyond the original first useful slice in the Stage 1.5 direction.
+
+Currently implemented:
+
+- guided metadata authoring in `src/api/ui/mother_dxf.html`
+- canonical `SEM:` metadata generation for presence, geometry role, and operation reference records
+- parser support for `SEM:` key/value records and simple `when` expressions using `==` and `!=`
+- parameter catalog exposure from a module contract JSON artifact
+- MXD rule catalog exposure from a module contract JSON artifact
+- pre-child simulation preview for simple `presence=conditional` visibility evaluation
+
+Still not implemented:
+
+- ChildPlan generation
+- rule expression evaluator for catalog rules
+- operation execution / geometry transform engine
+- DBR execution
+- final approval-grade validation engine described later in this document
+
+This snapshot is descriptive of current code state. It does not replace the target architecture.
+
+---
+
 ## 1. Purpose
 
 `MOTHER DXF` is an internal thin DXF semantic mapper and stage-based processor for a controlled workflow:
@@ -310,6 +335,36 @@ Primary rule:
 SEM:key=value;key=value;key=value
 ```
 
+Current canonical authored forms are:
+
+Presence condition:
+
+```text
+999
+SEM:feature=TRECA_SPOJNICA;presence=conditional;when=TRECA_SPOJNICA==Da
+```
+
+Geometry role:
+
+```text
+999
+SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref=THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT
+```
+
+Prototype role:
+
+```text
+999
+SEM:role=prototype;feature=VANJSKI_PANEL;variant=TEST_PROTO
+```
+
+Operation reference:
+
+```text
+999
+SEM:operation_ref=WORKTOP_SINK_PAIR_PLACEMENT;feature=VANJSKI_PANEL
+```
+
 ### Binding rule
 
 `999` comment binds to the next entity.
@@ -327,11 +382,120 @@ For v0.1 contract, validation is intended to be strict:
 Current implementation:
 
 - preserves / passes through `999` comments if present
+- authors canonical `SEM:` comments through guided UI controls
+- currently upserts one active `SEM:` metadata comment per target entity through the UI
+- parses key/value metadata records into structured `semantic_metadata`
+- parses simple `when` expressions with `==` and `!=`
 
-Not yet implemented:
+Not yet fully implemented:
 
-- rich metadata authoring UX
+- multi-record metadata authoring per entity
 - full strict metadata editing workflow in UI
+- `AND` / `OR` / range expression parsing
+- catalog rule execution
+
+---
+
+## 8A. Three-Level Enrichment Model
+
+Mother DXF enrichment follows one generic three-level model.
+
+This model is not tied to one specific part.
+
+It is intended to hold across:
+
+- `MXD`
+- future `INOX`
+- other future product families that adopt the same DCM contract
+
+### Level 1: 9-Layer Dimensional Semantics
+
+First-level enrichment is dimensional and positional.
+
+It is carried through:
+
+- primary `9-layer` assignment
+- whole-object / whole-block semantic placement
+- relevant-object classification before metadata interpretation
+
+This level remains primary.
+
+Every object must first be understandable through dimensional semantics alone as far as that is possible.
+
+### Level 2: `999` Metadata for Presence / Variant Intent
+
+Second-level enrichment carries conditional inclusion intent over already classified geometry.
+
+Typical meanings at this level are:
+
+- `presence`
+- `variant`
+- `role`
+- `exclusive_group`
+- `instance`
+
+Typical examples:
+
+```text
+999
+SEM:feature=TRECA_SPOJNICA;presence=conditional;when=TRECA_SPOJNICA==Da
+```
+
+```text
+999
+SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref=THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT
+```
+
+Purpose of this level:
+
+- decide whether an entity participates
+- decide which pre-expanded variant is eligible
+- keep Mother DXF geometry unchanged while carrying decision intent
+
+### Level 3: Rule-Driven / Operation-Driven Transform Intent
+
+Third-level enrichment carries downstream execution intent for child generation.
+
+This level does not execute geometry changes inside Mother DXF.
+
+It only declares the logic and references needed later by:
+
+- rule evaluation
+- `ChildPlan`
+- child materialization
+
+Typical meanings at this level are:
+
+- `rule_ref`
+- `operation_ref`
+- future `geometry=offset;axis=...;ref=...`
+- future `ref=@FAMILY.KEY`
+
+This level is where profile-specific logic enters the flow.
+
+Important distinction:
+
+- the structure of this level is generic
+- the catalog content is profile-specific
+
+That means:
+
+- `MXD` and `INOX` may use different parameter spaces, rules, and operations
+- but they should still fit the same three-level enrichment architecture
+
+### Generic Rule
+
+The three levels are cumulative, not competing.
+
+Interpretation order is:
+
+1. dimensional semantics first
+2. presence / variant metadata second
+3. rule / operation intent third
+
+Metadata must not be used to bypass missing dimensional classification.
+
+Rule or operation references must not be used as substitutes for missing metadata structure.
 
 ---
 
@@ -512,7 +676,126 @@ Current v0.1 structure preserves that direction by:
 
 ---
 
-## 15. Repo Boundary Mapping
+## 15. Guided Metadata Authoring
+
+The current DCM UI includes guided metadata authoring for controlled enrichment.
+
+Supported authoring modes:
+
+- `Presence condition`
+- `Geometry role`
+- `Operation reference`
+
+`Presence condition` builds metadata of this form:
+
+```text
+SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}=={VALUE}
+SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}!={VALUE}
+```
+
+`Geometry role` builds metadata of this form:
+
+```text
+SEM:role={variant|prototype|anchor|reference};feature={PARAMETER_KEY};variant={VARIANT_ID}
+```
+
+If a rule is selected, `Geometry role` may append:
+
+```text
+;rule_ref={RULE_ID}
+```
+
+`Operation reference` builds metadata of this form:
+
+```text
+SEM:operation_ref={OPERATION_OR_RULE_ID};feature={PARAMETER_KEY}
+```
+
+Current limitation:
+
+- `Variant / operation id` remains a text field until a Variant Catalog / Operation Catalog exists.
+- `Rule ref` is selected from the current rule catalog.
+- The UI builds metadata records; it does not execute rule or operation semantics.
+
+---
+
+## 16. Parameter Catalog
+
+Parameter Catalog defines the controlled parameter vocabulary used during Mother DXF authoring.
+
+Current artifact:
+
+- `src/modules/mother_dxf_v1/contracts/parameter_catalog_legacy_door_v0.json`
+
+Current use:
+
+- drives the Metadata Authoring `Parameter` dropdown
+- drives enum value choices for `Expected value`
+- prevents free typing of known feature keys and known enum values
+
+Parameter Catalog is not the same as `Config Parameter Set`.
+
+- Parameter Catalog defines the possible parameter space.
+- Config Parameter Set is one concrete case/sample point in that space.
+
+Current status:
+
+- implemented as a module contract JSON artifact
+- loaded by `src/modules/mother_dxf_v1/module_runtime.js`
+- exposed to the UI through `projectViewModel`
+
+Future direction:
+
+- move catalog loading behind a Core Shell catalog service or BI database interface when the catalog model stabilizes.
+
+---
+
+## 17. Rule Catalog
+
+Rule Catalog defines named domain rules that may be referenced from Mother DXF metadata.
+
+Current artifact:
+
+- `src/modules/mother_dxf_v1/contracts/rule_catalog_mxd_door_v0.json`
+
+Current MXD draft rules:
+
+- `THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT`
+- `THIRD_HINGE_BELOW_SECOND_FALLBACK`
+
+Current use:
+
+- drives the Metadata Authoring `Rule ref` dropdown
+- allows `SEM:` metadata to refer to a known rule id instead of embedding full domain logic in DXF comments
+
+Current limitation:
+
+- rule catalog is visible and selectable
+- rule expressions are not yet evaluated by the runtime
+- approval-grade validation over rule expressions is not yet implemented
+
+Rule Catalog is domain/profile-specific. It is not a universal hardcoded rule table for all future products.
+
+---
+
+## 18. Current Limitations
+
+The current implementation intentionally stops before execution layers.
+
+Not implemented:
+
+- ChildPlan derivation
+- rule expression evaluation
+- operation catalog loading
+- operation execution
+- geometry copy / mirror / translate materialization
+- DBR batch execution
+
+Current metadata authoring can describe intent and references. It does not yet prove that a downstream child DXF can be generated for every authored record.
+
+---
+
+## 19. Repo Boundary Mapping
 
 ### `src/modules`
 
@@ -534,11 +817,13 @@ This follows the repository layering contract:
 
 ---
 
-## 16. Current Implemented Files
+## 20. Current Implemented Files
 
 Current first useful slice is implemented primarily in:
 
 - `src/modules/mother_dxf_v1/module_runtime.js`
+- `src/modules/mother_dxf_v1/contracts/parameter_catalog_legacy_door_v0.json`
+- `src/modules/mother_dxf_v1/contracts/rule_catalog_mxd_door_v0.json`
 - `src/core_shell/dxf/index.js`
 - `src/core_shell/geometry/index.js`
 - `src/core_shell/storage/mother_dxf_store.js`
@@ -547,7 +832,7 @@ Current first useful slice is implemented primarily in:
 
 ---
 
-## 17. Change Discipline
+## 21. Change Discipline
 
 Future changes to this contract should explicitly state:
 
@@ -556,7 +841,7 @@ Future changes to this contract should explicitly state:
 - whether it changes first useful slice behavior
 - whether it is backward-compatible for stored mother drafts
 
-## 18. Structural Invariant
+## 22. Structural Invariant
 
 Mother DXF is enriched raw DXF. It is not a derived format or parsed intermediate.
 
@@ -576,3 +861,52 @@ Mother DXF must be a valid, non-parametrised DXF at all times —
 functional in any viewer or postprocessor without prior transformation.
 
 This is a contract without exception.
+
+## 23. Validation Gate
+
+Mother DXF cannot be declared approved without a completed validation run.
+
+The validator is an integral part of DCM. It uses the same evaluation engine
+as the simulator and the batch runner.
+
+The validator operates in three modes:
+
+Auto mode:
+- Runs all parameter combinations according to a configured grid and pitch.
+- No user interaction during run.
+- Output is a complete validation report with PASS / WARNING / FAIL per combination.
+
+Step mode:
+- User advances one combination at a time.
+- Each step renders geometry in the viewer.
+- Used for edge case inspection and WARNING review.
+
+Focused mode:
+- User locks one or more parameters to fixed values.
+- Validator runs combinations only over the free parameters.
+- Used for conflict-suspicious parameter subsets.
+
+Grid configuration:
+- Numeric parameters use min/max from configurator segment and a user-defined pitch.
+- Enum and boolean parameters use all defined variants by default.
+- Engine calculates total combination count before run and displays it to the user.
+- User may adjust grid or pitch before confirming run.
+
+Conflict signals:
+- Validator checks predefined conflict signal types per Mother DXF.
+- Signal types include: overlap, out_of_bounds, negative_space, missing_variant, anchor_resolve_fail.
+- Conflict signals are configurable per Mother DXF, not hardcoded in engine.
+
+Result grades:
+- PASS: geometrically clean, no conflict signals triggered.
+- WARNING: conflict candidate, not a certain failure, requires human review.
+- FAIL: certain geometric conflict or invalid state.
+
+WARNING and FAIL results are individually accessible in Step mode directly
+from the validation report.
+
+Approval gate rule:
+- All FAIL results must be resolved before Mother DXF can be approved.
+- WARNING results must be explicitly reviewed and confirmed by the authoring engineer.
+- A full Auto mode run across all allowed parameter ranges with configured
+  conflict signals must complete before final approval is granted.

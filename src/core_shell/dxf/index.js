@@ -261,20 +261,136 @@ function readEntityPairs(pairs, startIndex) {
   return out;
 }
 
+function sanitizeEntity(entity) {
+  if (!entity || !SCOPED_ENTITY_TYPES.has(String(entity.type || "").toUpperCase())) {
+    return null;
+  }
+  const next = {
+    ...entity,
+    preComments: [],
+    pairs: roundEntityPairs({
+      pairs: clonePairs(entity.pairs)
+        .filter((pair) => String(pair.code) !== "999")
+        .map((pair) => ({
+          code: String(pair.code),
+          value: String(pair.value)
+        }))
+    })
+  };
+  setPairValue(next, "8", "0");
+  return next;
+}
+
+function sanitizeBlock(block) {
+  if (!block) return null;
+  const entities = (Array.isArray(block.entities) ? block.entities : [])
+    .map(sanitizeEntity)
+    .filter(Boolean);
+  return {
+    ...block,
+    headerPairs: clonePairs(block.headerPairs)
+      .filter((pair) => String(pair.code) !== "999")
+      .map((pair) => ({
+        code: String(pair.code),
+        value: String(pair.value)
+      })),
+    entities,
+    endblkPairs: clonePairs(block.endblkPairs || [{ code: "0", value: "ENDBLK" }])
+      .filter((pair) => String(pair.code) !== "999")
+      .map((pair) => ({
+        code: String(pair.code),
+        value: String(pair.value)
+      }))
+  };
+}
+
 function sanitizeDocument(rawText) {
-  return parseDocument(rawText);
+  const parsed = parseDocument(rawText);
+  return {
+    sections: [
+      { name: "BLOCKS" },
+      { name: "ENTITIES" }
+    ],
+    blocks: (Array.isArray(parsed.blocks) ? parsed.blocks : [])
+      .map(sanitizeBlock)
+      .filter(Boolean),
+    entities: (Array.isArray(parsed.entities) ? parsed.entities : [])
+      .map(sanitizeEntity)
+      .filter(Boolean)
+  };
+}
+
+function assignPairLineNumbers(pairs, lineCursor) {
+  const nextPairs = (Array.isArray(pairs) ? pairs : []).map((pair) => {
+    const nextPair = {
+      code: String(pair.code),
+      value: String(pair.value),
+      lineStart: lineCursor,
+      lineEnd: lineCursor + 1
+    };
+    lineCursor += 2;
+    return nextPair;
+  });
+  return { pairs: nextPairs, lineCursor };
+}
+
+function reindexDocumentSources(document) {
+  if (!document || typeof document !== "object") return document;
+  let lineCursor = 1;
+
+  lineCursor += 4;
+
+  for (const block of document.blocks || []) {
+    const headerResult = assignPairLineNumbers(block.headerPairs || [], lineCursor);
+    block.headerPairs = headerResult.pairs;
+    const blockLineStart = block.headerPairs[0]?.lineStart || lineCursor;
+    lineCursor = headerResult.lineCursor;
+
+    for (const entity of block.entities || []) {
+      const commentResult = assignPairLineNumbers(entity.preComments || [], lineCursor);
+      entity.preComments = commentResult.pairs;
+      lineCursor = commentResult.lineCursor;
+
+      const pairResult = assignPairLineNumbers(entity.pairs || [], lineCursor);
+      entity.pairs = pairResult.pairs;
+      entity.source = {
+        line_start: entity.preComments[0]?.lineStart || entity.pairs[0]?.lineStart || 0,
+        line_end: entity.pairs[entity.pairs.length - 1]?.lineEnd || entity.preComments[entity.preComments.length - 1]?.lineEnd || 0
+      };
+      lineCursor = pairResult.lineCursor;
+    }
+
+    const endblkResult = assignPairLineNumbers(block.endblkPairs || [{ code: "0", value: "ENDBLK" }], lineCursor);
+    block.endblkPairs = endblkResult.pairs;
+    block.source = {
+      line_start: blockLineStart,
+      line_end: block.endblkPairs[block.endblkPairs.length - 1]?.lineEnd || blockLineStart
+    };
+    lineCursor = endblkResult.lineCursor;
+  }
+
+  lineCursor += 4;
+
+  for (const entity of document.entities || []) {
+    const commentResult = assignPairLineNumbers(entity.preComments || [], lineCursor);
+    entity.preComments = commentResult.pairs;
+    lineCursor = commentResult.lineCursor;
+
+    const pairResult = assignPairLineNumbers(entity.pairs || [], lineCursor);
+    entity.pairs = pairResult.pairs;
+    entity.source = {
+      line_start: entity.preComments[0]?.lineStart || entity.pairs[0]?.lineStart || 0,
+      line_end: entity.pairs[entity.pairs.length - 1]?.lineEnd || entity.preComments[entity.preComments.length - 1]?.lineEnd || 0
+    };
+    lineCursor = pairResult.lineCursor;
+  }
+
+  lineCursor += 2;
+  return document;
 }
 
 function serializeDocument(document) {
   const pairs = [];
-
-  pairs.push({ code: "0", value: "SECTION" });
-  pairs.push({ code: "2", value: "HEADER" });
-  pairs.push({ code: "0", value: "ENDSEC" });
-
-  pairs.push({ code: "0", value: "SECTION" });
-  pairs.push({ code: "2", value: "TABLES" });
-  pairs.push({ code: "0", value: "ENDSEC" });
 
   pairs.push({ code: "0", value: "SECTION" });
   pairs.push({ code: "2", value: "BLOCKS" });
@@ -474,6 +590,7 @@ module.exports = {
   SCOPED_ENTITY_TYPES,
   ALLOWED_PRIMARY_LAYERS,
   sanitizeDocument,
+  reindexDocumentSources,
   serializeDocument,
   listRelevantObjects,
   applyPrimaryLayer,
