@@ -25,6 +25,11 @@ function exportFile(rootDir, sessionId) {
   return path.join(rootDir, "exports", `${sessionId}_mother.dxf`);
 }
 
+function childExportFile(rootDir, sessionId, suffix) {
+  const safeSuffix = String(suffix || "child").replace(/[^a-zA-Z0-9_-]/g, "_");
+  return path.join(rootDir, "children", `${sessionId}_${safeSuffix}.dxf`);
+}
+
 async function saveSession({ rootDir, session }) {
   const base = rootDir || defaultRoot();
   const filePath = sessionFile(base, session.session_id);
@@ -72,10 +77,19 @@ async function saveExport({ rootDir, sessionId, dxfText }) {
   return { filePath };
 }
 
+async function saveChildExport({ rootDir, sessionId, dxfText, suffix }) {
+  const base = rootDir || defaultRoot();
+  const filePath = childExportFile(base, sessionId, suffix);
+  await ensureDir(path.dirname(filePath));
+  await fsp.writeFile(filePath, String(dxfText || ""), "utf8");
+  return { filePath };
+}
+
 module.exports = {
   defaultRoot,
   saveSession,
   loadSession,
   listSessions,
-  saveExport
+  saveExport,
+  saveChildExport
 };

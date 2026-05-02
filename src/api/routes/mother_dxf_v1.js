@@ -106,6 +106,42 @@ function createMotherDxfRouterV1() {
     }
   });
 
+  router.post("/sessions/:sessionId/document-sem", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.updateDocumentSemMetadata({
+        sessionId: String(req.params.sessionId || ""),
+        payload: {
+          nominal_width: req.body?.nominal_width,
+          nominal_height: req.body?.nominal_height,
+          family: req.body?.family,
+          product: req.body?.product,
+          part: req.body?.part
+        }
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_UPDATE_DOCUMENT_SEM_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/topo", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.updateTopoMetadata({
+        sessionId: String(req.params.sessionId || ""),
+        topoText: String(req.body?.topo_text || "")
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_UPDATE_TOPO_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.post("/sessions/:sessionId/simulate", async (req, res) => {
     try {
       const result = await motherDxfRuntime.simulateSession({
@@ -119,6 +155,48 @@ function createMotherDxfRouterV1() {
     } catch (err) {
       res.status(400).json({
         error: "MOTHER_DXF_SIMULATE_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/execution-check/kskr", async (req, res) => {
+    try {
+      const result = await motherDxfRuntime.runKskrExecutionCheck({
+        sessionId: String(req.params.sessionId || ""),
+        parameterSet: req.body?.parameters || null
+      });
+      res.json({
+        ok: true,
+        session: motherDxfRuntime.projectViewModel(result.session),
+        execution_check: result.execution_check
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_KSKR_EXECUTION_CHECK_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/child/no-topo", async (req, res) => {
+    try {
+      const parameterSet = req.body?.config_parameter_set || req.body || {};
+      const result = await motherDxfRuntime.generateChildDxfNoTopoForSession({
+        sessionId: String(req.params.sessionId || ""),
+        parameterSet
+      });
+      const summary = result.generation_summary || {};
+      res.setHeader("Content-Type", "application/dxf; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${req.params.sessionId}_child_no_topo.dxf"`);
+      res.setHeader("X-Mother-DXF-Child-Mode", String(summary.mode || "child_no_topo_poc_v0"));
+      res.setHeader("X-Mother-DXF-Included-Count", String(summary.included_count ?? ""));
+      res.setHeader("X-Mother-DXF-Excluded-Count", String(summary.excluded_count ?? ""));
+      res.setHeader("X-Mother-DXF-Unsupported-Geometry-Ops", String((summary.unsupported_geometry_ops || []).length));
+      res.send(result.dxf_text);
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_CHILD_NO_TOPO_FAILED",
         message: err && err.message ? err.message : String(err)
       });
     }

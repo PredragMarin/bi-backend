@@ -14,15 +14,21 @@
       "key": "SIRINA_VRATA",
       "code": "2",
       "label": "Sirina vrata",
-      "type": "enum",
-      "values": ["80cm"]
+      "type": "number",
+      "unit": "mm",
+      "min": 670,
+      "max": 1100,
+      "step": 10
     },
     "VISINA_VRATA": {
       "key": "VISINA_VRATA",
       "code": "3",
       "label": "Visina vrata",
-      "type": "enum",
-      "values": ["204cm"]
+      "type": "number",
+      "unit": "mm",
+      "min": 1960,
+      "max": 2400,
+      "step": 10
     },
     "VANJSKA_VRATA": {
       "key": "VANJSKA_VRATA",
@@ -35,8 +41,11 @@
       "key": "SKRACENJE",
       "code": "4",
       "label": "Skracenje",
-      "type": "enum",
-      "values": ["0mm"]
+      "type": "number",
+      "unit": "mm",
+      "min": -50,
+      "max": 30,
+      "step": 5
     },
     "SPIJUNKA_VISINA": {
       "key": "SPIJUNKA_VISINA",

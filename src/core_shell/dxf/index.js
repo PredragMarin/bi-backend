@@ -306,11 +306,30 @@ function sanitizeBlock(block) {
 
 function sanitizeDocument(rawText) {
   const parsed = parseDocument(rawText);
+  const documentPreComments = [];
+  const extractDocumentPreComments = (entity) => {
+    const comments = Array.isArray(entity?.preComments) ? entity.preComments : [];
+    for (const pair of comments) {
+      const value = String(pair?.value || "").trim();
+      if (String(pair?.code) === "999" && /^SEM:/i.test(value) && /(^|;)document\s*=\s*true($|;)/i.test(value.slice(4))) {
+        documentPreComments.push({ code: "999", value });
+      }
+    }
+  };
+  for (const block of Array.isArray(parsed.blocks) ? parsed.blocks : []) {
+    for (const entity of Array.isArray(block.entities) ? block.entities : []) {
+      extractDocumentPreComments(entity);
+    }
+  }
+  for (const entity of Array.isArray(parsed.entities) ? parsed.entities : []) {
+    extractDocumentPreComments(entity);
+  }
   return {
     sections: [
       { name: "BLOCKS" },
       { name: "ENTITIES" }
     ],
+    preComments: documentPreComments,
     blocks: (Array.isArray(parsed.blocks) ? parsed.blocks : [])
       .map(sanitizeBlock)
       .filter(Boolean),
@@ -371,6 +390,10 @@ function reindexDocumentSources(document) {
 
   lineCursor += 4;
 
+  const documentCommentResult = assignPairLineNumbers(document.preComments || [], lineCursor);
+  document.preComments = documentCommentResult.pairs;
+  lineCursor = documentCommentResult.lineCursor;
+
   for (const entity of document.entities || []) {
     const commentResult = assignPairLineNumbers(entity.preComments || [], lineCursor);
     entity.preComments = commentResult.pairs;
@@ -406,6 +429,7 @@ function serializeDocument(document) {
 
   pairs.push({ code: "0", value: "SECTION" });
   pairs.push({ code: "2", value: "ENTITIES" });
+  pairs.push(...clonePairs(document.preComments || []));
   for (const entity of document.entities || []) {
     pairs.push(...clonePairs(entity.preComments));
     pairs.push(...clonePairs(entity.pairs));

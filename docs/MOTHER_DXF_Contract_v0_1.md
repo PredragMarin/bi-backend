@@ -383,15 +383,13 @@ Current implementation:
 
 - preserves / passes through `999` comments if present
 - authors canonical `SEM:` comments through guided UI controls
-- currently upserts one active `SEM:` metadata comment per target entity through the UI
+- supports multiple `SEM:` metadata comments per target entity and preserves their order
 - parses key/value metadata records into structured `semantic_metadata`
-- parses simple `when` expressions with `==` and `!=`
+- parses simple `when` expressions with `==`, `!=`, `>`, `>=`, `<`, `<=`, and flat `AND` / `OR`
 
 Not yet fully implemented:
 
-- multi-record metadata authoring per entity
 - full strict metadata editing workflow in UI
-- `AND` / `OR` / range expression parsing
 - catalog rule execution
 
 ---
@@ -691,6 +689,9 @@ Supported authoring modes:
 ```text
 SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}=={VALUE}
 SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}!={VALUE}
+SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}>={VALUE}
+SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}=={VALUE} AND {OTHER_PARAMETER}>={OTHER_VALUE}
+SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}=={VALUE} OR {PARAMETER_KEY}=={OTHER_VALUE}
 ```
 
 `Geometry role` builds metadata of this form:
@@ -716,6 +717,72 @@ Current limitation:
 - `Variant / operation id` remains a text field until a Variant Catalog / Operation Catalog exists.
 - `Rule ref` is selected from the current rule catalog.
 - The UI builds metadata records; it does not execute rule or operation semantics.
+
+---
+
+## 15A. Metadata Authoring Boundary
+
+Mother DXF authoring treba preferirati explicitni `SEM` metadata zapis kada se intent može izraziti lokalno, čitljivo i jednoznačno nad postojećim entityjem.
+
+To uključuje:
+
+- presence gating
+- variant selection
+- cutout selection
+- threshold uvjete
+- male `AND` / `OR` kombinacije
+- komplementarne fallback grane
+
+`Rule Catalog` nije default authoring put.
+
+On se koristi tek kada:
+
+- isti izraz treba reusable named rule
+- logika više nije dovoljno čitljiva iz samog `SEM` zapisa
+- treba profile-specific domain meaning
+- uvjet prelazi simple local metadata expression
+
+Operational principle:
+
+- prvo `SEM-simple`
+- zatim `rule_ref` samo kada explicitni metadata authoring više nije dobar ili održiv prikaz intenta
+
+---
+
+## 15B. `TOPO` v0 Boundary
+
+`TOPO` je file-level `999` metadata family za part-level topology behavior.
+
+`TOPO` je odvojen od entity-level `SEM` familyja.
+
+- `SEM` ostaje local entity metadata
+- `TOPO` opisuje part-level topology mode
+- `TOPO` i `SEM` se ne miješaju
+
+Prvi `TOPO` mode u `v0` je:
+
+```text
+999
+TOPO:mode=fixed_envelope_slide;sliding_band=L;fixed_dimension=X;inner_side=RIGHT;outer_side=LEFT
+```
+
+Za `fixed_envelope_slide` vrijedi:
+
+- sliding entiteti assignaju se ručno kroz postojeći forced layer assignment workflow
+- resolver ne radi automatic band detection
+- anchor entiteti su `A` layer
+- `inner` / `outer` anchor razlikovanje je geometrijsko u odnosu na sliding band bbox
+
+Structural invariant i dalje vrijedi:
+
+- Mother DXF ostaje enriched raw DXF
+- `TOPO` metadata ne mijenja geometriju
+- simulation resolver koristi `TOPO` samo za preview/validation
+- produkcijska geometrijska materializacija ostaje child generation concern
+
+Approved Mother DXF must carry TOPO metadata physically in DXF `999` rows when topology behavior is required.
+TOPO syntax and field semantics are owned by `DXF_INSTRUCTIONSET_CONTRACT_v0.md`.
+Session sidecar TOPO state is authoring/runtime convenience only, not canonical approved artifact state.
 
 ---
 

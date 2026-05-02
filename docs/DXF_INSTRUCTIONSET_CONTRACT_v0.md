@@ -679,6 +679,271 @@ Interpretation boundary:
 
 ---
 
+## 14A. `SEM-simple` vs `Rule Catalog` Boundary
+
+`InstructionSet` mora jasno razlikovati dva authoring režima:
+
+- explicitni `SEM-simple`
+- catalog-backed `rule_ref`
+
+### `SEM-simple`
+
+`SEM-simple` je canonical izbor kada se intent može izraziti izravno u jednom ili više vezanih `SEM:` metadata zapisa nad istim entityjem.
+
+`SEM-simple` je ispravan kada vrijedi sve ili gotovo sve od sljedećeg:
+
+- uvjet je lokalno vezan uz jedan entity ili `INSERT`
+- intent je jasan i ograničen na:
+  - inclusion / exclusion
+  - variant selection
+  - cutout selection
+  - jednostavni presence gating
+- izraz koristi samo jednostavne operatore:
+  - `==`
+  - `!=`
+  - `>`
+  - `>=`
+  - `<`
+  - `<=`
+- logika koristi samo plitke logičke spojeve:
+  - `AND`
+  - `OR`
+- zapis ostaje čitljiv bez vanjskog lookup-a u Rule Catalog
+- fallback ponašanje proizlazi iz komplementarnog ili drugog eksplicitnog `SEM` zapisa
+- generic engine može evaluirati uvjet bez profile-specific proceduralne logike
+
+Tipični `SEM-simple` primjeri su:
+
+- feature je uključen, a visinski prag bira gornju ili donju varijantu
+- jedan cutout vrijedi za skup varijanti brave, drugi za drugi skup varijanti
+- jedan existing block ostaje aktivan samo kad parametar ili kombinacija nekoliko parametara zadovolji jednostavan uvjet
+
+Pravilo evaluacije višestrukih `presence=conditional` redova na istom entityju:
+
+- više uvjeta za isti parametar s `==` operatorom tretiraju se kao `OR` - dovoljno je da jedan bude true
+- uvjeti za različite parametre tretiraju se kao `AND` - svi moraju biti true
+- `!=` uvjeti tretiraju se kao `AND` - svi exclusion uvjeti moraju biti zadovoljeni
+
+Primjer:
+
+```text
+999
+SEM:feature=BRAVA;presence=conditional;when=BRAVA==CILINDAR
+999
+SEM:feature=BRAVA;presence=conditional;when=BRAVA==elektricna D-smart
+```
+
+Rezultat: `BRAVA` je vidljiva ako je `BRAVA==CILINDAR` OR `BRAVA==elektricna D-smart`.
+
+### `Rule Catalog`
+
+`rule_ref` je canonical izbor kada intent više nije dovoljno jasan ili održiv kao eksplicitni `SEM-simple` zapis.
+
+`Rule Catalog` treba koristiti kada vrijedi bilo što od sljedećeg:
+
+- isto pravilo se ponavlja na više entityja, partova ili profileova
+- logika više nije lako čitljiva iz samog metadata zapisa
+- treba profile-specific domain knowledge koji ne treba curiti u generic metadata layer
+- pravilo predstavlja stabilan reusable business izraz kojem treba dati trajni identitet
+- uvjet prelazi simple local expression i postaje formula, policy ili složen decision rule
+- odluka ovisi o širem planning ili operation contextu, a ne samo o lokalnom entity intentu
+- downstream execution treba prepoznati named rule kao stabilan semantic marker
+
+### Normativno pravilo
+
+Sustav treba preferirati `SEM-simple` kad god se traženi intent može izraziti:
+
+- lokalno
+- čitljivo
+- jednoznačno
+- bez skrivene domain logike
+
+`Rule Catalog` je escalation path.
+
+On nije default zamjena za jednostavne i umjereno složene lokalne uvjete.
+
+### Boundary examples
+
+Ovo su tipični `SEM-simple` slučajevi:
+
+- `3BRITVELA_GORNJA` je uključena kada je feature prisutan, a dodatni uvjet `VISINA_VRATA>=204cm` potvrdi gornju varijantu
+- `3BRITVELA_DONJA` je komplementarni fallback za isti feature kada vrijedi niži prag
+- `CUTOUT_BRAVA` ostaje aktivan za skup varijanti poput `CILINDAR`, `NUKI`, `DSMART`
+- `CUTOUT_COMFORTLOCK` ostaje aktivan za skup varijanti poput `COMFORTLOCK`, `EUROPA_PLUS`
+
+Ovo su tipični `Rule Catalog` slučajevi:
+
+- isti named rule treba reuse na više family-ja partova
+- odluka uključuje profile-specific izvedbena pravila koja nisu prikladna za direktan `SEM` zapis
+- logika više nije pregledna bez dodatnog tumačenja
+- named rule treba postati approval-grade referenca u planning i execution layeru
+
+---
+
+## 14B. `TOPO` v0
+
+`TOPO` je file-level `999` metadata family.
+
+`TOPO` je odvojen od entity-level `SEM` familyja.
+
+- `SEM` ostaje entity-level semantic metadata
+- `TOPO` opisuje part-level topology behavior
+- `TOPO` i `SEM` su strogo odvojeni
+
+`TOPO` ne zamjenjuje `9-layer` zoning.
+
+`9-layer` ostaje local zoning model.
+
+`TOPO` dodaje file-level behavior mode nad već klasificiranom geometrijom.
+
+### `fixed_envelope_slide`
+
+Prvi `TOPO` mode u `v0` je:
+
+```text
+999
+TOPO:mode=fixed_envelope_slide;sliding_band=L;fixed_dimension=X;inner_side=RIGHT;outer_side=LEFT
+```
+
+Napomena: ovaj 5-field oblik je parcijalan topology hint i nije production-complete executable contract.
+Za production intent `fixed_envelope_slide` mora nositi i executable fields opisane ispod.
+
+Semantika polja:
+
+- `sliding_band`
+- koji primary layer nosi sliding entitete
+- `fixed_dimension`
+- os po kojoj se slide događa
+- `inner_side`
+- koja strana sliding banda je inner anchor
+- `outer_side`
+- koja strana sliding banda je outer anchor
+
+### Required executable fields for `fixed_envelope_slide`
+
+Za executable `fixed_envelope_slide` intent potrebna su dodatna polja:
+
+- `parameter` — configurator key koji upravlja slideom
+- `nominal` — nominalna dimenzija u Mother DXF-u
+- `delta_rule` — formula za izračun delta, npr. `config_minus_nominal`
+- `delta_factor` — faktor primjene delte, npr. `-0.5` ili `1.0`
+- `follower_policy` — kako se ponašaju rigid followers; v0 vrijednost: `rigid`
+- `trim_policy` — što se radi s `LINE` geometrijom; v0 vrijednost: `rejoin`
+
+### X-axis machining convention
+
+Za `fixed_envelope_slide` v0 vrijedi:
+
+- v0 envelope axis je `X`
+- `LEFT` / `RIGHT` se čitaju duž machine-local `X` osi
+- ovo je machining constraint choice za v0, ne geometrijska nužnost
+
+### Chain vocabulary
+
+TOPO v0 koristi sljedeći chain vocabulary:
+
+- `LES` = Left End Scrap
+- `LEC` = Left End Cutout
+- `PA` = Part A
+- `LCC` = Left Center Cutout
+- `CS` = Center Scrap
+- `RCC` = Right Center Cutout
+- `PB` = Part B
+- `REC` = Right End Cutout
+- `RES` = Right End Scrap
+
+Allowed chains:
+
+- single part: `LES - LEC - PA - REC - RES`
+- two parts: `LES - LEC - PA - LCC - CS - RCC - PB - REC - RES`
+
+### Entity roles
+
+Za executable `fixed_envelope_slide` draft vrijede sljedeće role:
+
+- `mover` — entitet koji se pomiče sa sliding operacijom
+- `follower` — rezervirano, nije potrebno za LBRA POC
+- anchored default — entitet bez eksplicitne role oznake
+
+### Executable draft syntax
+
+File-level, single part:
+
+```text
+999
+TOPO:mode=fixed_envelope_slide;group=LBRA_X_SLIDE;chain=single_part;axis=X;parameter=SIRINA_VRATA;nominal=890;delta_rule=config_minus_nominal;lec_delta_factor=-1.0;rec_delta_factor=1.0;trim_policy=rejoin
+```
+
+File-level, two parts:
+
+```text
+999
+TOPO:mode=fixed_envelope_slide;group=LBRA_X_SLIDE;chain=two_part;axis=X;parameter=SIRINA_VRATA;nominal=890;delta_rule=config_minus_nominal;lec_delta_factor=-1.0;lcc_delta_factor=-1.0;rcc_delta_factor=1.0;rec_delta_factor=1.0;trim_policy=rejoin
+```
+
+Entity-level:
+
+```text
+999
+TOPO:role=mover;group=LBRA_X_SLIDE;zone=LEC
+```
+
+### Anchor identifikacija
+
+Za `fixed_envelope_slide` vrijedi:
+
+- anchor entiteti su `A` layer
+- sliding entiteti su `L` layer members kada je `sliding_band=L`
+
+Razlikovanje `inner` / `outer` anchor strane je geometrijsko, ne po layer tipu.
+
+Za `sliding_band=L` i `fixed_dimension=X`:
+
+- `A` entiteti čiji je `bbox.centerX < L_band_bbox.minX` tretiraju se kao `outer anchor`
+- `A` entiteti čiji je `bbox.centerX > L_band_bbox.maxX` tretiraju se kao `inner anchor`
+
+### Band membership
+
+Band membership se ne detektira automatski.
+
+Inženjer ručno assigna sliding entitete kroz postojeći forced layer assignment workflow.
+
+Resolver čita postojeći layer assignment iz sessiona.
+
+To znači:
+
+- nema automatic band detection
+- nema sliding band heuristics
+- nema nove auto layer logike
+
+### Structural invariant
+
+Mother DXF ostaje enriched raw DXF.
+
+Normativno pravilo: `TOPO` mora biti fizički prisutan kao `999` red u approved Mother DXF-u kada je topology behavior potreban.
+
+Session sidecar metadata nije dovoljan kao canonical approved artifact state.
+
+`TOPO` metadata ne mijenja geometriju u Mother DXF-u.
+
+Geometrijska materializacija događa se samo u child generation layeru.
+
+Simulation resolver smije koristiti `TOPO` za preview i validation.
+
+Simulation resolver nije produkcijski output layer.
+
+Status note: current implementation stores partial `TOPO` metadata for authoring/runtime convenience.
+
+Executable `TOPO` contract is not yet complete.
+
+UI i resolver još ne izvršavaju ovaj executable draft.
+
+Ovo je authoring contract target za sljedeći POC.
+
+Trenutna implementacija čuva parcijalni `TOPO` metadata.
+
+---
+
 ## 15. Relationship prema technology profileovima
 
 Generic `InstructionSet` parser radi:
@@ -737,13 +1002,11 @@ To dolazi u:
 Current implementation gaps:
 
 - parser postoji, ali full document-level `InstructionSet` aggregate još nije runtime artifact
-- guided UI trenutno upserta jedan active `SEM:` record po entityju
 - Rule Catalog se prikazuje i referencira, ali rule expression se ne evaluira
 - Operation Catalog nije implementiran
 - ChildPlan nije implementiran
 - approval-grade metadata validation nije implementiran
 - catalog binding errors još nisu puni blocking approval gate
-- multi-record authoring po entityju još nije UX capability
 
 ---
 

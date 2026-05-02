@@ -158,58 +158,181 @@
 
         <div class="card">
           <h2>Metadata Authoring</h2>
-          <div id="metadataTargetBox" class="meta" style="margin-bottom:10px">Select one relevant object to author `999` metadata.</div>
-          <label>Authoring mode
-            <select id="metadataMode">
-              <option value="presence">Presence condition</option>
-              <option value="geometry_role">Geometry role</option>
-              <option value="operation_ref">Operation reference</option>
-            </select>
-          </label>
-          <div class="grid-2">
-            <label>Operation
-              <select id="metadataOperation">
-                <option value="show_if">show_if</option>
-                <option value="hide_if">hide_if</option>
-              </select>
-            </label>
-            <label>Parameter
-              <select id="metadataParameter">
-                <option value="">No catalog loaded</option>
-              </select>
-            </label>
+          <div class="toolbar" style="margin-bottom:12px">
+            <button id="authoringStageTopoBtn" type="button" class="secondary">Stage 1: TOPO</button>
+            <button id="authoringStageSemBtn" type="button" class="secondary">Stage 2: SEM</button>
           </div>
-          <div class="grid-2" style="margin-top:10px">
-            <label>Geometry role
-              <select id="metadataRole">
-                <option value="variant">variant</option>
-                <option value="prototype">prototype</option>
-                <option value="anchor">anchor</option>
-                <option value="reference">reference</option>
+          <div id="authoringStageMeta" class="meta" style="margin-bottom:10px">Stage 1 definira part topology. Stage 2 otvara entity-level `SEM` authoring.</div>
+          <div id="documentSemPanel" style="margin-bottom:14px">
+            <div id="documentSemMeta" class="meta" style="margin-bottom:8px">Document properties not saved.</div>
+            <div class="grid-2">
+              <label>Nominal width
+                <input id="documentSemNominalWidth" type="number" step="1" min="0" placeholder="900" />
+              </label>
+              <label>Nominal height
+                <input id="documentSemNominalHeight" type="number" step="1" min="0" placeholder="2100" />
+              </label>
+            </div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>Family
+                <input id="documentSemFamily" type="text" placeholder="VRATA" />
+              </label>
+              <label>Product
+                <input id="documentSemProduct" type="text" placeholder="PPV" />
+              </label>
+            </div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>Part
+                <input id="documentSemPart" type="text" placeholder="KSKR" />
+              </label>
+            </div>
+            <div class="toolbar" style="margin-top:12px">
+              <button id="saveDocumentSemBtn" class="secondary" disabled>Save Document Properties</button>
+            </div>
+            <pre id="documentSemOut">{"ok":false,"note":"Document SEM not loaded yet."}</pre>
+          </div>
+          <div id="topoStagePanel">
+            <div id="topoMeta" class="meta" style="margin-bottom:8px">No active TOPO metadata.</div>
+            <div class="grid-2">
+              <label>TOPO mode
+                <select id="topoMode">
+                  <option value="">none</option>
+                  <option value="fixed_envelope_slide">fixed_envelope_slide</option>
+                </select>
+              </label>
+              <label>Sliding band
+                <select id="topoSlidingBand">
+                  <option value="L">L</option>
+                  <option value="R">R</option>
+                  <option value="T">T</option>
+                  <option value="B">B</option>
+                </select>
+              </label>
+            </div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>Fixed dimension
+                <select id="topoFixedDimension">
+                  <option value="X">X</option>
+                  <option value="Y">Y</option>
+                </select>
+              </label>
+              <label>Inner side
+                <select id="topoInnerSide">
+                  <option value="LEFT">LEFT</option>
+                  <option value="RIGHT">RIGHT</option>
+                  <option value="TOP">TOP</option>
+                  <option value="BOTTOM">BOTTOM</option>
+                </select>
+              </label>
+            </div>
+            <label style="margin-top:10px;display:block">Outer side
+              <select id="topoOuterSide">
+                <option value="LEFT">LEFT</option>
+                <option value="RIGHT">RIGHT</option>
+                <option value="TOP">TOP</option>
+                <option value="BOTTOM">BOTTOM</option>
               </select>
             </label>
-            <label>Variant / operation id
-              <input id="metadataVariant" type="text" placeholder="ABOVE_SECOND or WORKTOP_SINK_PAIR_PLACEMENT" />
+            <label style="margin-top:10px;display:block">Generated `999`
+              <textarea id="topoInput" style="min-height:88px" readonly></textarea>
             </label>
+            <div class="toolbar" style="margin-top:12px">
+              <button id="saveTopoBtn" class="secondary" disabled>Save TOPO</button>
+              <button id="skipTopoBtn" class="secondary" disabled>Continue Without TOPO</button>
+            </div>
+            <pre id="topoOut">{"ok":false,"note":"TOPO not loaded yet."}</pre>
           </div>
-          <label style="margin-top:10px;display:block">Rule ref
-            <select id="metadataRuleRef">
-              <option value="">No rule ref</option>
-            </select>
-          </label>
-          <div class="grid-2" style="margin-top:10px">
-            <label>Expected value
-              <select id="metadataExpectedValue">
+          <div id="semStagePanel" style="display:none">
+            <div id="metadataTargetBox" class="meta" style="margin-bottom:10px">Select one relevant object to author `999` metadata.</div>
+            <label>Authoring mode
+              <select id="metadataMode">
+                <option value="presence">Presence condition</option>
+                <option value="geometry_role">Geometry role</option>
+                <option value="operation_ref">Operation reference</option>
+              </select>
+            </label>
+            <div class="grid-2">
+              <label>Operator
+                <select id="metadataOperation">
+                  <option value="==">==</option>
+                  <option value="!=">!=</option>
+                  <option value=">">&gt;</option>
+                  <option value=">=">&gt;=</option>
+                  <option value="<">&lt;</option>
+                  <option value="<=">&lt;=</option>
+                </select>
+              </label>
+              <label>Parameter
+                <select id="metadataParameter">
+                  <option value="">No catalog loaded</option>
+                </select>
+              </label>
+            </div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>Expected value
+                <select id="metadataExpectedValue">
+                  <option value="">No catalog value loaded</option>
+                </select>
+                <input id="metadataExpectedValueNumber" type="number" style="display:none;margin-top:8px" />
+                <div id="metadataExpectedValueMeta" class="meta" style="margin-top:6px"></div>
+              </label>
+              <label>Logical operator
+                <select id="metadataLogicalOperator">
+                  <option value="">Single condition</option>
+                  <option value="AND">AND</option>
+                  <option value="OR">OR</option>
+                </select>
+              </label>
+            </div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>Second parameter
+                <select id="metadataParameterSecondary">
+                  <option value="">No catalog loaded</option>
+                </select>
+              </label>
+              <label>Second operator
+                <select id="metadataOperationSecondary">
+                  <option value="==">==</option>
+                  <option value="!=">!=</option>
+                  <option value=">">&gt;</option>
+                  <option value=">=">&gt;=</option>
+                  <option value="<">&lt;</option>
+                  <option value="<=">&lt;=</option>
+                </select>
+              </label>
+            </div>
+            <label style="margin-top:10px;display:block">Second expected value
+              <select id="metadataExpectedValueSecondary">
                 <option value="">No catalog value loaded</option>
               </select>
+              <input id="metadataExpectedValueSecondaryNumber" type="number" style="display:none;margin-top:8px" />
+              <div id="metadataExpectedValueSecondaryMeta" class="meta" style="margin-top:6px"></div>
             </label>
-            <label>Generated `999`
+            <div class="grid-2" style="margin-top:10px">
+              <label>Geometry role
+                <select id="metadataRole">
+                  <option value="variant">variant</option>
+                  <option value="prototype">prototype</option>
+                  <option value="anchor">anchor</option>
+                  <option value="reference">reference</option>
+                </select>
+              </label>
+              <label>Variant / operation id
+                <input id="metadataVariant" type="text" placeholder="ABOVE_SECOND or WORKTOP_SINK_PAIR_PLACEMENT" />
+              </label>
+            </div>
+            <label style="margin-top:10px;display:block">Rule ref
+              <select id="metadataRuleRef">
+                <option value="">No rule ref</option>
+              </select>
+            </label>
+            <label style="margin-top:10px;display:block">Generated `999`
               <input id="metadataPreview" type="text" readonly />
             </label>
-          </div>
-          <div class="toolbar" style="margin-top:12px">
-            <button id="applyMetadataBtn" class="secondary" disabled>Apply Metadata</button>
-            <button id="clearMetadataBtn" class="secondary" disabled>Clear Metadata</button>
+            <div class="toolbar" style="margin-top:12px">
+              <button id="applyMetadataBtn" class="secondary" disabled>Apply Metadata</button>
+              <button id="clearMetadataBtn" class="secondary" disabled>Clear Metadata</button>
+            </div>
           </div>
         </div>
 
@@ -229,7 +352,9 @@
           <div class="toolbar" style="margin-top:12px">
             <button id="validateBtn" class="warn" disabled>Validate Mother Draft</button>
             <button id="exportBtn" class="good" disabled>Export Mother DXF</button>
+            <button id="generateChildBtn" class="good" style="display:none" disabled>Generate Child DXF</button>
           </div>
+          <div id="childSummaryBox" class="meta" style="display:none;margin-top:10px"></div>
           <pre id="validationOut">{"ok":false}</pre>
         </div>
 
@@ -245,8 +370,10 @@
           <div class="row">
             <strong>Viewer</strong>
             <span id="sessionMeta" class="meta">No active session.</span>
+            <button id="measureToggleBtn" type="button" class="secondary">Measure</button>
           </div>
           <div id="legend" class="legend"></div>
+          <div id="measureBox" class="selection"><div class="meta">Measure mode off.</div></div>
           <div class="canvas-wrap">
             <canvas id="viewerCanvas"></canvas>
           </div>
@@ -264,7 +391,17 @@
       dragStart: null,
       dragRect: null,
       view: { scale: 1, offsetX: 0, offsetY: 0 },
-      panning: null
+      panning: null,
+      measure: {
+        enabled: false,
+        pointA: null,
+        pointB: null,
+        hoverPoint: null
+      },
+      authoring: {
+        activeStage: "topo",
+        topoSkipped: false
+      }
     };
 
     const LAYERS = ["L","R","T","B","TL","TR","BL","BR","A"];
@@ -276,6 +413,8 @@
     const sessionMeta = document.getElementById("sessionMeta");
     const dxfInput = document.getElementById("dxfInput");
     const configInput = document.getElementById("configInput");
+    const generateChildBtn = document.getElementById("generateChildBtn");
+    const childSummaryBox = document.getElementById("childSummaryBox");
     const sessionTitleInput = document.getElementById("sessionTitle");
     const sessionStatusSelect = document.getElementById("sessionStatus");
     const sessionSelect = document.getElementById("sessionSelect");
@@ -291,11 +430,41 @@
     const metadataVariant = document.getElementById("metadataVariant");
     const metadataRuleRef = document.getElementById("metadataRuleRef");
     const metadataExpectedValue = document.getElementById("metadataExpectedValue");
+    const metadataExpectedValueNumber = document.getElementById("metadataExpectedValueNumber");
+    const metadataExpectedValueMeta = document.getElementById("metadataExpectedValueMeta");
+    const metadataLogicalOperator = document.getElementById("metadataLogicalOperator");
+    const metadataParameterSecondary = document.getElementById("metadataParameterSecondary");
+    const metadataOperationSecondary = document.getElementById("metadataOperationSecondary");
+    const metadataExpectedValueSecondary = document.getElementById("metadataExpectedValueSecondary");
+    const metadataExpectedValueSecondaryNumber = document.getElementById("metadataExpectedValueSecondaryNumber");
+    const metadataExpectedValueSecondaryMeta = document.getElementById("metadataExpectedValueSecondaryMeta");
     const metadataPreview = document.getElementById("metadataPreview");
     const parameterCatalogMeta = document.getElementById("parameterCatalogMeta");
     const parameterCatalogOut = document.getElementById("parameterCatalogOut");
     const ruleCatalogMeta = document.getElementById("ruleCatalogMeta");
     const ruleCatalogOut = document.getElementById("ruleCatalogOut");
+    const measureBox = document.getElementById("measureBox");
+    const measureToggleBtn = document.getElementById("measureToggleBtn");
+    const topoInput = document.getElementById("topoInput");
+    const topoMeta = document.getElementById("topoMeta");
+    const topoOut = document.getElementById("topoOut");
+    const topoMode = document.getElementById("topoMode");
+    const topoSlidingBand = document.getElementById("topoSlidingBand");
+    const topoFixedDimension = document.getElementById("topoFixedDimension");
+    const topoInnerSide = document.getElementById("topoInnerSide");
+    const topoOuterSide = document.getElementById("topoOuterSide");
+    const documentSemMeta = document.getElementById("documentSemMeta");
+    const documentSemOut = document.getElementById("documentSemOut");
+    const documentSemNominalWidth = document.getElementById("documentSemNominalWidth");
+    const documentSemNominalHeight = document.getElementById("documentSemNominalHeight");
+    const documentSemFamily = document.getElementById("documentSemFamily");
+    const documentSemProduct = document.getElementById("documentSemProduct");
+    const documentSemPart = document.getElementById("documentSemPart");
+    const topoStagePanel = document.getElementById("topoStagePanel");
+    const semStagePanel = document.getElementById("semStagePanel");
+    const authoringStageMeta = document.getElementById("authoringStageMeta");
+    const authoringStageTopoBtn = document.getElementById("authoringStageTopoBtn");
+    const authoringStageSemBtn = document.getElementById("authoringStageSemBtn");
 
     function setStatus(message, tone = "info") {
       statusBox.textContent = message;
@@ -393,10 +562,30 @@
         : null;
     }
 
+    function simulationGeometryByObjectId(objectId) {
+      const item = simulationItemByObjectId(objectId);
+      return item && item.preview ? item.preview : null;
+    }
+
+    function effectiveShapesForObject(object) {
+      const preview = simulationGeometryByObjectId(object?.id);
+      return preview && Array.isArray(preview.simulated_shapes)
+        ? preview.simulated_shapes
+        : (Array.isArray(object?.shapes) ? object.shapes : []);
+    }
+
+    function effectiveBBoxForObject(object) {
+      const preview = simulationGeometryByObjectId(object?.id);
+      return preview && preview.simulated_bbox
+        ? preview.simulated_bbox
+        : (object?.bbox || null);
+    }
+
     function objectScreenBBox(object) {
-      if (!object || !object.bbox) return null;
-      const a = worldToScreen({ x: object.bbox.minX, y: object.bbox.minY });
-      const b = worldToScreen({ x: object.bbox.maxX, y: object.bbox.maxY });
+      const bbox = effectiveBBoxForObject(object);
+      if (!bbox) return null;
+      const a = worldToScreen({ x: bbox.minX, y: bbox.minY });
+      const b = worldToScreen({ x: bbox.maxX, y: bbox.maxY });
       return {
         minX: Math.min(a.x, b.x),
         minY: Math.min(a.y, b.y),
@@ -424,6 +613,165 @@
         ctx.arc(center.x, center.y, Math.abs(shape.radius * state.view.scale), start, end, true);
       }
       ctx.stroke();
+    }
+
+    function snapPointLabel(point) {
+      if (!point) return "";
+      return `${point.object_label || point.object_id || "object"} | ${point.kind}`;
+    }
+
+    function formatMeasureNumber(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return "";
+      return num.toFixed(3);
+    }
+
+    function arcPoint(shape, angleDeg) {
+      const radians = Number(angleDeg) * Math.PI / 180;
+      return {
+        x: Number(shape.centerX) + Math.cos(radians) * Number(shape.radius),
+        y: Number(shape.centerY) + Math.sin(radians) * Number(shape.radius)
+      };
+    }
+
+    function collectSnapPointsForObject(object) {
+      const points = [];
+      for (const shape of effectiveShapesForObject(object)) {
+        if (shape.kind === "line") {
+          points.push(
+            { x: shape.x1, y: shape.y1, kind: "line_start", object_id: object.id, object_label: object.display_label || object.id },
+            { x: shape.x2, y: shape.y2, kind: "line_end", object_id: object.id, object_label: object.display_label || object.id }
+          );
+        } else if (shape.kind === "circle") {
+          points.push({
+            x: shape.centerX,
+            y: shape.centerY,
+            kind: "circle_center",
+            object_id: object.id,
+            object_label: object.display_label || object.id
+          });
+        } else if (shape.kind === "arc") {
+          const start = arcPoint(shape, shape.startAngle);
+          const end = arcPoint(shape, shape.endAngle);
+          points.push(
+            { x: shape.centerX, y: shape.centerY, kind: "arc_center", object_id: object.id, object_label: object.display_label || object.id },
+            { x: start.x, y: start.y, kind: "arc_start", object_id: object.id, object_label: object.display_label || object.id },
+            { x: end.x, y: end.y, kind: "arc_end", object_id: object.id, object_label: object.display_label || object.id }
+          );
+        }
+      }
+      return points;
+    }
+
+    function nearestSnapPointAtScreen(screenPoint) {
+      if (!state.session) return null;
+      let best = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const object of state.session.objects || []) {
+        if (!isObjectVisibleInSimulation(object.id)) continue;
+        for (const snapPoint of collectSnapPointsForObject(object)) {
+          const screen = worldToScreen(snapPoint);
+          const distance = Math.hypot(screenPoint.x - screen.x, screenPoint.y - screen.y);
+          if (distance < bestDistance) {
+            best = {
+              ...snapPoint,
+              screenX: screen.x,
+              screenY: screen.y,
+              distance_px: distance
+            };
+            bestDistance = distance;
+          }
+        }
+      }
+      if (!best || bestDistance > 18) return null;
+      return best;
+    }
+
+    function measurementSummary() {
+      const { pointA, pointB, hoverPoint, enabled } = state.measure;
+      const pointEnd = pointB || hoverPoint;
+      if (!enabled) {
+        return { active: false };
+      }
+      if (!pointA || !pointEnd) {
+        return {
+          active: true,
+          pointA: pointA || null,
+          pointB: pointB || null,
+          dx: null,
+          dy: null,
+          distance: null
+        };
+      }
+      const dx = pointEnd.x - pointA.x;
+      const dy = pointEnd.y - pointA.y;
+      return {
+        active: true,
+        pointA,
+        pointB: pointEnd,
+        dx,
+        dy,
+        distance: Math.hypot(dx, dy)
+      };
+    }
+
+    function renderMeasurementBox() {
+      const { enabled, pointA, pointB } = state.measure;
+      if (!enabled) {
+        measureBox.innerHTML = `<div class="meta">Measure mode off.</div>`;
+        measureToggleBtn.textContent = "Measure";
+        return;
+      }
+      measureToggleBtn.textContent = "Measure ON";
+      const summary = measurementSummary();
+      const pointAInfo = pointA
+        ? `A: ${esc(snapPointLabel(pointA))} | (${esc(formatMeasureNumber(pointA.x))}, ${esc(formatMeasureNumber(pointA.y))})`
+        : "A: not selected";
+      const pointBInfo = pointB
+        ? `B: ${esc(snapPointLabel(pointB))} | (${esc(formatMeasureNumber(pointB.x))}, ${esc(formatMeasureNumber(pointB.y))})`
+        : "B: click second snap point";
+      const metrics = summary.dx == null
+        ? "dx: - | dy: - | distance: -"
+        : `dx: ${esc(formatMeasureNumber(summary.dx))} | dy: ${esc(formatMeasureNumber(summary.dy))} | distance: ${esc(formatMeasureNumber(summary.distance))}`;
+      measureBox.innerHTML = [
+        `<div class="selection-item"><strong>${esc(pointAInfo)}</strong></div>`,
+        `<div class="selection-item"><strong>${esc(pointBInfo)}</strong></div>`,
+        `<div class="selection-item"><strong>${esc(metrics)}</strong></div>`
+      ].join("");
+    }
+
+    function drawMeasurementOverlay() {
+      if (!state.measure.enabled) return;
+      const summary = measurementSummary();
+      const pointA = summary.pointA;
+      const pointB = summary.pointB;
+      const hoverPoint = state.measure.hoverPoint;
+      if (pointA) {
+        ctx.fillStyle = "#dc2626";
+        ctx.beginPath();
+        ctx.arc(worldToScreen(pointA).x, worldToScreen(pointA).y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (hoverPoint && !state.measure.pointB) {
+        ctx.fillStyle = "#dc2626";
+        ctx.beginPath();
+        ctx.arc(worldToScreen(hoverPoint).x, worldToScreen(hoverPoint).y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (pointA && pointB) {
+        const a = worldToScreen(pointA);
+        const b = worldToScreen(pointB);
+        ctx.strokeStyle = "#dc2626";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.fillStyle = "#dc2626";
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     function renderSelectionBox() {
@@ -551,11 +899,13 @@
         sessionMeta.textContent = "No active session.";
         sessionTitleInput.value = "";
         sessionStatusSelect.value = "draft";
+        renderChildGenerationControls();
         return;
       }
       sessionMeta.textContent = `${state.session.source_name} | ${state.session.artifact_state} | ${state.session.status} | objects ${state.session.objects.length}`;
       sessionTitleInput.value = state.session.title || "";
       sessionStatusSelect.value = state.session.status || "draft";
+      renderChildGenerationControls();
     }
 
     function syncConfigInputFromSession() {
@@ -572,6 +922,40 @@
       return JSON.parse(text);
     }
 
+    function canGenerateChildDxf() {
+      if (!state.session) return false;
+      const artifactState = String(state.session.artifact_state || "").trim().toLowerCase();
+      const status = String(state.session.status || "").trim().toLowerCase();
+      return artifactState === "mother_validated" || status === "in_review";
+    }
+
+    function renderChildGenerationControls() {
+      const visible = canGenerateChildDxf();
+      generateChildBtn.style.display = visible ? "" : "none";
+      generateChildBtn.disabled = !visible;
+      if (!visible) {
+        childSummaryBox.style.display = "none";
+        childSummaryBox.textContent = "";
+      }
+    }
+
+    function filenameFromContentDisposition(value, fallback) {
+      const text = String(value || "");
+      const match = text.match(/filename="?([^"]+)"?/i);
+      return match && match[1] ? match[1] : fallback;
+    }
+
+    function triggerBlobDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
     function currentCatalogParameters() {
       const catalog = state.session && state.session.parameter_catalog && state.session.parameter_catalog.parameters
         ? state.session.parameter_catalog.parameters
@@ -583,6 +967,34 @@
 
     function selectedCatalogParameter() {
       return currentCatalogParameters().find((item) => item.key === metadataParameter.value) || null;
+    }
+
+    function selectedCatalogParameterByKey(key) {
+      return currentCatalogParameters().find((item) => item.key === key) || null;
+    }
+
+    function isNumericCatalogParameter(parameter) {
+      return parameter && String(parameter.type || "").trim().toLowerCase() === "number";
+    }
+
+    function formatNumericMeta(parameter) {
+      const unit = String(parameter?.unit || "").trim();
+      const min = parameter?.min;
+      const max = parameter?.max;
+      const step = parameter?.step;
+      const parts = [];
+      if (min !== undefined && min !== null) parts.push(`min=${min}`);
+      if (max !== undefined && max !== null) parts.push(`max=${max}`);
+      if (step !== undefined && step !== null) parts.push(`step=${step}`);
+      if (unit) parts.push(`unit=${unit}`);
+      return parts.join(" | ");
+    }
+
+    function readExpectedValue(selectEl, numberEl, parameter) {
+      if (isNumericCatalogParameter(parameter)) {
+        return String(numberEl.value || "").trim();
+      }
+      return String(selectEl.value || "").trim();
     }
 
     function currentRuleEntries() {
@@ -608,7 +1020,11 @@
         key: item.key,
         label: item.label,
         type: item.type,
-        value_count: Array.isArray(item.values) ? item.values.length : 0
+        value_count: Array.isArray(item.values) ? item.values.length : 0,
+        unit: item.unit || null,
+        min: item.min ?? null,
+        max: item.max ?? null,
+        step: item.step ?? null
       })), null, 2);
     }
 
@@ -635,41 +1051,241 @@
         .join("");
     }
 
+    function knownProductCode() {
+      return state.session && state.session.config_parameter_set
+        ? String(state.session.config_parameter_set.product_code || "").trim()
+        : "";
+    }
+
+    function hasDocumentSemConfigured() {
+      const sem = state.session && state.session.document_sem ? state.session.document_sem : null;
+      return Boolean(sem && sem.nominal_width && sem.nominal_height && sem.family && sem.product && sem.part);
+    }
+
+    function syncDocumentSemFormFromSession() {
+      const sem = state.session && state.session.document_sem ? state.session.document_sem : null;
+      const productCode = knownProductCode();
+      documentSemNominalWidth.value = sem && sem.nominal_width ? sem.nominal_width : "";
+      documentSemNominalHeight.value = sem && sem.nominal_height ? sem.nominal_height : "";
+      documentSemFamily.value = sem && sem.family ? sem.family : "";
+      documentSemProduct.value = sem && sem.product ? sem.product : "";
+      documentSemPart.value = sem && sem.part ? sem.part : productCode;
+      documentSemPart.readOnly = Boolean(productCode);
+    }
+
+    function readDocumentSemPayload() {
+      return {
+        nominal_width: Number(documentSemNominalWidth.value || 0),
+        nominal_height: Number(documentSemNominalHeight.value || 0),
+        family: String(documentSemFamily.value || "").trim(),
+        product: String(documentSemProduct.value || "").trim(),
+        part: String(documentSemPart.value || "").trim()
+      };
+    }
+
+    function renderDocumentSemPanel() {
+      const sem = state.session && state.session.document_sem ? state.session.document_sem : null;
+      const saveBtn = document.getElementById("saveDocumentSemBtn");
+      if (!state.session) {
+        documentSemMeta.textContent = "No active session.";
+        documentSemOut.textContent = JSON.stringify({ ok: false, note: "Document SEM not loaded yet." }, null, 2);
+        saveBtn.disabled = true;
+        return;
+      }
+      syncDocumentSemFormFromSession();
+      saveBtn.disabled = false;
+      documentSemMeta.textContent = hasDocumentSemConfigured()
+        ? `Document SEM saved | ${sem.nominal_width} x ${sem.nominal_height} | ${sem.family} | product ${sem.product} | part ${sem.part}`
+        : "Document properties required before TOPO authoring.";
+      documentSemOut.textContent = JSON.stringify({
+        document_sem: sem || null,
+        canonical_999: sem && sem.raw_comment ? `999\n${sem.raw_comment}` : null
+      }, null, 2);
+    }
+
+    function hasTopoConfigured() {
+      const topo = state.session && state.session.topo_metadata ? state.session.topo_metadata : null;
+      return Boolean(topo && Array.isArray(topo.raw_comments) && topo.raw_comments.length);
+    }
+
+    function canOpenSemStage() {
+      return Boolean(state.session) && hasDocumentSemConfigured() && (hasTopoConfigured() || state.authoring.topoSkipped);
+    }
+
+    function buildGeneratedTopoComment() {
+      const mode = String(topoMode.value || "").trim();
+      if (!mode) return "";
+      return `TOPO:mode=${mode};sliding_band=${String(topoSlidingBand.value || "").trim().toUpperCase()};fixed_dimension=${String(topoFixedDimension.value || "").trim().toUpperCase()};inner_side=${String(topoInnerSide.value || "").trim().toUpperCase()};outer_side=${String(topoOuterSide.value || "").trim().toUpperCase()}`;
+    }
+
+    function syncTopoFormFromSession() {
+      const runtimeModel = state.session && state.session.topo_metadata
+        ? state.session.topo_metadata.runtime_model
+        : null;
+      topoMode.value = runtimeModel && runtimeModel.mode ? runtimeModel.mode : "";
+      topoSlidingBand.value = runtimeModel && runtimeModel.sliding_band ? runtimeModel.sliding_band : "L";
+      topoFixedDimension.value = runtimeModel && runtimeModel.fixed_dimension ? runtimeModel.fixed_dimension : "X";
+      topoInnerSide.value = runtimeModel && runtimeModel.inner_side ? runtimeModel.inner_side : "RIGHT";
+      topoOuterSide.value = runtimeModel && runtimeModel.outer_side ? runtimeModel.outer_side : "LEFT";
+      topoInput.value = buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
+    }
+
+    function syncTopoInputFromSession() {
+      const topo = state.session && state.session.topo_metadata ? state.session.topo_metadata : null;
+      if (topo && topo.runtime_model) {
+        syncTopoFormFromSession();
+        return;
+      }
+      topoInput.value = topo && Array.isArray(topo.raw_comments) && topo.raw_comments.length
+        ? topo.raw_comments.map((value) => `999\n${value}`).join("\n")
+        : buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
+    }
+
+    function setTopoControlsDisabled(disabled) {
+      topoMode.disabled = disabled;
+      topoSlidingBand.disabled = disabled;
+      topoFixedDimension.disabled = disabled;
+      topoInnerSide.disabled = disabled;
+      topoOuterSide.disabled = disabled;
+      document.getElementById("saveTopoBtn").disabled = disabled;
+      document.getElementById("skipTopoBtn").disabled = disabled;
+    }
+
+    function renderAuthoringStage() {
+      const semEnabled = canOpenSemStage();
+      if (state.authoring.activeStage === "sem" && !semEnabled) {
+        state.authoring.activeStage = "topo";
+      }
+      topoStagePanel.style.display = state.authoring.activeStage === "topo" ? "block" : "none";
+      semStagePanel.style.display = state.authoring.activeStage === "sem" ? "block" : "none";
+      authoringStageTopoBtn.textContent = hasTopoConfigured() ? "Edit TOPO" : "Stage 1: TOPO";
+      authoringStageSemBtn.textContent = "Stage 2: SEM";
+      authoringStageSemBtn.disabled = !semEnabled;
+      document.getElementById("skipTopoBtn").disabled = !state.session || !hasDocumentSemConfigured();
+      if (state.authoring.activeStage === "topo") {
+        authoringStageMeta.textContent = hasDocumentSemConfigured()
+          ? "Stage 1 definira file-level TOPO metadata za part topology prije entity-level SEM authoringa."
+          : "Prvo spremi Document Properties; TOPO authoring je zaključan dok document-level SEM ne postoji.";
+      } else {
+        authoringStageMeta.textContent = hasTopoConfigured()
+          ? "Stage 2 koristi spremljeni TOPO context i otvara entity-level SEM authoring."
+          : "Stage 2 je otvoren bez TOPO metadata jer je topology setup preskočen za ovaj session.";
+      }
+    }
+
+    function renderTopoPanel() {
+      if (!state.session || !state.session.topo_metadata) {
+        topoMeta.textContent = "No active TOPO metadata.";
+        topoOut.textContent = JSON.stringify({ ok: false, note: "TOPO not loaded yet." }, null, 2);
+        setTopoControlsDisabled(true);
+        return;
+      }
+      const topoLocked = !hasDocumentSemConfigured();
+      const topo = state.session.topo_metadata;
+      topoMeta.textContent = topoLocked
+        ? "TOPO locked until Document Properties are saved."
+        : `TOPO records ${Array.isArray(topo.raw_comments) ? topo.raw_comments.length : 0} | valid=${topo.validation && topo.validation.ok ? "true" : "false"}`;
+      topoOut.textContent = JSON.stringify({
+        raw_comments: topo.raw_comments || [],
+        runtime_model: topo.runtime_model || null,
+        validation: topo.validation || { ok: false, errors: [] },
+        locked: topoLocked
+      }, null, 2);
+      setTopoControlsDisabled(topoLocked);
+      syncTopoFormFromSession();
+    }
+
     function renderMetadataParameterOptions() {
       const parameters = currentCatalogParameters();
       if (!parameters.length) {
         metadataParameter.innerHTML = `<option value="">No catalog parameters</option>`;
+        metadataParameterSecondary.innerHTML = `<option value="">No catalog parameters</option>`;
         metadataExpectedValue.innerHTML = `<option value="">No catalog value loaded</option>`;
+        metadataExpectedValueSecondary.innerHTML = `<option value="">No catalog value loaded</option>`;
+        metadataExpectedValueMeta.textContent = "";
+        metadataExpectedValueSecondaryMeta.textContent = "";
         return;
       }
-      metadataParameter.innerHTML = parameters
+      const optionsHtml = parameters
         .map((item) => `<option value="${esc(item.key)}">${esc(item.code)} | ${esc(item.label)}</option>`)
         .join("");
+      metadataParameter.innerHTML = optionsHtml;
+      metadataParameterSecondary.innerHTML = optionsHtml;
       if (!metadataParameter.value || !parameters.some((item) => item.key === metadataParameter.value)) {
         metadataParameter.value = parameters[0].key;
       }
+      if (!metadataParameterSecondary.value || !parameters.some((item) => item.key === metadataParameterSecondary.value)) {
+        metadataParameterSecondary.value = parameters[0].key;
+      }
       syncMetadataExpectedValueFromSelection();
+      syncMetadataSecondaryExpectedValueFromSelection();
+    }
+
+    function syncExpectedValuesForParameter(parameter, expectedSelect, expectedNumber, expectedMeta) {
+      if (isNumericCatalogParameter(parameter)) {
+        expectedSelect.style.display = "none";
+        expectedNumber.style.display = "block";
+        expectedMeta.textContent = formatNumericMeta(parameter);
+        expectedNumber.min = parameter.min;
+        expectedNumber.max = parameter.max;
+        expectedNumber.step = parameter.step;
+        const current = String(expectedNumber.value || "").trim();
+        if (!current) {
+          expectedNumber.value = parameter.min ?? 0;
+        } else {
+          const num = Number(current);
+          if (!Number.isFinite(num)) {
+            expectedNumber.value = parameter.min ?? 0;
+          } else {
+            const clamped = Math.min(
+              parameter.max ?? num,
+              Math.max(parameter.min ?? num, num)
+            );
+            expectedNumber.value = clamped;
+          }
+        }
+        expectedSelect.innerHTML = `<option value="">Numeric value</option>`;
+        return;
+      }
+      const values = parameter && Array.isArray(parameter.values) ? parameter.values : [];
+      expectedSelect.style.display = "block";
+      expectedNumber.style.display = "none";
+      expectedMeta.textContent = "";
+      if (!values.length) {
+        expectedSelect.innerHTML = `<option value="">No catalog values</option>`;
+        return;
+      }
+      const previous = expectedSelect.value;
+      expectedSelect.innerHTML = values.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
+      expectedSelect.value = values.includes(previous) ? previous : values[0];
     }
 
     function syncMetadataExpectedValueFromSelection() {
-      const parameter = selectedCatalogParameter();
-      const values = parameter && Array.isArray(parameter.values) ? parameter.values : [];
-      if (!values.length) {
-        metadataExpectedValue.innerHTML = `<option value="">No catalog values</option>`;
-        renderMetadataPreview();
-        return;
-      }
-      const previous = metadataExpectedValue.value;
-      metadataExpectedValue.innerHTML = values.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
-      metadataExpectedValue.value = values.includes(previous) ? previous : values[0];
+      syncExpectedValuesForParameter(selectedCatalogParameter(), metadataExpectedValue, metadataExpectedValueNumber, metadataExpectedValueMeta);
+      renderMetadataPreview();
+    }
+
+    function syncMetadataSecondaryExpectedValueFromSelection() {
+      syncExpectedValuesForParameter(
+        selectedCatalogParameterByKey(metadataParameterSecondary.value),
+        metadataExpectedValueSecondary,
+        metadataExpectedValueSecondaryNumber,
+        metadataExpectedValueSecondaryMeta
+      );
       renderMetadataPreview();
     }
 
     function renderMetadataPreview() {
       const mode = String(metadataMode.value || "presence").trim();
       const parameter = String(metadataParameter.value || "").trim();
-      const expected = String(metadataExpectedValue.value || "").trim();
+      const primaryParameterDef = selectedCatalogParameter();
+      const secondaryParameterDef = selectedCatalogParameterByKey(metadataParameterSecondary.value);
+      const expected = readExpectedValue(metadataExpectedValue, metadataExpectedValueNumber, primaryParameterDef);
       const operation = String(metadataOperation.value || "").trim();
+      const logicalOperator = String(metadataLogicalOperator.value || "").trim().toUpperCase();
+      const parameterSecondary = String(metadataParameterSecondary.value || "").trim();
+      const operationSecondary = String(metadataOperationSecondary.value || "").trim();
+      const expectedSecondary = readExpectedValue(metadataExpectedValueSecondary, metadataExpectedValueSecondaryNumber, secondaryParameterDef);
       const role = String(metadataRole.value || "").trim();
       const variant = String(metadataVariant.value || "").trim();
       const ruleRef = String(metadataRuleRef.value || "").trim();
@@ -696,8 +1312,15 @@
         metadataPreview.value = "";
         return;
       }
-      const operator = operation === "hide_if" ? "!=" : "==";
-      metadataPreview.value = `SEM:feature=${parameter};presence=conditional;when=${parameter}${operator}${expected}`;
+      let whenExpression = `${parameter}${operation}${expected}`;
+      if (logicalOperator) {
+        if (!parameterSecondary || !expectedSecondary || !operationSecondary) {
+          metadataPreview.value = "";
+          return;
+        }
+        whenExpression = `${whenExpression} ${logicalOperator} ${parameterSecondary}${operationSecondary}${expectedSecondary}`;
+      }
+      metadataPreview.value = `SEM:feature=${parameter};presence=conditional;when=${whenExpression}`;
     }
 
     function renderMetadataTarget() {
@@ -731,10 +1354,14 @@
       syncCanvasSize();
       ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
       renderSelectionBox();
+      renderMeasurementBox();
       focusSelectedEntityInInput();
       renderSessionMeta();
       renderParameterCatalog();
       renderRuleCatalog();
+      renderDocumentSemPanel();
+      renderAuthoringStage();
+      renderTopoPanel();
       renderMetadataTarget();
       renderMetadataPreview();
       renderLegend();
@@ -744,7 +1371,7 @@
         if (!isObjectVisibleInSimulation(object.id)) continue;
         const isSelected = state.selectedIds.has(object.id);
         const isHover = state.hoverId === object.id;
-        for (const shape of object.shapes || []) {
+        for (const shape of effectiveShapesForObject(object)) {
           drawShape(shape, object.semantic_color || "#cbd5e1", isSelected ? 3 : 1.5);
           if (isHover) drawShape(shape, "#111827", 3.5);
         }
@@ -768,6 +1395,7 @@
         ctx.strokeRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
         ctx.setLineDash([]);
       }
+      drawMeasurementOverlay();
     }
 
     function objectIdsInRect(screenRect) {
@@ -818,6 +1446,8 @@
       });
       state.session = data.session;
       state.simulation = null;
+      state.authoring.topoSkipped = false;
+      state.authoring.activeStage = hasTopoConfigured() ? "sem" : "topo";
       state.selectedIds.clear();
       state.hoverId = null;
       fitViewToDocument();
@@ -828,7 +1458,9 @@
       document.getElementById("exportBtn").disabled = false;
       document.getElementById("saveConfigBtn").disabled = false;
       document.getElementById("simulateBtn").disabled = false;
+      document.getElementById("saveTopoBtn").disabled = false;
       syncConfigInputFromSession();
+      syncTopoInputFromSession();
       document.getElementById("saveSessionMetaBtn").disabled = false;
       setStatus("Session ready. Auto-suggestion applied.", "ok");
       await refreshSessionList();
@@ -894,6 +1526,47 @@
       setStatus("Config parameter set saved to session.", "ok");
     }
 
+    async function saveDocumentSemMetadata() {
+      if (!state.session) return;
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/document-sem`, {
+        method: "POST",
+        body: JSON.stringify(readDocumentSemPayload())
+      });
+      state.session = data.session;
+      render();
+      setStatus("Document Properties saved as document-level SEM.", "ok");
+    }
+
+    async function saveTopoMetadata() {
+      if (!state.session) return;
+      if (!hasDocumentSemConfigured()) {
+        setStatus("Prvo spremi Document Properties.", "error");
+        return;
+      }
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/topo`, {
+        method: "POST",
+        body: JSON.stringify({ topo_text: String(topoInput.value || "") })
+      });
+      state.session = data.session;
+      state.authoring.topoSkipped = false;
+      state.authoring.activeStage = "sem";
+      syncTopoInputFromSession();
+      render();
+      setStatus("TOPO metadata saved to session.", "ok");
+    }
+
+    function continueWithoutTopo() {
+      if (!state.session) return;
+      if (!hasDocumentSemConfigured()) {
+        setStatus("Prvo spremi Document Properties.", "error");
+        return;
+      }
+      state.authoring.topoSkipped = true;
+      state.authoring.activeStage = "sem";
+      render();
+      setStatus("TOPO setup preskočen za ovaj session. SEM authoring otvoren.", "ok");
+    }
+
     async function saveSessionMeta() {
       if (!state.session) return;
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/meta`, {
@@ -928,6 +1601,8 @@
       });
       state.session = data.session;
       state.simulation = null;
+      state.authoring.topoSkipped = false;
+      state.authoring.activeStage = hasTopoConfigured() ? "sem" : "topo";
       state.selectedIds.clear();
       document.getElementById("dxfInput").value = data.dxf_text || "";
       syncConfigInputFromSession();
@@ -938,9 +1613,11 @@
       document.getElementById("exportBtn").disabled = false;
       document.getElementById("saveConfigBtn").disabled = false;
       document.getElementById("simulateBtn").disabled = false;
+      document.getElementById("saveTopoBtn").disabled = false;
       document.getElementById("saveSessionMetaBtn").disabled = false;
       fitViewToDocument();
       renderLineNumbers();
+      syncTopoInputFromSession();
       render();
       setStatus("Session loaded.", "ok");
     }
@@ -951,13 +1628,14 @@
         setStatus("Select one relevant object first.", "error");
         return;
       }
+      const expectedValue = readExpectedValue(metadataExpectedValue, metadataExpectedValueNumber, selectedCatalogParameter());
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/metadata`, {
         method: "POST",
         body: JSON.stringify({
           entity_id: object.entity_id,
           operation: metadataOperation.value,
           parameter: metadataParameter.value,
-          expected_value: metadataExpectedValue.value,
+          expected_value: expectedValue,
           semantic_comment: metadataPreview.value
         })
       });
@@ -1005,6 +1683,46 @@
       window.open(`/api/mother-dxf/v1/sessions/${state.session.session_id}/export`, "_blank");
     }
 
+    async function generateChildDxf() {
+      if (!state.session) return;
+      if (!canGenerateChildDxf()) {
+        setStatus("Child DXF generation requires mother_validated artifact or in_review status.", "error");
+        return;
+      }
+      setStatus("Generating child DXF...");
+      const config_parameter_set = readConfigInput();
+      const response = await fetch(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/no-topo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config_parameter_set)
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        let message = text || `HTTP ${response.status}`;
+        try {
+          const parsed = JSON.parse(text);
+          message = parsed.message || message;
+        } catch (_) {
+          // Keep raw server response when it is not JSON.
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const filename = filenameFromContentDisposition(
+        response.headers.get("Content-Disposition"),
+        `${state.session.session_id}_child_no_topo.dxf`
+      );
+      triggerBlobDownload(blob, filename);
+
+      const included = response.headers.get("X-Mother-DXF-Included-Count") || "?";
+      const excluded = response.headers.get("X-Mother-DXF-Excluded-Count") || "?";
+      const unsupported = response.headers.get("X-Mother-DXF-Unsupported-Geometry-Ops") || "0";
+      childSummaryBox.style.display = "";
+      childSummaryBox.textContent = `Child DXF generated: included=${included}, excluded=${excluded}, unsupported_geometry_ops=${unsupported}`;
+      setStatus("Child DXF download ready.", "ok");
+    }
+
     canvas.addEventListener("mousemove", (event) => {
       const rect = canvas.getBoundingClientRect();
       const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
@@ -1028,6 +1746,10 @@
         return;
       }
 
+      if (state.measure.enabled) {
+        state.measure.hoverPoint = nearestSnapPointAtScreen(point);
+      }
+
       state.hoverId = objectIdAtPoint(point);
       render();
     });
@@ -1039,6 +1761,9 @@
         state.panning = point;
         return;
       }
+      if (state.measure.enabled) {
+        return;
+      }
       state.dragStart = point;
       state.dragRect = null;
     });
@@ -1048,6 +1773,27 @@
       const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       if (state.panning) {
         state.panning = null;
+        return;
+      }
+      if (state.measure.enabled) {
+        const snapPoint = nearestSnapPointAtScreen(point);
+        if (!snapPoint) {
+          setStatus("No snap point near cursor.", "error");
+          render();
+          return;
+        }
+        if (!state.measure.pointA || (state.measure.pointA && state.measure.pointB)) {
+          state.measure.pointA = snapPoint;
+          state.measure.pointB = null;
+          state.measure.hoverPoint = snapPoint;
+          setStatus(`Measure point A set: ${snapPointLabel(snapPoint)}`, "ok");
+        } else {
+          state.measure.pointB = snapPoint;
+          state.measure.hoverPoint = snapPoint;
+          const summary = measurementSummary();
+          setStatus(`Measure ready | dx=${formatMeasureNumber(summary.dx)} | dy=${formatMeasureNumber(summary.dy)} | distance=${formatMeasureNumber(summary.distance)}`, "ok");
+        }
+        render();
         return;
       }
       if (!state.dragStart) return;
@@ -1072,6 +1818,7 @@
       state.dragStart = null;
       state.dragRect = null;
       state.panning = null;
+      state.measure.hoverPoint = null;
       render();
     });
 
@@ -1102,13 +1849,24 @@
     dxfInput.addEventListener("scroll", () => {
       lineGutter.scrollTop = dxfInput.scrollTop;
     });
+    topoMode.addEventListener("change", syncTopoInputFromSession);
+    topoSlidingBand.addEventListener("change", syncTopoInputFromSession);
+    topoFixedDimension.addEventListener("change", syncTopoInputFromSession);
+    topoInnerSide.addEventListener("change", syncTopoInputFromSession);
+    topoOuterSide.addEventListener("change", syncTopoInputFromSession);
     metadataMode.addEventListener("change", renderMetadataPreview);
     metadataParameter.addEventListener("change", syncMetadataExpectedValueFromSelection);
     metadataOperation.addEventListener("change", renderMetadataPreview);
+    metadataLogicalOperator.addEventListener("change", renderMetadataPreview);
+    metadataParameterSecondary.addEventListener("change", syncMetadataSecondaryExpectedValueFromSelection);
+    metadataOperationSecondary.addEventListener("change", renderMetadataPreview);
     metadataRole.addEventListener("change", renderMetadataPreview);
     metadataVariant.addEventListener("input", renderMetadataPreview);
     metadataRuleRef.addEventListener("change", renderMetadataPreview);
     metadataExpectedValue.addEventListener("change", renderMetadataPreview);
+    metadataExpectedValueNumber.addEventListener("input", renderMetadataPreview);
+    metadataExpectedValueSecondary.addEventListener("change", renderMetadataPreview);
+    metadataExpectedValueSecondaryNumber.addEventListener("input", renderMetadataPreview);
 
     document.getElementById("startBtn").addEventListener("click", () => {
       createSession().catch((error) => setStatus(error.message, "error"));
@@ -1121,6 +1879,25 @@
     });
     document.getElementById("saveConfigBtn").addEventListener("click", () => {
       saveConfigParameterSet().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("saveDocumentSemBtn").addEventListener("click", () => {
+      saveDocumentSemMetadata().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("saveTopoBtn").addEventListener("click", () => {
+      saveTopoMetadata().catch((error) => setStatus(error.message, "error"));
+    });
+    document.getElementById("skipTopoBtn").addEventListener("click", continueWithoutTopo);
+    authoringStageTopoBtn.addEventListener("click", () => {
+      state.authoring.activeStage = "topo";
+      render();
+    });
+    authoringStageSemBtn.addEventListener("click", () => {
+      if (!canOpenSemStage()) {
+        setStatus(hasDocumentSemConfigured() ? "Prvo spremi ili preskoči TOPO setup." : "Prvo spremi Document Properties.", "error");
+        return;
+      }
+      state.authoring.activeStage = "sem";
+      render();
     });
     document.getElementById("saveSessionMetaBtn").addEventListener("click", () => {
       saveSessionMeta().catch((error) => setStatus(error.message, "error"));
@@ -1141,6 +1918,21 @@
       clearMetadataRule().catch((error) => setStatus(error.message, "error"));
     });
     document.getElementById("exportBtn").addEventListener("click", exportMotherDraft);
+    generateChildBtn.addEventListener("click", () => {
+      generateChildDxf().catch((error) => setStatus(error.message, "error"));
+    });
+    measureToggleBtn.addEventListener("click", () => {
+      state.measure.enabled = !state.measure.enabled;
+      state.measure.pointA = null;
+      state.measure.pointB = null;
+      state.measure.hoverPoint = null;
+      if (state.measure.enabled) {
+        setStatus("Measure mode on. Click nearest snap point A, then B.", "ok");
+      } else {
+        setStatus("Measure mode off.", "info");
+      }
+      render();
+    });
     window.addEventListener("resize", render);
 
     initAssignToolbar();
