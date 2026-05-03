@@ -460,6 +460,77 @@ function collectTopoMetadata(parsedDocument) {
 function validateTopoBlock(topoObject) {
   const errors = [];
   const mode = String(topoObject?.mode || "").trim();
+  const keys = topoObject?.keys || {};
+  const hasExecutableDraftFields = Boolean(keys.group || keys.chain || keys.axis || keys.parameter || keys.nominal);
+
+  if (hasExecutableDraftFields) {
+    const chain = String(keys.chain || "").trim();
+    const axis = String(keys.axis || "").trim().toUpperCase();
+    const nominal = Number(keys.nominal);
+    if (mode !== "fixed_envelope_slide") {
+      errors.push({
+        code: "INVALID_TOPO_MODE",
+        message: `Unsupported TOPO mode: ${topoObject?.mode}`
+      });
+    }
+    if (!String(keys.group || "").trim()) {
+      errors.push({
+        code: "MISSING_TOPO_GROUP",
+        message: "Missing TOPO group."
+      });
+    }
+    if (!["single_part", "two_part"].includes(chain)) {
+      errors.push({
+        code: "INVALID_TOPO_CHAIN",
+        message: `Unsupported TOPO chain: ${keys.chain}`
+      });
+    }
+    if (axis !== "X") {
+      errors.push({
+        code: "INVALID_TOPO_AXIS",
+        message: `Unsupported TOPO axis: ${keys.axis}`
+      });
+    }
+    if (!String(keys.parameter || "").trim()) {
+      errors.push({
+        code: "MISSING_TOPO_PARAMETER",
+        message: "Missing TOPO parameter."
+      });
+    }
+    if (!Number.isFinite(nominal)) {
+      errors.push({
+        code: "INVALID_TOPO_NOMINAL",
+        message: `Invalid TOPO nominal: ${keys.nominal}`
+      });
+    }
+    if (String(keys.delta_rule || "").trim() !== "config_minus_nominal") {
+      errors.push({
+        code: "INVALID_TOPO_DELTA_RULE",
+        message: `Unsupported TOPO delta_rule: ${keys.delta_rule}`
+      });
+    }
+    for (const key of chain === "two_part"
+      ? ["lec_delta_factor", "rec_delta_factor", "lcc_delta_factor", "rcc_delta_factor"]
+      : ["lec_delta_factor", "rec_delta_factor"]) {
+      if (!Number.isFinite(Number(keys[key]))) {
+        errors.push({
+          code: "INVALID_TOPO_DELTA_FACTOR",
+          message: `Invalid TOPO ${key}: ${keys[key]}`
+        });
+      }
+    }
+    if (String(keys.trim_policy || "").trim() !== "rejoin") {
+      errors.push({
+        code: "INVALID_TOPO_TRIM_POLICY",
+        message: `Unsupported TOPO trim_policy: ${keys.trim_policy}`
+      });
+    }
+    return {
+      ok: errors.length === 0,
+      errors
+    };
+  }
+
   const slidingBand = String(topoObject?.sliding_band || "").trim().toUpperCase();
   const fixedDimension = String(topoObject?.fixed_dimension || "").trim().toUpperCase();
   const innerSide = String(topoObject?.inner_side || "").trim().toUpperCase();
@@ -602,6 +673,71 @@ function semanticCommentFamily(rawComment) {
 
 function findEntity(document, entityId) {
   return (document && Array.isArray(document.entities) ? document.entities : []).find((entity) => entity.id === entityId) || null;
+}
+
+function isFileLevelTopoComment(rawComment) {
+  const parsed = parseTopoComment(rawComment);
+  return Boolean(parsed && parsed.keys && parsed.keys.mode);
+}
+
+function isEntityTopoRoleComment(rawComment) {
+  const parsed = parseTopoComment(rawComment);
+  return Boolean(parsed && parsed.keys && parsed.keys.role);
+}
+
+function upsertFileLevelTopoComment(session, topoString) {
+  const rawComment = normalizeTopoCommentsInput(topoString).find((value) => isFileLevelTopoComment(value)) || "";
+  if (!rawComment) {
+    throw new Error("Missing file-level TOPO comment.");
+  }
+  const comments = Array.isArray(session.document?.preComments) ? session.document.preComments : [];
+  const nextComments = comments.filter((pair) => !(String(pair?.code) === "999" && isFileLevelTopoComment(pair.value)));
+  const insertAfterIndex = nextComments.reduce((lastIndex, pair, index) => {
+    return String(pair?.code) === "999" && isDocumentSemanticComment(pair.value) ? index : lastIndex;
+  }, -1);
+  const topoPair = { code: "999", value: rawComment };
+  if (insertAfterIndex >= 0) {
+    nextComments.splice(insertAfterIndex + 1, 0, topoPair);
+  } else {
+    nextComments.unshift(topoPair);
+  }
+  session.document.preComments = nextComments;
+  return rawComment;
+}
+
+function buildEntityTopoRoleComment({ role, group, zone }) {
+  const normalizedRole = String(role || "").trim();
+  if (!normalizedRole || normalizedRole === "none") return "";
+  const normalizedGroup = String(group || "").trim();
+  const normalizedZone = String(zone || "").trim().toUpperCase();
+  if (normalizedRole !== "mover") {
+    throw new Error(`Unsupported TOPO entity role: ${role}`);
+  }
+  if (!normalizedGroup) {
+    throw new Error("Missing TOPO entity group.");
+  }
+  if (!["LEC", "REC", "LCC", "RCC"].includes(normalizedZone)) {
+    throw new Error(`Unsupported TOPO entity zone: ${zone}`);
+  }
+  return `TOPO:role=${normalizedRole};group=${normalizedGroup};zone=${normalizedZone}`;
+}
+
+function upsertEntityTopoComment(session, entityId, topoRoleString) {
+  const entity = findEntity(session.document, entityId);
+  if (!entity) {
+    throw new Error(`Unknown entity id: ${entityId}`);
+  }
+  const rawComment = String(topoRoleString || "").trim();
+  const preComments = Array.isArray(entity.preComments) ? entity.preComments : [];
+  const nextPreComments = preComments.filter((pair) => !(String(pair?.code) === "999" && isEntityTopoRoleComment(pair.value)));
+  if (rawComment) {
+    if (!isEntityTopoRoleComment(rawComment)) {
+      throw new Error("Invalid entity-level TOPO role comment.");
+    }
+    nextPreComments.push({ code: "999", value: rawComment });
+  }
+  entity.preComments = nextPreComments;
+  return rawComment;
 }
 
 function upsertSemanticComment(document, entityId, rawComment) {
@@ -1903,9 +2039,16 @@ async function updateDocumentSemMetadata({ sessionId, payload, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   const rawComment = buildDocumentSemComment(payload);
   const documentComments = Array.isArray(session.document?.preComments) ? session.document.preComments : [];
-  session.document.preComments = documentComments
-    .filter((pair) => !(String(pair?.code) === "999" && isDocumentSemanticComment(pair.value)))
-    .concat([{ code: "999", value: rawComment }]);
+  const nextDocumentComments = documentComments
+    .filter((pair) => !(String(pair?.code) === "999" && isDocumentSemanticComment(pair.value)));
+  const firstTopoIndex = nextDocumentComments.findIndex((pair) => String(pair?.code) === "999" && isFileLevelTopoComment(pair.value));
+  const semPair = { code: "999", value: rawComment };
+  if (firstTopoIndex >= 0) {
+    nextDocumentComments.splice(firstTopoIndex, 0, semPair);
+  } else {
+    nextDocumentComments.unshift(semPair);
+  }
+  session.document.preComments = nextDocumentComments;
 
   for (const entity of session.document?.entities || []) {
     const comments = Array.isArray(entity.preComments) ? entity.preComments : [];
@@ -1926,10 +2069,25 @@ async function updateDocumentSemMetadata({ sessionId, payload, storeRoot }) {
 
 async function updateTopoMetadata({ sessionId, topoText, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
-  session.topo_comments = normalizeTopoCommentsInput(topoText);
+  const rawComment = upsertFileLevelTopoComment(session, topoText);
+  session.topo_comments = [rawComment];
   session.updated_at = new Date().toISOString();
+  session.artifact_state = "mother_draft";
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
   return session;
+}
+
+async function updateEntityTopoRoleMetadata({ sessionId, entityId, role, group, zone, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const rawComment = buildEntityTopoRoleComment({ role, group, zone });
+  upsertEntityTopoComment(session, entityId, rawComment);
+  session.updated_at = new Date().toISOString();
+  session.artifact_state = "mother_draft";
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return {
+    session,
+    topo_comment: rawComment || null
+  };
 }
 
 async function updateSessionMeta({ sessionId, title, status, storeRoot }) {
@@ -2060,6 +2218,7 @@ module.exports = {
   updateConfigParameterSet,
   updateDocumentSemMetadata,
   updateTopoMetadata,
+  updateEntityTopoRoleMetadata,
   updateSessionMeta,
   authorSemanticMetadata,
   clearSemanticMetadata,
@@ -2073,6 +2232,8 @@ module.exports = {
   serializeDocument,
   parseDocumentSem,
   collectDocumentSemMetadata,
+  upsertFileLevelTopoComment,
+  upsertEntityTopoComment,
   parseTopoComment,
   collectTopoMetadata,
   validateTopoBlock,

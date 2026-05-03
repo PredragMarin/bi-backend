@@ -240,6 +240,31 @@ function createMotherDxfRouterV1() {
     }
   });
 
+  router.post("/sessions/:sessionId/entities/:entityId/topo-role", async (req, res) => {
+    try {
+      const result = await motherDxfRuntime.updateEntityTopoRoleMetadata({
+        sessionId: String(req.params.sessionId || ""),
+        entityId: String(req.params.entityId || ""),
+        role: String(req.body?.role || ""),
+        group: String(req.body?.group || ""),
+        zone: String(req.body?.zone || "")
+      });
+      const view = motherDxfRuntime.projectViewModel(result.session);
+      const entity = (view.objects || []).find((item) => item.entity_id === String(req.params.entityId || "")) || null;
+      res.json({
+        ok: true,
+        session: view,
+        entity,
+        topo_comment: result.topo_comment
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_AUTHOR_TOPO_ROLE_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.delete("/sessions/:sessionId/metadata/:entityId", async (req, res) => {
     try {
       const session = await motherDxfRuntime.clearSemanticMetadata({

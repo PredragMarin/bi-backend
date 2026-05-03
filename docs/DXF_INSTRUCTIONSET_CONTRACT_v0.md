@@ -173,6 +173,13 @@ Binding pravilo:
 
 - `999` komentar se veže na sljedeći entity
 
+Document-level SEM exception:
+
+- `SEM:document=true` je document-level metadata, ne entity-level metadata
+- canonical position je u `ENTITIES` sectionu prije prvog entity recorda
+- resolver mora učitati `SEM:document=true` kao document context prije entity-level metadata evaluacije
+- `SEM:document=true` se ne veže na sljedeći entity i ne smije utjecati na entity presence / variant evaluaciju
+
 `mother_dxf_v1` već podržava to binding pravilo kao passthrough osnovu.
 
 `InstructionSet v0` zadržava isto pravilo.
@@ -796,6 +803,13 @@ Ovo su tipični `Rule Catalog` slučajevi:
 
 `TOPO` dodaje file-level behavior mode nad već klasificiranom geometrijom.
 
+File-level `TOPO` binding rule:
+
+- file-level `TOPO:mode=...` metadata pripada document setup bloku
+- canonical position je u `ENTITIES` sectionu prije prvog entity recorda, nakon `SEM:document=true` ako je document SEM prisutan
+- resolver mora učitati file-level `TOPO` metadata prije entity-level `TOPO` role metadata evaluacije
+- entity-level `TOPO:role=...` metadata ostaje neposredno prije entityja na koji se odnosi
+
 ### `fixed_envelope_slide`
 
 Prvi `TOPO` mode u `v0` je:
@@ -941,6 +955,20 @@ UI i resolver još ne izvršavaju ovaj executable draft.
 Ovo je authoring contract target za sljedeći POC.
 
 Trenutna implementacija čuva parcijalni `TOPO` metadata.
+
+### Deferred design note: operation ordering
+
+Operation ordering / geometry pipeline je deferred design topic.
+
+Current POC smije izvršavati geometry operations u fiksnom implementation orderu.
+
+Ako budući cases zahtijevaju više superponiranih geometry operations čiji rezultat ovisi o redoslijedu, contract može uvesti document-level execution ordering metadata.
+
+Do tada:
+
+- `SEM` ostaje existence / variant filtering
+- `TOPO` ostaje topology behavior definition
+- `9-Layer` ostaje zoning / classification model
 
 ---
 

@@ -194,53 +194,91 @@
           <div id="topoStagePanel">
             <div id="topoMeta" class="meta" style="margin-bottom:8px">No active TOPO metadata.</div>
             <div class="grid-2">
-              <label>TOPO mode
-                <select id="topoMode">
-                  <option value="">none</option>
-                  <option value="fixed_envelope_slide">fixed_envelope_slide</option>
-                </select>
+              <label>Mode
+                <input id="topoMode" type="text" value="fixed_envelope_slide" readonly />
               </label>
-              <label>Sliding band
-                <select id="topoSlidingBand">
-                  <option value="L">L</option>
-                  <option value="R">R</option>
-                  <option value="T">T</option>
-                  <option value="B">B</option>
-                </select>
+              <label>Group
+                <input id="topoGroup" type="text" value="LBRA_X_SLIDE" />
               </label>
             </div>
             <div class="grid-2" style="margin-top:10px">
-              <label>Fixed dimension
-                <select id="topoFixedDimension">
-                  <option value="X">X</option>
-                  <option value="Y">Y</option>
+              <label>Chain type
+                <select id="topoChain">
+                  <option value="single_part">single_part</option>
+                  <option value="two_part">two_part</option>
                 </select>
               </label>
-              <label>Inner side
-                <select id="topoInnerSide">
-                  <option value="LEFT">LEFT</option>
-                  <option value="RIGHT">RIGHT</option>
-                  <option value="TOP">TOP</option>
-                  <option value="BOTTOM">BOTTOM</option>
-                </select>
+              <label>Axis
+                <input id="topoAxis" type="text" value="X" readonly />
               </label>
             </div>
-            <label style="margin-top:10px;display:block">Outer side
-              <select id="topoOuterSide">
-                <option value="LEFT">LEFT</option>
-                <option value="RIGHT">RIGHT</option>
-                <option value="TOP">TOP</option>
-                <option value="BOTTOM">BOTTOM</option>
-              </select>
-            </label>
-            <label style="margin-top:10px;display:block">Generated `999`
+            <div class="grid-2" style="margin-top:10px">
+              <label>Parameter
+                <select id="topoParameter">
+                  <option value="">No catalog loaded</option>
+                </select>
+              </label>
+              <label>Nominal
+                <input id="topoNominal" type="number" step="0.001" />
+              </label>
+            </div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>Delta rule
+                <input id="topoDeltaRule" type="text" value="config_minus_nominal" readonly />
+              </label>
+              <label>Trim policy
+                <input id="topoTrimPolicy" type="text" value="rejoin" readonly />
+              </label>
+            </div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>lec_delta_factor
+                <input id="topoLecDeltaFactor" type="number" step="0.1" value="-1.0" />
+              </label>
+              <label>rec_delta_factor
+                <input id="topoRecDeltaFactor" type="number" step="0.1" value="1.0" />
+              </label>
+            </div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>lcc_delta_factor
+                <input id="topoLccDeltaFactor" type="number" step="0.1" value="-1.0" disabled />
+              </label>
+              <label>rcc_delta_factor
+                <input id="topoRccDeltaFactor" type="number" step="0.1" value="1.0" disabled />
+              </label>
+            </div>
+            <label style="margin-top:10px;display:block">Generated file-level `999`
               <textarea id="topoInput" style="min-height:88px" readonly></textarea>
+            </label>
+            <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
+              <div id="topoEntityMeta" class="meta" style="margin-bottom:8px">Select one entity for entity-level TOPO role preview.</div>
+              <div class="grid-2">
+                <label>Role
+                  <select id="topoEntityRole">
+                    <option value="none">none</option>
+                    <option value="mover">mover</option>
+                  </select>
+                </label>
+                <label>Zone
+                  <select id="topoEntityZone">
+                    <option value="LEC">LEC</option>
+                    <option value="REC">REC</option>
+                  </select>
+                </label>
+              </div>
+              <label style="margin-top:10px;display:block">Group reference
+                <input id="topoEntityGroup" type="text" value="LBRA_X_SLIDE" readonly />
+              </label>
+              <label style="margin-top:10px;display:block">Generated entity-level `999`
+                <textarea id="topoEntityInput" style="min-height:72px" readonly></textarea>
+              </label>
+            </div>
+            <label style="margin-top:10px;display:block">Saved TOPO state
+              <pre id="topoOut">{"ok":false,"note":"TOPO not loaded yet."}</pre>
             </label>
             <div class="toolbar" style="margin-top:12px">
               <button id="saveTopoBtn" class="secondary" disabled>Save TOPO</button>
               <button id="skipTopoBtn" class="secondary" disabled>Continue Without TOPO</button>
             </div>
-            <pre id="topoOut">{"ok":false,"note":"TOPO not loaded yet."}</pre>
           </div>
           <div id="semStagePanel" style="display:none">
             <div id="metadataTargetBox" class="meta" style="margin-bottom:10px">Select one relevant object to author `999` metadata.</div>
@@ -449,10 +487,22 @@
     const topoMeta = document.getElementById("topoMeta");
     const topoOut = document.getElementById("topoOut");
     const topoMode = document.getElementById("topoMode");
-    const topoSlidingBand = document.getElementById("topoSlidingBand");
-    const topoFixedDimension = document.getElementById("topoFixedDimension");
-    const topoInnerSide = document.getElementById("topoInnerSide");
-    const topoOuterSide = document.getElementById("topoOuterSide");
+    const topoGroup = document.getElementById("topoGroup");
+    const topoChain = document.getElementById("topoChain");
+    const topoAxis = document.getElementById("topoAxis");
+    const topoParameter = document.getElementById("topoParameter");
+    const topoNominal = document.getElementById("topoNominal");
+    const topoDeltaRule = document.getElementById("topoDeltaRule");
+    const topoTrimPolicy = document.getElementById("topoTrimPolicy");
+    const topoLecDeltaFactor = document.getElementById("topoLecDeltaFactor");
+    const topoRecDeltaFactor = document.getElementById("topoRecDeltaFactor");
+    const topoLccDeltaFactor = document.getElementById("topoLccDeltaFactor");
+    const topoRccDeltaFactor = document.getElementById("topoRccDeltaFactor");
+    const topoEntityMeta = document.getElementById("topoEntityMeta");
+    const topoEntityRole = document.getElementById("topoEntityRole");
+    const topoEntityZone = document.getElementById("topoEntityZone");
+    const topoEntityGroup = document.getElementById("topoEntityGroup");
+    const topoEntityInput = document.getElementById("topoEntityInput");
     const documentSemMeta = document.getElementById("documentSemMeta");
     const documentSemOut = document.getElementById("documentSemOut");
     const documentSemNominalWidth = document.getElementById("documentSemNominalWidth");
@@ -1065,12 +1115,12 @@
     function syncDocumentSemFormFromSession() {
       const sem = state.session && state.session.document_sem ? state.session.document_sem : null;
       const productCode = knownProductCode();
-      documentSemNominalWidth.value = sem && sem.nominal_width ? sem.nominal_width : "";
-      documentSemNominalHeight.value = sem && sem.nominal_height ? sem.nominal_height : "";
-      documentSemFamily.value = sem && sem.family ? sem.family : "";
-      documentSemProduct.value = sem && sem.product ? sem.product : "";
+      documentSemNominalWidth.value = sem && sem.nominal_width ? sem.nominal_width : "900";
+      documentSemNominalHeight.value = sem && sem.nominal_height ? sem.nominal_height : "2100";
+      documentSemFamily.value = sem && sem.family ? sem.family : "VRATA";
+      documentSemProduct.value = sem && sem.product ? sem.product : "PPV";
       documentSemPart.value = sem && sem.part ? sem.part : productCode;
-      documentSemPart.readOnly = Boolean(productCode);
+      documentSemPart.readOnly = false;
     }
 
     function readDocumentSemPayload() {
@@ -1112,41 +1162,138 @@
       return Boolean(state.session) && hasDocumentSemConfigured() && (hasTopoConfigured() || state.authoring.topoSkipped);
     }
 
+    function parseMetadataPairs(rawValue, prefix) {
+      const raw = String(rawValue || "").trim();
+      const expectedPrefix = String(prefix || "").trim();
+      if (!raw.toUpperCase().startsWith(`${expectedPrefix.toUpperCase()}:`)) return {};
+      const body = raw.slice(expectedPrefix.length + 1);
+      const out = {};
+      for (const pair of body.split(";").map((item) => item.trim()).filter(Boolean)) {
+        const idx = pair.indexOf("=");
+        if (idx <= 0) continue;
+        out[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim();
+      }
+      return out;
+    }
+
+    function numberText(value, fallback) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) return String(numeric);
+      return String(fallback);
+    }
+
+    function syncTopoParameterOptions() {
+      const parameters = currentCatalogParameters();
+      if (!parameters.length) {
+        topoParameter.innerHTML = `<option value="">No catalog parameters</option>`;
+        return;
+      }
+      const previous = topoParameter.value;
+      topoParameter.innerHTML = parameters
+        .map((item) => `<option value="${esc(item.key)}">${esc(item.code || item.key)} | ${esc(item.label || "")}</option>`)
+        .join("");
+      const preferred = parameters.find((item) => item.key === previous)
+        || parameters.find((item) => String(item.key || "").toUpperCase() === "SIRINA_VRATA")
+        || parameters[0];
+      topoParameter.value = preferred ? preferred.key : "";
+    }
+
+    function syncTopoZoneOptions() {
+      const previous = topoEntityZone.value;
+      const zones = String(topoChain.value || "single_part") === "two_part"
+        ? ["LEC", "LCC", "RCC", "REC"]
+        : ["LEC", "REC"];
+      topoEntityZone.innerHTML = zones.map((zone) => `<option value="${zone}">${zone}</option>`).join("");
+      topoEntityZone.value = zones.includes(previous) ? previous : zones[0];
+      topoLccDeltaFactor.disabled = String(topoChain.value || "single_part") !== "two_part";
+      topoRccDeltaFactor.disabled = String(topoChain.value || "single_part") !== "two_part";
+    }
+
     function buildGeneratedTopoComment() {
-      const mode = String(topoMode.value || "").trim();
-      if (!mode) return "";
-      return `TOPO:mode=${mode};sliding_band=${String(topoSlidingBand.value || "").trim().toUpperCase()};fixed_dimension=${String(topoFixedDimension.value || "").trim().toUpperCase()};inner_side=${String(topoInnerSide.value || "").trim().toUpperCase()};outer_side=${String(topoOuterSide.value || "").trim().toUpperCase()}`;
+      const chain = String(topoChain.value || "single_part").trim();
+      const parts = [
+        "TOPO:mode=fixed_envelope_slide",
+        `group=${String(topoGroup.value || "LBRA_X_SLIDE").trim()}`,
+        `chain=${chain}`,
+        "axis=X",
+        `parameter=${String(topoParameter.value || "").trim()}`,
+        `nominal=${numberText(topoNominal.value, state.session?.document_sem?.nominal_width || 900)}`,
+        "delta_rule=config_minus_nominal",
+        `lec_delta_factor=${numberText(topoLecDeltaFactor.value, -1.0)}`,
+        `rec_delta_factor=${numberText(topoRecDeltaFactor.value, 1.0)}`
+      ];
+      if (chain === "two_part") {
+        parts.push(`lcc_delta_factor=${numberText(topoLccDeltaFactor.value, -1.0)}`);
+        parts.push(`rcc_delta_factor=${numberText(topoRccDeltaFactor.value, 1.0)}`);
+      }
+      parts.push("trim_policy=rejoin");
+      return parts.join(";");
+    }
+
+    function buildGeneratedTopoEntityComment() {
+      const role = String(topoEntityRole.value || "none").trim();
+      if (role === "none") return "";
+      return `TOPO:role=${role};group=${String(topoGroup.value || "LBRA_X_SLIDE").trim()};zone=${String(topoEntityZone.value || "LEC").trim()}`;
     }
 
     function syncTopoFormFromSession() {
-      const runtimeModel = state.session && state.session.topo_metadata
-        ? state.session.topo_metadata.runtime_model
-        : null;
-      topoMode.value = runtimeModel && runtimeModel.mode ? runtimeModel.mode : "";
-      topoSlidingBand.value = runtimeModel && runtimeModel.sliding_band ? runtimeModel.sliding_band : "L";
-      topoFixedDimension.value = runtimeModel && runtimeModel.fixed_dimension ? runtimeModel.fixed_dimension : "X";
-      topoInnerSide.value = runtimeModel && runtimeModel.inner_side ? runtimeModel.inner_side : "RIGHT";
-      topoOuterSide.value = runtimeModel && runtimeModel.outer_side ? runtimeModel.outer_side : "LEFT";
+      const raw = state.session && state.session.topo_metadata && Array.isArray(state.session.topo_metadata.raw_comments)
+        ? state.session.topo_metadata.raw_comments.find((value) => String(value || "").includes("chain=")) || ""
+        : "";
+      const parsed = parseMetadataPairs(raw, "TOPO");
+      syncTopoParameterOptions();
+      topoMode.value = "fixed_envelope_slide";
+      topoGroup.value = parsed.group || topoGroup.value || "LBRA_X_SLIDE";
+      topoChain.value = parsed.chain || topoChain.value || "single_part";
+      topoAxis.value = "X";
+      if (parsed.parameter && Array.from(topoParameter.options).some((option) => option.value === parsed.parameter)) {
+        topoParameter.value = parsed.parameter;
+      }
+      topoNominal.value = parsed.nominal || topoNominal.value || state.session?.document_sem?.nominal_width || 900;
+      topoDeltaRule.value = "config_minus_nominal";
+      topoTrimPolicy.value = "rejoin";
+      topoLecDeltaFactor.value = parsed.lec_delta_factor || topoLecDeltaFactor.value || "-1.0";
+      topoRecDeltaFactor.value = parsed.rec_delta_factor || topoRecDeltaFactor.value || "1.0";
+      topoLccDeltaFactor.value = parsed.lcc_delta_factor || topoLccDeltaFactor.value || "-1.0";
+      topoRccDeltaFactor.value = parsed.rcc_delta_factor || topoRccDeltaFactor.value || "1.0";
+      syncTopoZoneOptions();
+      topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
       topoInput.value = buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
+      syncTopoEntityInput();
     }
 
     function syncTopoInputFromSession() {
-      const topo = state.session && state.session.topo_metadata ? state.session.topo_metadata : null;
-      if (topo && topo.runtime_model) {
-        syncTopoFormFromSession();
-        return;
-      }
-      topoInput.value = topo && Array.isArray(topo.raw_comments) && topo.raw_comments.length
-        ? topo.raw_comments.map((value) => `999\n${value}`).join("\n")
-        : buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
+      syncTopoZoneOptions();
+      topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
+      topoInput.value = buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
+      syncTopoEntityInput();
+    }
+
+    function syncTopoEntityInput() {
+      topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
+      const object = selectedObject();
+      topoEntityMeta.textContent = object
+        ? `Selected entity: ${object.display_label || object.id}`
+        : "Select one entity for entity-level TOPO role preview.";
+      const comment = object ? buildGeneratedTopoEntityComment() : "";
+      topoEntityInput.value = comment ? `999\n${comment}` : "";
     }
 
     function setTopoControlsDisabled(disabled) {
       topoMode.disabled = disabled;
-      topoSlidingBand.disabled = disabled;
-      topoFixedDimension.disabled = disabled;
-      topoInnerSide.disabled = disabled;
-      topoOuterSide.disabled = disabled;
+      topoGroup.disabled = disabled;
+      topoChain.disabled = disabled;
+      topoAxis.disabled = disabled;
+      topoParameter.disabled = disabled;
+      topoNominal.disabled = disabled;
+      topoDeltaRule.disabled = disabled;
+      topoTrimPolicy.disabled = disabled;
+      topoLecDeltaFactor.disabled = disabled;
+      topoRecDeltaFactor.disabled = disabled;
+      topoLccDeltaFactor.disabled = disabled || String(topoChain.value || "single_part") !== "two_part";
+      topoRccDeltaFactor.disabled = disabled || String(topoChain.value || "single_part") !== "two_part";
+      topoEntityRole.disabled = disabled;
+      topoEntityZone.disabled = disabled;
       document.getElementById("saveTopoBtn").disabled = disabled;
       document.getElementById("skipTopoBtn").disabled = disabled;
     }
@@ -1185,14 +1332,16 @@
       topoMeta.textContent = topoLocked
         ? "TOPO locked until Document Properties are saved."
         : `TOPO records ${Array.isArray(topo.raw_comments) ? topo.raw_comments.length : 0} | valid=${topo.validation && topo.validation.ok ? "true" : "false"}`;
+      syncTopoFormFromSession();
+      setTopoControlsDisabled(topoLocked);
       topoOut.textContent = JSON.stringify({
         raw_comments: topo.raw_comments || [],
+        generated_file_level_999: topoInput.value || null,
+        generated_entity_level_999: topoEntityInput.value || null,
         runtime_model: topo.runtime_model || null,
         validation: topo.validation || { ok: false, errors: [] },
         locked: topoLocked
       }, null, 2);
-      setTopoControlsDisabled(topoLocked);
-      syncTopoFormFromSession();
     }
 
     function renderMetadataParameterOptions() {
@@ -1200,6 +1349,7 @@
       if (!parameters.length) {
         metadataParameter.innerHTML = `<option value="">No catalog parameters</option>`;
         metadataParameterSecondary.innerHTML = `<option value="">No catalog parameters</option>`;
+        topoParameter.innerHTML = `<option value="">No catalog parameters</option>`;
         metadataExpectedValue.innerHTML = `<option value="">No catalog value loaded</option>`;
         metadataExpectedValueSecondary.innerHTML = `<option value="">No catalog value loaded</option>`;
         metadataExpectedValueMeta.textContent = "";
@@ -1211,6 +1361,7 @@
         .join("");
       metadataParameter.innerHTML = optionsHtml;
       metadataParameterSecondary.innerHTML = optionsHtml;
+      syncTopoParameterOptions();
       if (!metadataParameter.value || !parameters.some((item) => item.key === metadataParameter.value)) {
         metadataParameter.value = parameters[0].key;
       }
@@ -1528,9 +1679,14 @@
 
     async function saveDocumentSemMetadata() {
       if (!state.session) return;
+      const payload = readDocumentSemPayload();
+      if (!payload.nominal_width || !payload.nominal_height || !payload.family || !payload.product || !payload.part) {
+        setStatus("Document Properties traže nominal width, nominal height, family, product i part.", "error");
+        return;
+      }
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/document-sem`, {
         method: "POST",
-        body: JSON.stringify(readDocumentSemPayload())
+        body: JSON.stringify(payload)
       });
       state.session = data.session;
       render();
@@ -1543,16 +1699,34 @@
         setStatus("Prvo spremi Document Properties.", "error");
         return;
       }
+      if (!String(topoGroup.value || "").trim() || !String(topoParameter.value || "").trim() || !Number.isFinite(Number(topoNominal.value))) {
+        setStatus("TOPO traži group, parameter i nominal.", "error");
+        return;
+      }
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/topo`, {
         method: "POST",
         body: JSON.stringify({ topo_text: String(topoInput.value || "") })
       });
       state.session = data.session;
+      const selectedObjects = Array.from(state.selectedIds)
+        .map((id) => objectById(id))
+        .filter(Boolean);
+      for (const object of selectedObjects) {
+        const roleData = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/entities/${encodeURIComponent(object.entity_id)}/topo-role`, {
+          method: "POST",
+          body: JSON.stringify({
+            role: String(topoEntityRole.value || "none"),
+            group: String(topoGroup.value || "").trim(),
+            zone: String(topoEntityZone.value || "").trim()
+          })
+        });
+        state.session = roleData.session;
+      }
       state.authoring.topoSkipped = false;
       state.authoring.activeStage = "sem";
       syncTopoInputFromSession();
       render();
-      setStatus("TOPO metadata saved to session.", "ok");
+      setStatus(selectedObjects.length ? `TOPO metadata saved to DXF document and ${selectedObjects.length} selected entiteta.` : "TOPO metadata saved to DXF document.", "ok");
     }
 
     function continueWithoutTopo() {
@@ -1802,8 +1976,18 @@
       const dy = point.y - state.dragStart.y;
       if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
         const hit = objectIdAtPoint(point);
-        state.selectedIds.clear();
-        if (hit) state.selectedIds.add(hit);
+        if (event.ctrlKey || event.metaKey) {
+          if (hit) {
+            if (state.selectedIds.has(hit)) {
+              state.selectedIds.delete(hit);
+            } else {
+              state.selectedIds.add(hit);
+            }
+          }
+        } else {
+          state.selectedIds.clear();
+          if (hit) state.selectedIds.add(hit);
+        }
       } else {
         const ids = objectIdsInRect(state.dragRect);
         state.selectedIds = new Set(ids);
@@ -1849,11 +2033,16 @@
     dxfInput.addEventListener("scroll", () => {
       lineGutter.scrollTop = dxfInput.scrollTop;
     });
-    topoMode.addEventListener("change", syncTopoInputFromSession);
-    topoSlidingBand.addEventListener("change", syncTopoInputFromSession);
-    topoFixedDimension.addEventListener("change", syncTopoInputFromSession);
-    topoInnerSide.addEventListener("change", syncTopoInputFromSession);
-    topoOuterSide.addEventListener("change", syncTopoInputFromSession);
+    topoGroup.addEventListener("input", syncTopoInputFromSession);
+    topoChain.addEventListener("change", syncTopoInputFromSession);
+    topoParameter.addEventListener("change", syncTopoInputFromSession);
+    topoNominal.addEventListener("input", syncTopoInputFromSession);
+    topoLecDeltaFactor.addEventListener("input", syncTopoInputFromSession);
+    topoRecDeltaFactor.addEventListener("input", syncTopoInputFromSession);
+    topoLccDeltaFactor.addEventListener("input", syncTopoInputFromSession);
+    topoRccDeltaFactor.addEventListener("input", syncTopoInputFromSession);
+    topoEntityRole.addEventListener("change", syncTopoEntityInput);
+    topoEntityZone.addEventListener("change", syncTopoEntityInput);
     metadataMode.addEventListener("change", renderMetadataPreview);
     metadataParameter.addEventListener("change", syncMetadataExpectedValueFromSelection);
     metadataOperation.addEventListener("change", renderMetadataPreview);
