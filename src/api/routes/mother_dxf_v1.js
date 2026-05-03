@@ -202,6 +202,51 @@ function createMotherDxfRouterV1() {
     }
   });
 
+  router.post("/sessions/:sessionId/child/topo-poc", async (req, res) => {
+    try {
+      const parameterSet = req.body?.config_parameter_set || req.body || {};
+      const result = await motherDxfRuntime.generateChildDxfTopoPocForSession({
+        sessionId: String(req.params.sessionId || ""),
+        parameterSet
+      });
+      const summary = result.generation_summary || {};
+      res.setHeader("Content-Type", "application/dxf; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${req.params.sessionId}_child_topo_poc.dxf"`);
+      res.setHeader("X-Mother-DXF-Child-Mode", String(summary.mode || "child_topo_poc_v0"));
+      res.setHeader("X-Mother-DXF-Included-Count", String(summary.included_count ?? ""));
+      res.setHeader("X-Mother-DXF-Excluded-Count", String(summary.excluded_count ?? ""));
+      res.setHeader("X-Mother-DXF-Moved-Count", String(summary.moved_count ?? ""));
+      res.setHeader("X-Mother-DXF-Topo-Delta", String(summary.delta ?? ""));
+      res.setHeader("X-Mother-DXF-Trim-Policy-Status", String(summary.trim_policy_status || ""));
+      res.send(result.dxf_text);
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_CHILD_TOPO_POC_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/child/topo-poc/preview", async (req, res) => {
+    try {
+      const parameterSet = req.body?.config_parameter_set || req.body || {};
+      const result = await motherDxfRuntime.generateChildDxfTopoPocForSession({
+        sessionId: String(req.params.sessionId || ""),
+        parameterSet
+      });
+      res.json({
+        ok: true,
+        session: motherDxfRuntime.projectViewModel(result.session),
+        generation_summary: result.generation_summary
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_CHILD_TOPO_POC_PREVIEW_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.post("/sessions/:sessionId/meta", async (req, res) => {
     try {
       const session = await motherDxfRuntime.updateSessionMeta({

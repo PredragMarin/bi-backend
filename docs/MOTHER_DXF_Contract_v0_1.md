@@ -977,3 +977,23 @@ Approval gate rule:
 - WARNING results must be explicitly reviewed and confirmed by the authoring engineer.
 - A full Auto mode run across all allowed parameter ranges with configured
   conflict signals must complete before final approval is granted.
+
+## 24. Non-Normative Appendix: POC TODO
+
+Delete this appendix when the listed items are resolved or promoted into
+normative contract sections.
+
+Open POC debt:
+- Tighten metadata vocabularies after real POC validation, especially `TOPO`
+  executable field names and possible compact aliases.
+- Verify `trim_policy=rejoin` on a real DXF case where mover geometry touches
+  anchored geometry.
+- Keep `follower` as reserved TOPO semantics until a concrete case needs it.
+- Revisit operation ordering only if combined `SEM`, `TOPO`, `9-layer`, or
+  material allowance behavior produces a real conflict.
+- Define the material allowance resolver concept, for example
+  `@FAMILY.RED_GIPS=9.5`, after a POC case requires it.
+- Normalize `family`, `product`, and `part` vocabulary in document-level SEM
+  against the future DCM / DBR lifecycle model.
+- Remove or consolidate legacy UI fallback paths once unified enriched preview
+  and unified child save are stable across POC parts.

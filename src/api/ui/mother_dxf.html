@@ -25,10 +25,20 @@
     .hero h1{margin:0 0 6px;font-size:32px}
     .hero p{margin:0;color:var(--muted);max-width:1100px;line-height:1.5}
     .layout{display:grid;grid-template-columns:360px 390px minmax(520px,1fr);gap:14px;align-items:start;min-width:1298px;width:max-content;max-width:none}
+    .bottom-grid{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;width:1298px;max-width:100%}
+    .bottom-grid .card{flex:0 0 360px;width:360px}
+    .viewer-card-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+    .viewer-card-wide-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
     .stack{display:grid;gap:14px;align-content:start;grid-auto-rows:max-content;min-width:0}
     .card{padding:16px;min-width:0}
     h2{margin:0 0 10px;font-size:18px}
     textarea,input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;color:var(--ink)}
+    .compact-form textarea,.compact-form input,.compact-form select{padding:5px 8px;border-radius:8px;min-height:30px}
+    .compact-form textarea{min-height:54px}
+    .compact-form .grid-2{gap:6px}
+    .compact-form label{font-size:12px}
+    .compact-form .toolbar{gap:6px;margin-top:8px!important}
+    .compact-form pre{padding:8px;max-height:130px}
     textarea{min-height:240px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
     .editor-shell{display:grid;grid-template-columns:34px 1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
     .editor-shell.entity-focus{border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.14);background:#fff7f7}
@@ -63,6 +73,9 @@
     @media (max-width: 1180px){
       .page{overflow-x:visible}
       .layout{min-width:0}
+      .bottom-grid{min-width:0;width:auto;display:grid;grid-template-columns:1fr}
+      .bottom-grid .card{width:auto;flex:auto}
+      .viewer-card-row,.viewer-card-wide-row{grid-template-columns:1fr}
       .layout{grid-template-columns:1fr}
       .side-stack{grid-template-columns:1fr}
       .viewer-shell{min-height:auto}
@@ -79,7 +92,7 @@
 
     <section class="layout">
       <div class="stack">
-        <div class="card">
+        <div class="card" id="cardInput">
           <h2>Input</h2>
           <div class="row" style="margin-bottom:10px">
             <input id="fileInput" type="file" accept=".dxf,text/plain" />
@@ -92,7 +105,7 @@
           <div id="inputFocusNote" class="focus-note" style="display:none"></div>
         </div>
 
-        <div class="card">
+        <div class="card" id="cardAutoSuggestion">
           <h2>4-band Auto-Suggestion</h2>
           <div class="grid-2">
             <label>Left band (mm)<input id="bandLeft" type="number" value="80" min="0" step="1" /></label>
@@ -106,18 +119,18 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card" id="cardSelection">
           <h2>Selection</h2>
           <div class="meta" style="margin-bottom:10px">Click za single select. Drag za rectangle select. Klik na prazno čisti selekciju.</div>
           <div id="selectionBox" class="selection"><div class="meta">No selection.</div></div>
         </div>
 
-        <div class="card">
+        <div class="card" id="cardForceAssign">
           <h2>Force Assign</h2>
           <div class="toolbar" id="assignToolbar"></div>
         </div>
 
-        <div class="card">
+        <div class="card" id="cardSessionLifecycle">
           <h2>Session Lifecycle</h2>
           <div class="grid-2">
             <label>Session title<input id="sessionTitle" type="text" placeholder="KSKR smoke 001" /></label>
@@ -144,19 +157,19 @@
       </div>
 
       <div class="stack side-stack">
-        <div class="card">
+        <div class="card" id="cardParameterCatalog">
           <h2>Parameter Catalog</h2>
           <div id="parameterCatalogMeta" class="meta" style="margin-bottom:8px">No active catalog.</div>
           <pre id="parameterCatalogOut">{"ok":false,"note":"Catalog not loaded yet."}</pre>
         </div>
 
-        <div class="card">
+        <div class="card" id="cardRuleCatalog">
           <h2>Rule Catalog</h2>
           <div id="ruleCatalogMeta" class="meta" style="margin-bottom:8px">No active rule catalog.</div>
           <pre id="ruleCatalogOut">{"ok":false,"note":"Rule catalog not loaded yet."}</pre>
         </div>
 
-        <div class="card">
+        <div class="card compact-form" id="cardMetadataAuthoring">
           <h2>Metadata Authoring</h2>
           <div class="toolbar" style="margin-bottom:12px">
             <button id="authoringStageTopoBtn" type="button" class="secondary">Stage 1: TOPO</button>
@@ -374,29 +387,31 @@
           </div>
         </div>
 
-        <div class="card">
+        <div class="card" id="cardConfigParameterSet">
           <h2>Config Parameter Set</h2>
           <div class="meta" style="margin-bottom:8px">Ovdje se unosi životni konfiguracijski JSON artefakt za smoke simulaciju prije child DXF generacije.</div>
           <textarea id="configInput" style="min-height:180px" placeholder='{"technology_profile":"OPS_S4P4","product_code":"KSKR","parameters":{"BRAVA":"TIP1","LIMITATOR":false}}'></textarea>
           <div class="toolbar" style="margin-top:12px">
             <button id="saveConfigBtn" class="secondary" disabled>Save Config</button>
-            <button id="simulateBtn" class="good" disabled>Simulate Pre-Child Preview</button>
+            <button id="simulateBtn" class="good" disabled>Preview Enriched Child</button>
+            <button id="previewTopoChildBtn" class="good" style="display:none" disabled>Preview TOPO Child</button>
           </div>
         </div>
 
-        <div class="card">
+        <div class="card" id="cardStatusValidation">
           <h2>Status & Validation</h2>
           <div id="statusBox" class="status">Ready.</div>
           <div class="toolbar" style="margin-top:12px">
             <button id="validateBtn" class="warn" disabled>Validate Mother Draft</button>
             <button id="exportBtn" class="good" disabled>Export Mother DXF</button>
-            <button id="generateChildBtn" class="good" style="display:none" disabled>Generate Child DXF</button>
+            <button id="generateChildBtn" class="good" style="display:none" disabled>Save Child DXF</button>
+            <button id="generateTopoChildBtn" class="good" style="display:none" disabled>Generate TOPO Child DXF</button>
           </div>
           <div id="childSummaryBox" class="meta" style="display:none;margin-top:10px"></div>
           <pre id="validationOut">{"ok":false}</pre>
         </div>
 
-        <div class="card">
+        <div class="card" id="cardSimulationPreview">
           <h2>Simulation Preview</h2>
           <div class="meta" style="margin-bottom:8px">Preview povezuje relevant objecte, 9-layer klasifikaciju, `999` metadata i konfiguracijski parameter set. Ovo još nije child DXF generation.</div>
           <pre id="simulationOut">{"ok":false,"note":"Simulation not run yet."}</pre>
@@ -404,7 +419,7 @@
       </div>
 
       <div class="stack">
-        <div class="card viewer-shell">
+        <div class="card viewer-shell" id="cardViewer">
           <div class="row">
             <strong>Viewer</strong>
             <span id="sessionMeta" class="meta">No active session.</span>
@@ -418,6 +433,7 @@
         </div>
       </div>
     </section>
+    <section id="bottomCards" class="bottom-grid"></section>
   </div>
 
   <script>
@@ -430,6 +446,7 @@
       dragRect: null,
       view: { scale: 1, offsetX: 0, offsetY: 0 },
       panning: null,
+      topoPreview: null,
       measure: {
         enabled: false,
         pointA: null,
@@ -452,6 +469,7 @@
     const dxfInput = document.getElementById("dxfInput");
     const configInput = document.getElementById("configInput");
     const generateChildBtn = document.getElementById("generateChildBtn");
+    const generateTopoChildBtn = document.getElementById("generateTopoChildBtn");
     const childSummaryBox = document.getElementById("childSummaryBox");
     const sessionTitleInput = document.getElementById("sessionTitle");
     const sessionStatusSelect = document.getElementById("sessionStatus");
@@ -520,6 +538,37 @@
       statusBox.textContent = message;
       statusBox.style.background = tone === "error" ? "#fee4e2" : tone === "ok" ? "#dcfce7" : "#d8e4df";
       statusBox.style.color = tone === "error" ? "#b42318" : tone === "ok" ? "#166534" : "#14323d";
+    }
+
+    function arrangeWorkspaceCards() {
+      const leftStack = document.querySelector(".layout > .stack:first-child");
+      const workStack = document.querySelector(".layout > .side-stack");
+      const move = (target, ids) => {
+        for (const id of ids) {
+          const node = document.getElementById(id);
+          if (node) target.appendChild(node);
+        }
+      };
+      const viewerStack = document.querySelector(".layout > .stack:last-child");
+      let viewerRow = document.getElementById("viewerBelowRow");
+      if (!viewerRow) {
+        viewerRow = document.createElement("div");
+        viewerRow.id = "viewerBelowRow";
+        viewerRow.className = "viewer-card-row";
+      }
+      let viewerWideRow = document.getElementById("viewerWideRow");
+      if (!viewerWideRow) {
+        viewerWideRow = document.createElement("div");
+        viewerWideRow.id = "viewerWideRow";
+        viewerWideRow.className = "viewer-card-wide-row";
+      }
+      move(leftStack, ["cardSessionLifecycle", "cardAutoSuggestion", "cardSelection", "cardForceAssign", "cardConfigParameterSet"]);
+      move(workStack, ["cardMetadataAuthoring"]);
+      move(viewerStack, ["cardViewer"]);
+      viewerStack.appendChild(viewerRow);
+      viewerStack.appendChild(viewerWideRow);
+      move(viewerRow, ["cardStatusValidation", "cardParameterCatalog", "cardRuleCatalog"]);
+      move(viewerWideRow, ["cardInput", "cardSimulationPreview"]);
     }
 
     function esc(value) {
@@ -617,7 +666,38 @@
       return item && item.preview ? item.preview : null;
     }
 
+    function topoPreviewMoveByEntityId(entityId) {
+      const moved = state.topoPreview && state.topoPreview.generation_summary && Array.isArray(state.topoPreview.generation_summary.moved_entities)
+        ? state.topoPreview.generation_summary.moved_entities
+        : [];
+      return moved.find((item) => item.entity_id === entityId) || null;
+    }
+
+    function translatePreviewShape(shape, dx, dy) {
+      const deltaX = Number(dx || 0);
+      const deltaY = Number(dy || 0);
+      if (!shape || typeof shape !== "object") return shape;
+      if (shape.kind === "line") {
+        return { ...shape, x1: Number(shape.x1) + deltaX, y1: Number(shape.y1) + deltaY, x2: Number(shape.x2) + deltaX, y2: Number(shape.y2) + deltaY };
+      }
+      if (shape.kind === "circle") {
+        return { ...shape, centerX: Number(shape.centerX) + deltaX, centerY: Number(shape.centerY) + deltaY };
+      }
+      if (shape.kind === "arc") {
+        return { ...shape, centerX: Number(shape.centerX) + deltaX, centerY: Number(shape.centerY) + deltaY };
+      }
+      if (shape.kind === "insert") {
+        return { ...shape, x: Number(shape.x) + deltaX, y: Number(shape.y) + deltaY };
+      }
+      return shape;
+    }
+
     function effectiveShapesForObject(object) {
+      const topoMove = topoPreviewMoveByEntityId(object?.entity_id);
+      if (topoMove) {
+        return (Array.isArray(object?.shapes) ? object.shapes : [])
+          .map((shape) => translatePreviewShape(shape, topoMove.dx, topoMove.dy));
+      }
       const preview = simulationGeometryByObjectId(object?.id);
       return preview && Array.isArray(preview.simulated_shapes)
         ? preview.simulated_shapes
@@ -625,6 +705,15 @@
     }
 
     function effectiveBBoxForObject(object) {
+      const topoMove = topoPreviewMoveByEntityId(object?.entity_id);
+      if (topoMove && object?.bbox) {
+        return {
+          minX: Number(object.bbox.minX) + Number(topoMove.dx || 0),
+          minY: Number(object.bbox.minY) + Number(topoMove.dy || 0),
+          maxX: Number(object.bbox.maxX) + Number(topoMove.dx || 0),
+          maxY: Number(object.bbox.maxY) + Number(topoMove.dy || 0)
+        };
+      }
       const preview = simulationGeometryByObjectId(object?.id);
       return preview && preview.simulated_bbox
         ? preview.simulated_bbox
@@ -848,6 +937,7 @@
     }
 
     function isObjectVisibleInSimulation(objectId) {
+      if (state.topoPreview) return true;
       const item = simulationItemByObjectId(objectId);
       if (!item || !item.preview) return true;
       return item.preview.visible !== false;
@@ -933,7 +1023,7 @@
     }
 
     function renderSimulation(simulation) {
-      simulationOut.textContent = JSON.stringify(simulation || {
+      simulationOut.textContent = JSON.stringify(state.topoPreview || simulation || {
         ok: false,
         note: "Simulation not run yet."
       }, null, 2);
@@ -983,6 +1073,8 @@
       const visible = canGenerateChildDxf();
       generateChildBtn.style.display = visible ? "" : "none";
       generateChildBtn.disabled = !visible;
+      generateTopoChildBtn.style.display = "none";
+      generateTopoChildBtn.disabled = true;
       if (!visible) {
         childSummaryBox.style.display = "none";
         childSummaryBox.textContent = "";
@@ -1004,6 +1096,10 @@
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+    }
+
+    function clearTopoPreview() {
+      state.topoPreview = null;
     }
 
     function currentCatalogParameters() {
@@ -1597,6 +1693,7 @@
       });
       state.session = data.session;
       state.simulation = null;
+      clearTopoPreview();
       state.authoring.topoSkipped = false;
       state.authoring.activeStage = hasTopoConfigured() ? "sem" : "topo";
       state.selectedIds.clear();
@@ -1609,6 +1706,7 @@
       document.getElementById("exportBtn").disabled = false;
       document.getElementById("saveConfigBtn").disabled = false;
       document.getElementById("simulateBtn").disabled = false;
+      document.getElementById("previewTopoChildBtn").disabled = false;
       document.getElementById("saveTopoBtn").disabled = false;
       syncConfigInputFromSession();
       syncTopoInputFromSession();
@@ -1627,6 +1725,7 @@
       });
       state.session = data.session;
       state.simulation = null;
+      clearTopoPreview();
       fitViewToDocument();
       render();
       setStatus("Auto-suggestion recomputed. Manual assignments were preserved.", "ok");
@@ -1646,6 +1745,7 @@
       });
       state.session = data.session;
       state.simulation = null;
+      clearTopoPreview();
       render();
       setStatus(`Assigned ${layer} to ${state.selectedIds.size} object(s).`, "ok");
     }
@@ -1659,6 +1759,7 @@
       });
       state.session = data.session;
       state.simulation = null;
+      clearTopoPreview();
       renderValidation(data.validation);
       render();
       setStatus(data.validation.ok ? "Validation passed." : "Validation failed. See details below.", data.validation.ok ? "ok" : "error");
@@ -1672,6 +1773,7 @@
         body: JSON.stringify({ config_parameter_set })
       });
       state.session = data.session;
+      clearTopoPreview();
       syncConfigInputFromSession();
       render();
       setStatus("Config parameter set saved to session.", "ok");
@@ -1689,6 +1791,7 @@
         body: JSON.stringify(payload)
       });
       state.session = data.session;
+      clearTopoPreview();
       render();
       setStatus("Document Properties saved as document-level SEM.", "ok");
     }
@@ -1720,8 +1823,9 @@
             zone: String(topoEntityZone.value || "").trim()
           })
         });
-        state.session = roleData.session;
+      state.session = roleData.session;
       }
+      clearTopoPreview();
       state.authoring.topoSkipped = false;
       state.authoring.activeStage = "sem";
       syncTopoInputFromSession();
@@ -1751,6 +1855,7 @@
         })
       });
       state.session = data.session;
+      clearTopoPreview();
       document.getElementById("dxfInput").value = data.dxf_text || document.getElementById("dxfInput").value;
       await refreshSessionList();
       render();
@@ -1775,6 +1880,7 @@
       });
       state.session = data.session;
       state.simulation = null;
+      clearTopoPreview();
       state.authoring.topoSkipped = false;
       state.authoring.activeStage = hasTopoConfigured() ? "sem" : "topo";
       state.selectedIds.clear();
@@ -1787,6 +1893,7 @@
       document.getElementById("exportBtn").disabled = false;
       document.getElementById("saveConfigBtn").disabled = false;
       document.getElementById("simulateBtn").disabled = false;
+      document.getElementById("previewTopoChildBtn").disabled = false;
       document.getElementById("saveTopoBtn").disabled = false;
       document.getElementById("saveSessionMetaBtn").disabled = false;
       fitViewToDocument();
@@ -1814,6 +1921,7 @@
         })
       });
       state.session = data.session;
+      clearTopoPreview();
       document.getElementById("dxfInput").value = data.dxf_text || document.getElementById("dxfInput").value;
       renderLineNumbers();
       render();
@@ -1838,6 +1946,10 @@
 
     async function simulatePreChildPreview() {
       if (!state.session) return;
+      if (hasTopoConfigured()) {
+        await previewTopoChildDxf();
+        return;
+      }
       setStatus("Running pre-child simulation...");
       const config_parameter_set = readConfigInput();
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/simulate`, {
@@ -1846,6 +1958,7 @@
       });
       state.session = data.session;
       state.simulation = data.simulation || null;
+      clearTopoPreview();
       renderSimulation(data.simulation);
       syncConfigInputFromSession();
       render();
@@ -1861,6 +1974,10 @@
       if (!state.session) return;
       if (!canGenerateChildDxf()) {
         setStatus("Child DXF generation requires mother_validated artifact or in_review status.", "error");
+        return;
+      }
+      if (hasTopoConfigured()) {
+        await generateTopoChildDxf();
         return;
       }
       setStatus("Generating child DXF...");
@@ -1895,6 +2012,70 @@
       childSummaryBox.style.display = "";
       childSummaryBox.textContent = `Child DXF generated: included=${included}, excluded=${excluded}, unsupported_geometry_ops=${unsupported}`;
       setStatus("Child DXF download ready.", "ok");
+    }
+
+    async function generateTopoChildDxf() {
+      if (!state.session) return;
+      if (!canGenerateChildDxf()) {
+        setStatus("TOPO child DXF generation requires mother_validated artifact or in_review status.", "error");
+        return;
+      }
+      setStatus("Generating TOPO child DXF...");
+      const config_parameter_set = readConfigInput();
+      const response = await fetch(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/topo-poc`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config_parameter_set)
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        let message = text || `HTTP ${response.status}`;
+        try {
+          const parsed = JSON.parse(text);
+          message = parsed.message || message;
+        } catch (_) {
+          // Keep raw server response when it is not JSON.
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const filename = filenameFromContentDisposition(
+        response.headers.get("Content-Disposition"),
+        `${state.session.session_id}_child_topo_poc.dxf`
+      );
+      triggerBlobDownload(blob, filename);
+
+      const included = response.headers.get("X-Mother-DXF-Included-Count") || "?";
+      const excluded = response.headers.get("X-Mother-DXF-Excluded-Count") || "?";
+      const moved = response.headers.get("X-Mother-DXF-Moved-Count") || "?";
+      const delta = response.headers.get("X-Mother-DXF-Topo-Delta") || "?";
+      const trim = response.headers.get("X-Mother-DXF-Trim-Policy-Status") || "";
+      childSummaryBox.style.display = "";
+      childSummaryBox.textContent = `TOPO Child DXF generated: included=${included}, excluded=${excluded}, moved=${moved}, delta=${delta}, trim=${trim}`;
+      setStatus("TOPO child DXF download ready.", "ok");
+    }
+
+    async function previewTopoChildDxf() {
+      if (!state.session) return;
+      setStatus("Previewing TOPO child geometry...");
+      const config_parameter_set = readConfigInput();
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/topo-poc/preview`, {
+        method: "POST",
+        body: JSON.stringify(config_parameter_set)
+      });
+      state.session = data.session;
+      state.simulation = null;
+      state.topoPreview = {
+        ok: true,
+        mode: "topo_child_poc_preview",
+        generation_summary: data.generation_summary || null
+      };
+      renderSimulation(state.topoPreview);
+      render();
+      const moved = data.generation_summary ? data.generation_summary.moved_count : "?";
+      const delta = data.generation_summary ? data.generation_summary.delta : "?";
+      setStatus(`TOPO child preview ready. moved=${moved}, delta=${delta}`, "ok");
     }
 
     canvas.addEventListener("mousemove", (event) => {
@@ -2100,6 +2281,9 @@
     document.getElementById("simulateBtn").addEventListener("click", () => {
       simulatePreChildPreview().catch((error) => setStatus(error.message, "error"));
     });
+    document.getElementById("previewTopoChildBtn").addEventListener("click", () => {
+      simulatePreChildPreview().catch((error) => setStatus(error.message, "error"));
+    });
     document.getElementById("applyMetadataBtn").addEventListener("click", () => {
       applyMetadataRule().catch((error) => setStatus(error.message, "error"));
     });
@@ -2108,6 +2292,9 @@
     });
     document.getElementById("exportBtn").addEventListener("click", exportMotherDraft);
     generateChildBtn.addEventListener("click", () => {
+      generateChildDxf().catch((error) => setStatus(error.message, "error"));
+    });
+    generateTopoChildBtn.addEventListener("click", () => {
       generateChildDxf().catch((error) => setStatus(error.message, "error"));
     });
     measureToggleBtn.addEventListener("click", () => {
@@ -2125,6 +2312,7 @@
     window.addEventListener("resize", render);
 
     initAssignToolbar();
+    arrangeWorkspaceCards();
     renderValidation({ ok: false, note: "Validation not run yet." });
     renderSimulation({ ok: false, note: "Simulation not run yet." });
     configInput.value = JSON.stringify({

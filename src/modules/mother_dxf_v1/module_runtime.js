@@ -10,6 +10,7 @@ const {
   applyPrimaryLayer
 } = require("../../core_shell/dxf");
 const {
+  roundNumber,
   bboxUnion,
   bboxCenter,
   translateShape,
@@ -1345,6 +1346,207 @@ function generateChildDxfNoTopo(session, parameterSet) {
   };
 }
 
+function firstExecutableTopoComment(session) {
+  const comments = []
+    .concat(Array.isArray(session?.document?.preComments) ? session.document.preComments : [])
+    .concat(normalizeTopoCommentsInput(session?.topo_comments).map((value) => ({ code: "999", value })));
+  for (const pair of comments) {
+    if (String(pair?.code) !== "999") continue;
+    const parsed = parseTopoComment(pair.value);
+    if (parsed && parsed.keys && parsed.keys.mode === "fixed_envelope_slide" && parsed.keys.group && parsed.keys.chain) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function entityTopoRoleMetadata(entity) {
+  const comments = Array.isArray(entity?.preComments) ? entity.preComments : [];
+  for (const pair of comments) {
+    if (String(pair?.code) !== "999") continue;
+    const parsed = parseTopoComment(pair.value);
+    if (parsed && parsed.keys && parsed.keys.role) return parsed;
+  }
+  return null;
+}
+
+function translateEntityPairs(entity, dx, dy) {
+  const deltaX = Number(dx || 0);
+  const deltaY = Number(dy || 0);
+  entity.pairs = (Array.isArray(entity?.pairs) ? entity.pairs : []).map((pair) => {
+    const code = String(pair?.code || "");
+    const value = Number(pair?.value);
+    if (!Number.isFinite(value)) return pair;
+    if (/^1[0-8]$/.test(code)) {
+      return { ...pair, value: String(roundNumber(value + deltaX, 3)) };
+    }
+    if (/^2[0-8]$/.test(code)) {
+      return { ...pair, value: String(roundNumber(value + deltaY, 3)) };
+    }
+    return pair;
+  });
+}
+
+function entityMapById(document) {
+  const out = new Map();
+  for (const entity of Array.isArray(document?.entities) ? document.entities : []) {
+    out.set(entity.id, entity);
+  }
+  for (const block of Array.isArray(document?.blocks) ? document.blocks : []) {
+    for (const entity of Array.isArray(block?.entities) ? block.entities : []) {
+      out.set(entity.id, entity);
+    }
+  }
+  return out;
+}
+
+function zoneDeltaFactor(topoKeys, zone) {
+  const key = `${String(zone || "").trim().toLowerCase()}_delta_factor`;
+  const factor = Number(topoKeys?.[key]);
+  return Number.isFinite(factor) ? factor : null;
+}
+
+function materializeChildDocumentTopoPoc(session, config) {
+  const view = projectViewModel(session);
+  const parameters = config.parameters || {};
+  const topo = firstExecutableTopoComment(session);
+  if (!topo) {
+    throw new Error("TOPO child POC requires executable file-level TOPO metadata.");
+  }
+  const topoKeys = topo.keys || {};
+  const axis = String(topoKeys.axis || "").trim().toUpperCase();
+  if (axis !== "X") {
+    throw new Error(`TOPO child POC supports only axis=X, received: ${topoKeys.axis}`);
+  }
+  const parameter = String(topoKeys.parameter || "").trim();
+  const nominal = Number(topoKeys.nominal);
+  const actual = Number(parameters[parameter]);
+  if (!parameter) throw new Error("TOPO child POC requires TOPO parameter.");
+  if (!Number.isFinite(nominal)) throw new Error(`Invalid TOPO nominal: ${topoKeys.nominal}`);
+  if (!Number.isFinite(actual)) throw new Error(`Missing numeric config parameter for TOPO: ${parameter}`);
+  if (String(topoKeys.delta_rule || "").trim() !== "config_minus_nominal") {
+    throw new Error(`Unsupported TOPO delta_rule: ${topoKeys.delta_rule}`);
+  }
+
+  const delta = actual - nominal;
+  const outputDocument = cloneJson(session.document);
+  const outputEntities = entityMapById(outputDocument);
+  const decisionsByEntityId = new Map();
+  const excludedEntities = [];
+  const includedEntities = [];
+  const movedEntities = [];
+  const skippedTopoEntities = [];
+
+  for (const object of Array.isArray(view.objects) ? view.objects : []) {
+    const decision = evaluateChildEntityInclusion(object, parameters);
+    decisionsByEntityId.set(object.entity_id, decision);
+    if (!decision.included) {
+      excludedEntities.push({
+        entity_id: object.entity_id,
+        object_id: object.id,
+        type: object.type,
+        exclusion_reason: decision.exclusion_reason || "excluded"
+      });
+      continue;
+    }
+    includedEntities.push({
+      entity_id: object.entity_id,
+      object_id: object.id,
+      type: object.type
+    });
+
+    const sourceEntity = findEntity(session.document, object.entity_id);
+    const topoRole = entityTopoRoleMetadata(sourceEntity);
+    if (!topoRole || topoRole.keys?.role !== "mover") continue;
+    if (String(topoRole.keys?.group || "").trim() !== String(topoKeys.group || "").trim()) {
+      skippedTopoEntities.push({
+        entity_id: object.entity_id,
+        object_id: object.id,
+        reason: "TOPO_GROUP_MISMATCH",
+        role_group: topoRole.keys?.group || null
+      });
+      continue;
+    }
+    const zone = String(topoRole.keys?.zone || "").trim().toUpperCase();
+    const factor = zoneDeltaFactor(topoKeys, zone);
+    if (!Number.isFinite(factor)) {
+      skippedTopoEntities.push({
+        entity_id: object.entity_id,
+        object_id: object.id,
+        reason: "MISSING_ZONE_DELTA_FACTOR",
+        zone
+      });
+      continue;
+    }
+    const dx = delta * factor;
+    const outputEntity = outputEntities.get(object.entity_id);
+    if (!outputEntity) {
+      skippedTopoEntities.push({
+        entity_id: object.entity_id,
+        object_id: object.id,
+        reason: "OUTPUT_ENTITY_NOT_FOUND",
+        zone
+      });
+      continue;
+    }
+    translateEntityPairs(outputEntity, dx, 0);
+    movedEntities.push({
+      entity_id: object.entity_id,
+      object_id: object.id,
+      type: object.type,
+      group: topoRole.keys.group,
+      zone,
+      factor,
+      dx,
+      dy: 0
+    });
+  }
+
+  outputDocument.entities = (Array.isArray(outputDocument.entities) ? outputDocument.entities : [])
+    .filter((entity) => {
+      const decision = decisionsByEntityId.get(entity.id);
+      return !decision || decision.included;
+    });
+  pruneUnusedBlocks(outputDocument);
+
+  return {
+    document: outputDocument,
+    generation_summary: {
+      mode: "child_topo_poc_v0",
+      topology_mode: "fixed_envelope_slide",
+      product_code: config.product_code,
+      technology_profile: config.technology_profile,
+      topo_group: topoKeys.group,
+      chain: topoKeys.chain,
+      axis,
+      parameter,
+      nominal,
+      actual,
+      delta,
+      trim_policy: topoKeys.trim_policy || null,
+      trim_policy_status: topoKeys.trim_policy ? "declared_not_executed" : "none",
+      entity_count: (Array.isArray(view.objects) ? view.objects : []).length,
+      included_count: includedEntities.length,
+      excluded_count: excludedEntities.length,
+      moved_count: movedEntities.length,
+      included_entities: includedEntities,
+      excluded_entities: excludedEntities,
+      moved_entities: movedEntities,
+      skipped_topo_entities: skippedTopoEntities
+    }
+  };
+}
+
+function generateChildDxfTopoPoc(session, parameterSet) {
+  const config = normalizeConfigParameterSet(parameterSet || DEFAULT_KSKR_EXECUTION_CHECK_PARAMETER_SET);
+  const materialized = materializeChildDocumentTopoPoc(session, config);
+  return {
+    config_parameter_set: config,
+    generation_summary: materialized.generation_summary,
+    dxf_text: serializeDocument(materialized.document)
+  };
+}
+
 function cloneShapes(shapes) {
   return JSON.parse(JSON.stringify(Array.isArray(shapes) ? shapes : []));
 }
@@ -2143,6 +2345,15 @@ async function simulateSession({ sessionId, configParameterSet, storeRoot }) {
   };
 }
 
+async function persistSessionConfigParameterSet(session, parameterSet, storeRoot) {
+  if (!parameterSet) return normalizeConfigParameterSet(session.config_parameter_set);
+  const config = normalizeConfigParameterSet(parameterSet);
+  session.config_parameter_set = config;
+  session.updated_at = new Date().toISOString();
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return config;
+}
+
 async function runKskrExecutionCheck({ sessionId, parameterSet, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   return {
@@ -2160,12 +2371,30 @@ async function runKskrExecutionCheck({ sessionId, parameterSet, storeRoot }) {
 
 async function generateChildDxfNoTopoForSession({ sessionId, parameterSet, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
-  const result = generateChildDxfNoTopo(session, parameterSet);
+  const config = await persistSessionConfigParameterSet(session, parameterSet, storeRoot);
+  const result = generateChildDxfNoTopo(session, config);
   const childInfo = await saveChildExport({
     rootDir: storeRoot || defaultRoot(),
     sessionId,
     dxfText: result.dxf_text,
     suffix: "child_no_topo"
+  });
+  return {
+    session,
+    ...result,
+    child_file: childInfo.filePath
+  };
+}
+
+async function generateChildDxfTopoPocForSession({ sessionId, parameterSet, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const config = await persistSessionConfigParameterSet(session, parameterSet, storeRoot);
+  const result = generateChildDxfTopoPoc(session, config);
+  const childInfo = await saveChildExport({
+    rootDir: storeRoot || defaultRoot(),
+    sessionId,
+    dxfText: result.dxf_text,
+    suffix: "child_topo_poc"
   });
   return {
     session,
@@ -2226,6 +2455,8 @@ module.exports = {
   runKskrExecutionCheck,
   generateChildDxfNoTopo,
   generateChildDxfNoTopoForSession,
+  generateChildDxfTopoPoc,
+  generateChildDxfTopoPocForSession,
   validateMotherDraft,
   exportMotherDraft,
   projectViewModel,
