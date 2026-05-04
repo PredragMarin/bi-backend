@@ -87,15 +87,26 @@
       text-transform: uppercase;
     }
 
-    input {
+    input,
+    textarea {
       width: 100%;
-      min-height: 38px;
       border: 1px solid var(--line);
       border-radius: 6px;
       padding: 8px 10px;
       color: var(--text);
       background: #ffffff;
       font: inherit;
+    }
+
+    input {
+      min-height: 38px;
+    }
+
+    textarea {
+      min-height: 210px;
+      resize: vertical;
+      line-height: 1.5;
+      font-family: Consolas, "Liberation Mono", monospace;
     }
 
     button {
@@ -204,6 +215,19 @@
       align-items: start;
     }
 
+    .wide {
+      grid-column: 1 / -1;
+    }
+
+    .workflow {
+      border-color: #9cc8c3;
+      box-shadow: 0 1px 0 rgba(15, 118, 110, 0.08);
+    }
+
+    .secondary {
+      opacity: 0.92;
+    }
+
     @media (max-width: 800px) {
       .grid,
       .tables {
@@ -219,8 +243,40 @@
   </header>
 
   <main>
-    <section>
-      <h2>1. Create Order</h2>
+    <section class="workflow">
+      <h2>1. Bulk Import SIFRADN</h2>
+      <div class="grid">
+        <label class="wide">sifradn_paste
+          <textarea id="sifradnPaste" spellcheck="false">26T20V01
+26T20V02
+26T20V03
+26T20V04
+26T20V05
+26T20V06
+26T20V07
+26T20V08
+26T20V09
+26T20V10
+26T20V11
+26T20V12
+26T20V13
+26T20V14
+26T20V15
+26T20V16
+26T20V17
+26T20V18
+26T20V19
+26T20V20</textarea>
+        </label>
+        <button id="importSifradnBtn" type="button">Import SIFRADN List</button>
+      </div>
+      <div id="importSifradnSummary" class="summary"></div>
+      <div id="importSifradnTables" class="tables"></div>
+      <div id="importSifradnResult"></div>
+    </section>
+
+    <section class="secondary">
+      <h2>2. Manual Create Order</h2>
       <div class="grid">
         <label>kit_code
           <input id="orderKitCode" value="OPS_S4P4">
@@ -234,8 +290,8 @@
       <div id="createOrderResult"></div>
     </section>
 
-    <section>
-      <h2>2. Create Batch</h2>
+    <section class="secondary">
+      <h2>3. Manual Create Batch</h2>
       <div class="grid">
         <label>orderId
           <input id="batchOrderId" inputmode="numeric">
@@ -247,7 +303,7 @@
     </section>
 
     <section>
-      <h2>3. Batch Report</h2>
+      <h2>4. Batch Report</h2>
       <div class="grid">
         <label>batchId
           <input id="reportBatchId" inputmode="numeric">
@@ -260,7 +316,7 @@
     </section>
 
     <section>
-      <h2>4. Run Batch</h2>
+      <h2>5. Run Batch</h2>
       <div class="grid">
         <label>batchId
           <input id="runBatchId" inputmode="numeric">
@@ -272,7 +328,7 @@
     </section>
 
     <section>
-      <h2>5. Register Artifact</h2>
+      <h2>6. Register Artifact</h2>
       <div class="grid">
         <label>mother_session_id
           <input id="artifactSessionId" value="SMOKE-TEST-UI-001">
@@ -410,6 +466,122 @@
         </table>
       `;
     }
+
+    function renderBatches(batches) {
+      const rows = (Array.isArray(batches) ? batches : [])
+        .map((batch) => `
+          <tr>
+            <td>${esc(batch.id)}</td>
+            <td>${esc(batch.productCode)}</td>
+            <td>${esc(batch.technologyProfile)}</td>
+            <td>${esc(batch.status)}</td>
+          </tr>
+        `)
+        .join("");
+      return `
+        <table>
+          <thead>
+            <tr><th>batch_id</th><th>product</th><th>profile</th><th>status</th></tr>
+          </thead>
+          <tbody>${rows || "<tr><td colspan=\"4\">No batches</td></tr>"}</tbody>
+        </table>
+      `;
+    }
+
+    function countJobsByBatch(jobs) {
+      return (Array.isArray(jobs) ? jobs : []).reduce((counts, job) => {
+        const key = String(job.kitBatchId || "");
+        counts[key] = (counts[key] || 0) + 1;
+        return counts;
+      }, {});
+    }
+
+    function renderBatchJobSummary(batches, jobs) {
+      const jobCounts = countJobsByBatch(jobs);
+      const rows = (Array.isArray(batches) ? batches : [])
+        .map((batch) => {
+          const count = jobCounts[String(batch.id)] || 0;
+          return `
+            <tr>
+              <td>${esc(batch.id)}</td>
+              <td>${esc(count)}/12</td>
+              <td>${esc(batch.status)}</td>
+            </tr>
+          `;
+        })
+        .join("");
+      return `
+        <table>
+          <thead>
+            <tr><th>batch_id</th><th>jobs</th><th>status</th></tr>
+          </thead>
+          <tbody>${rows || "<tr><td colspan=\"3\">No batch jobs</td></tr>"}</tbody>
+        </table>
+      `;
+    }
+
+    function renderImportJobs(jobs) {
+      const rows = (Array.isArray(jobs) ? jobs : [])
+        .map((job) => `
+          <tr>
+            <td>${esc(job.id)}</td>
+            <td>${esc(job.kitBatchId)}</td>
+            <td>${esc(job.partCode)}</td>
+            <td>${esc(job.status)}</td>
+          </tr>
+        `)
+        .join("");
+      return `
+        <table>
+          <thead>
+            <tr><th>job_id</th><th>batch_id</th><th>part_code</th><th>status</th></tr>
+          </thead>
+          <tbody>${rows || "<tr><td colspan=\"4\">No jobs</td></tr>"}</tbody>
+        </table>
+      `;
+    }
+
+    byId("importSifradnBtn").addEventListener("click", () => withButton("importSifradnBtn", async () => {
+      try {
+        const payload = await fetchJson("/import/sifradn-list", {
+          method: "POST",
+          body: JSON.stringify({
+            sifradn_paste: byId("sifradnPaste").value
+          })
+        });
+        const data = payload.data || {};
+        const batches = data.batches || [];
+        const jobs = data.jobs || [];
+        const lastBatch = batches.length ? batches[batches.length - 1] : null;
+        const firstJob = jobs.length ? jobs[0] : null;
+
+        if (lastBatch) {
+          setSharedBatchId(lastBatch.id);
+        }
+        if (firstJob) {
+          state.firstJobId = firstJob.id;
+        }
+
+        byId("importSifradnSummary").innerHTML = [
+          pill("input", data.requested || 0),
+          pill("imported", data.imported || 0),
+          pill("batches", batches.length),
+          pill("totalJobs", data.totalJobs || jobs.length),
+          pill("last batch", lastBatch ? lastBatch.id : "")
+        ].join("");
+        byId("importSifradnTables").innerHTML = `
+          <div>
+            ${renderBatches(batches)}
+            ${renderBatchJobSummary(batches, jobs)}
+          </div>
+          <div>${renderImportJobs(jobs)}</div>
+        `;
+        renderRaw("importSifradnResult", payload);
+      } catch (errorPayload) {
+        byId("importSifradnTables").innerHTML = "";
+        renderError("importSifradnResult", errorPayload);
+      }
+    }));
 
     byId("createOrderBtn").addEventListener("click", () => withButton("createOrderBtn", async () => {
       try {

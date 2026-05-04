@@ -1,0 +1,70 @@
+{
+  "contract_id": "dbr_sifradn_import_contract_v0",
+  "version": "v0",
+  "module": "dbr_v1",
+  "endpoint": "POST /api/dbr/v1/import/sifradn-list",
+  "description": "Bulk import contract for pasted or fetched Gosoft SIFRADN work orders into frozen DBR production orders, kit batches, and part jobs.",
+  "limits": {
+    "max_records": 50,
+    "default_stub_records": 20,
+    "expected_jobs_per_ops_s4p4_order": 12
+  },
+  "request": {
+    "content_type": "application/json",
+    "accepted_shapes": [
+      {
+        "use_stub": true
+      },
+      {
+        "sifradn_paste": "RN\n12345\n12346\n12347"
+      },
+      {
+        "rn_paste": "RN\n12345\n12346\n12347"
+      },
+      {
+        "paste": "RN\n12345\n12346\n12347"
+      }
+    ],
+    "record": {
+      "required": ["sifradn_paste|rn_paste|paste"],
+      "optional": ["dsn"],
+      "notes": [
+        "Production users paste RN/SIFRADN tokens as free text; they never supply DNID.",
+        "The DBR adapter fetches each token through Core Shell ERP allowlist query V_DN_BY_SIFRADN.",
+        "kit_code is OPS_S4P4 in v0 and maps to DBR productCode PPV plus technologyProfile OPS_S4P4.",
+        "Frozen parameters are built from the ERP row and parsed opombe/config payload.",
+        "Current DB schema requires numeric gosoft_dn_id. Real imports use only DNID returned by ERP; missing DNID fails the import. Synthetic IDs are allowed only in use_stub mode."
+      ]
+    }
+  },
+  "response": {
+    "envelope": {
+      "ok": "boolean",
+      "data": "object|null",
+      "error": "{ code, message, details? }|null",
+      "meta": {
+        "requestId": "string",
+        "timestamp": "ISO-8601 string",
+        "version": "v1"
+      }
+    },
+    "success_data": {
+      "importMode": "stub|payload",
+      "input": "parsed paste metadata",
+      "fetchContext": "ERP fetch audit and validation metadata for real imports",
+      "imported": "number",
+      "orders": "array",
+      "batches": "array",
+      "jobs": "array",
+      "totalJobs": "number"
+    }
+  },
+  "boundary_rules": [
+    "Routes call DBR module runtime only.",
+    "Parser and mapper are pure functions.",
+    "ERP adapter calls Core Shell erp_fetch_service.js in real mode.",
+    "use_stub mode remains available for smoke/dev only.",
+    "SQL writes are owned by src/core_shell/services/dbr_db_service.js.",
+    "No resolver execution is implemented by this contract."
+  ]
+}

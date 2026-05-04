@@ -110,6 +110,16 @@ function createDbrRouterV1() {
     }
   });
 
+  router.post("/import/sifradn-list", async (req, res) => {
+    const requestId = req.dbrRequestId;
+    try {
+      const result = await dbrRuntime.importSifradnList(req.body || {});
+      return sendOk(res, requestId, result, 201);
+    } catch (error) {
+      return sendError(res, requestId, 400, "DBR_SIFRADN_IMPORT_FAILED", error, error.details);
+    }
+  });
+
   router.get("/batches/:batchId/report", async (req, res) => {
     const requestId = req.dbrRequestId;
     try {

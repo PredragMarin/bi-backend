@@ -288,6 +288,148 @@ async function createKitBatchWithPartJobs({
   }
 }
 
+async function createBulkProductionOrdersWithBatchesAndJobs({ orders }) {
+  await ensureDbrReady();
+  const pool = getPool();
+  const client = await pool.connect();
+  const createdOrders = [];
+  const createdBatches = [];
+  const createdJobs = [];
+
+  try {
+    await client.query("BEGIN");
+
+    for (const orderInput of Array.isArray(orders) ? orders : []) {
+      const productionOrderResult = await executeQuery({
+        executor: client,
+        text: `
+          INSERT INTO dbr.dbr_production_order (
+            gosoft_dn_id,
+            gosoft_dn_key,
+            parameter_snapshot,
+            status,
+            updated_at
+          )
+          VALUES ($1, $2, $3::jsonb, $4, NOW())
+          ON CONFLICT (gosoft_dn_id) DO UPDATE SET
+            gosoft_dn_key = EXCLUDED.gosoft_dn_key,
+            parameter_snapshot = EXCLUDED.parameter_snapshot,
+            status = EXCLUDED.status,
+            updated_at = NOW()
+          RETURNING *
+        `,
+        values: [
+          Number(orderInput.gosoftDnId),
+          orderInput.gosoftDnKey === undefined ? null : String(orderInput.gosoftDnKey),
+          JSON.stringify(orderInput.parameterSnapshot || {}),
+          String(orderInput.status || "frozen")
+        ],
+        logger,
+        label: "bulk-upsert-dbr-production-order"
+      });
+      const productionOrder = mapProductionOrderRow(productionOrderResult.rows[0]);
+      createdOrders.push(productionOrder);
+
+      const batchKey = String(
+        orderInput.batchKey ||
+        [
+          "dbr",
+          "bulk-kit",
+          productionOrder.id,
+          orderInput.productCode,
+          orderInput.technologyProfile,
+          orderInput.kitVersion
+        ].join(":")
+      );
+      const batchResult = await executeQuery({
+        executor: client,
+        text: `
+          INSERT INTO dbr.dbr_kit_batch (
+            production_order_id,
+            batch_key,
+            product_code,
+            technology_profile,
+            kit_version,
+            status,
+            summary
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+          ON CONFLICT (batch_key) DO UPDATE SET
+            status = EXCLUDED.status,
+            summary = EXCLUDED.summary
+          RETURNING *
+        `,
+        values: [
+          productionOrder.id,
+          batchKey,
+          String(orderInput.productCode || ""),
+          String(orderInput.technologyProfile || ""),
+          String(orderInput.kitVersion || ""),
+          String(orderInput.batchStatus || "planned"),
+          orderInput.summary ? JSON.stringify(orderInput.summary) : null
+        ],
+        logger,
+        label: "bulk-create-dbr-kit-batch"
+      });
+      const batch = mapKitBatchRow(batchResult.rows[0]);
+      createdBatches.push(batch);
+
+      for (const kitPart of Array.isArray(orderInput.kitParts) ? orderInput.kitParts : []) {
+        const idempotencyKey = String(
+          kitPart.idempotencyKey ||
+          ["dbr", "bulk_part_job", batch.batchKey, kitPart.partCode].join(":")
+        );
+        const partJobResult = await executeQuery({
+          executor: client,
+          text: `
+            INSERT INTO dbr.dbr_part_job (
+              kit_batch_id,
+              part_code,
+              part_sequence,
+              mother_artifact_id,
+              parameter_snapshot,
+              idempotency_key,
+              status
+            )
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+            ON CONFLICT (idempotency_key) DO UPDATE SET
+              mother_artifact_id = EXCLUDED.mother_artifact_id,
+              parameter_snapshot = EXCLUDED.parameter_snapshot,
+              status = EXCLUDED.status
+            RETURNING *
+          `,
+          values: [
+            batch.id,
+            String(kitPart.partCode || ""),
+            Number(kitPart.partSequence),
+            kitPart.motherArtifactId === null || kitPart.motherArtifactId === undefined
+              ? null
+              : Number(kitPart.motherArtifactId),
+            JSON.stringify(orderInput.parameterSnapshot || {}),
+            idempotencyKey,
+            String(kitPart.status || "queued")
+          ],
+          logger,
+          label: "bulk-create-dbr-part-job"
+        });
+        createdJobs.push(mapPartJobRow(partJobResult.rows[0]));
+      }
+    }
+
+    await client.query("COMMIT");
+    return {
+      orders: createdOrders,
+      batches: createdBatches,
+      jobs: createdJobs
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function getKitBatch(kitBatchId) {
   await ensureDbrReady();
   const result = await executeQuery({
@@ -498,6 +640,7 @@ module.exports = {
   deleteProductionOrder,
   createKitBatch,
   createKitBatchWithPartJobs,
+  createBulkProductionOrdersWithBatchesAndJobs,
   getKitBatch,
   createPartJob,
   getPartJob,

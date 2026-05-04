@@ -3,6 +3,15 @@
 const catalogDb = require("../../core_shell/services/catalog_db_service");
 const dbrDb = require("../../core_shell/services/dbr_db_service");
 const motherDxfRuntime = require("../mother_dxf_v1/module_runtime");
+const {
+  fetchDbrOrdersBySifradnList,
+  fetchStubSifradnRecords
+} = require("./adapters/erp_fetch_dbr_orders");
+const { parseSifradnImportPayload } = require("./domain/sifradn_import_parser");
+const {
+  mapFetchedDbrOrdersToProductionOrders,
+  mapSifradnRecordsToProductionOrders
+} = require("./domain/production_order_mapper");
 
 const DEFAULT_KIT_VERSION = "PPV_OPS_S4P4_v0";
 
@@ -46,6 +55,21 @@ function normalizeChildGeneratorMode(value) {
     return "topo_poc";
   }
   throw new Error(`Unsupported child generator mode: ${value}`);
+}
+
+function createBulkKitBatchKey({ gosoftDnId, productCode, technologyProfile, kitVersion }) {
+  return [
+    "dbr",
+    "bulk-kit",
+    gosoftDnId,
+    productCode,
+    technologyProfile,
+    kitVersion
+  ].join(":");
+}
+
+function createSyntheticImportBase() {
+  return Number(Date.now()) * 100;
 }
 
 async function runChildGeneratorBlackBox({ partJob, parameterSnapshot }) {
@@ -95,6 +119,117 @@ async function runChildGeneratorBlackBox({ partJob, parameterSnapshot }) {
       childFile: result.child_file || null,
       source: "mother_dxf_v1.module_runtime"
     }
+  };
+}
+
+async function importSifradnList(payload = {}) {
+  const useStub = !!(payload && !Array.isArray(payload) && payload.use_stub);
+  const parsed = parseSifradnImportPayload(
+    useStub ? fetchStubSifradnRecords({ count: payload.count || 20 }) : payload
+  );
+  let fetchContext = null;
+  let mappedOrders = [];
+
+  if (useStub) {
+    mappedOrders = mapSifradnRecordsToProductionOrders(parsed.records, {
+      syntheticBase: createSyntheticImportBase(),
+      kitVersion: DEFAULT_KIT_VERSION
+    });
+  } else {
+    const fetched = await fetchDbrOrdersBySifradnList({
+      sifradnList: parsed.normalizedSifradn,
+      dsn: payload.dsn
+    });
+    fetchContext = {
+      requestId: fetched.requestId,
+      dsn: fetched.dsn,
+      queryId: fetched.queryId,
+      validation: fetched.validation,
+      fetchAudit: fetched.fetchAudit
+    };
+    if (!fetched.validation.ok) {
+      const error = new Error("DBR SIFRADN import validation failed after ERP fetch.");
+      error.details = {
+        input: {
+          inputMode: parsed.inputMode,
+          recordCount: parsed.recordCount,
+          normalizedSifradn: parsed.normalizedSifradn,
+          validation: parsed.validation
+        },
+        fetch: {
+          validation: fetched.validation,
+          items: fetched.items
+        }
+      };
+      throw error;
+    }
+    mappedOrders = mapFetchedDbrOrdersToProductionOrders(fetched.items, {
+      kitVersion: DEFAULT_KIT_VERSION
+    });
+  }
+
+  const kitPartCache = new Map();
+  const bulkOrders = [];
+
+  for (const order of mappedOrders) {
+    const cacheKey = [order.productCode, order.technologyProfile, order.kitVersion].join(":");
+    if (!kitPartCache.has(cacheKey)) {
+      const kitParts = await catalogDb.listProductKitParts({
+        productCode: order.productCode,
+        technologyProfile: order.technologyProfile,
+        kitVersion: order.kitVersion,
+        status: "active"
+      });
+      if (!kitParts.length) {
+        throw new Error(
+          `No active kit mapping found for ${order.productCode}/${order.technologyProfile}/${order.kitVersion}.`
+        );
+      }
+      kitPartCache.set(cacheKey, kitParts);
+    }
+
+    const kitParts = kitPartCache.get(cacheKey);
+    bulkOrders.push({
+      ...order,
+      batchKey: createBulkKitBatchKey({
+        gosoftDnId: order.gosoftDnId,
+        productCode: order.productCode,
+        technologyProfile: order.technologyProfile,
+        kitVersion: order.kitVersion
+      }),
+      batchStatus: "planned",
+      summary: {
+        source: "catalog.product_kit_mapping",
+        importSource: useStub ? "stub" : "payload",
+        sifradn: order.sifradn,
+        kitPartCount: kitParts.length
+      },
+      kitParts: kitParts.map((kitPart) => ({
+        ...kitPart,
+        status: "queued"
+      }))
+    });
+  }
+
+  const result = await dbrDb.createBulkProductionOrdersWithBatchesAndJobs({
+    orders: bulkOrders
+  });
+
+  return {
+    importMode: useStub ? "stub" : "payload",
+    input: {
+      inputMode: parsed.inputMode,
+      recordCount: parsed.recordCount,
+      normalizedSifradn: parsed.normalizedSifradn,
+      validation: parsed.validation
+    },
+    fetchContext,
+    requested: parsed.recordCount,
+    imported: result.orders.length,
+    orders: result.orders,
+    batches: result.batches,
+    jobs: result.jobs,
+    totalJobs: result.jobs.length
   };
 }
 
@@ -350,6 +485,7 @@ module.exports = {
   use_case: "dbr_v1",
   current_pointer_use_case: "dbr_v1",
   createProductionOrder,
+  importSifradnList,
   createKitBatch,
   createKitBatchWithJobs,
   createPartJobs,
