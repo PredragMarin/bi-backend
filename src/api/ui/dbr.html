@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DBR Operator Cockpit</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #18202f;
+      --muted: #647085;
+      --line: #d8dee8;
+      --accent: #0f766e;
+      --accent-strong: #115e59;
+      --danger: #b42318;
+      --danger-bg: #fff1f0;
+      --ok-bg: #ecfdf3;
+      --ok-line: #abe4c4;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    header {
+      padding: 20px 24px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #ffffff;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    main {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: 18px 18px 40px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 0 0 14px;
+      padding: 16px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    input {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--text);
+      background: #ffffff;
+      font: inherit;
+    }
+
+    button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: #ffffff;
+      background: var(--accent);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: var(--accent-strong);
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: #f8fafc;
+      color: var(--text);
+    }
+
+    .pill strong {
+      margin-right: 5px;
+      color: var(--muted);
+    }
+
+    .message {
+      margin-top: 14px;
+      border: 1px solid var(--ok-line);
+      border-radius: 6px;
+      padding: 10px;
+      background: var(--ok-bg);
+    }
+
+    .message.error {
+      border-color: #ffb4ab;
+      background: var(--danger-bg);
+      color: var(--danger);
+    }
+
+    details {
+      margin-top: 12px;
+    }
+
+    summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    pre {
+      overflow: auto;
+      max-height: 360px;
+      margin: 8px 0 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #0f172a;
+      color: #e5e7eb;
+      font-size: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      table-layout: fixed;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      background: #f8fafc;
+    }
+
+    .tables {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    @media (max-width: 800px) {
+      .grid,
+      .tables {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DBR Operator Cockpit</h1>
+    <p>Versioned API v1 smoke and lifecycle view. Resolver execution is intentionally not implemented.</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. Create Order</h2>
+      <div class="grid">
+        <label>kit_code
+          <input id="orderKitCode" value="OPS_S4P4">
+        </label>
+        <label>quantity
+          <input id="orderQuantity" type="number" min="1" step="1" value="1">
+        </label>
+        <button id="createOrderBtn" type="button">Create Frozen Order</button>
+      </div>
+      <div id="createOrderSummary" class="summary"></div>
+      <div id="createOrderResult"></div>
+    </section>
+
+    <section>
+      <h2>2. Create Batch</h2>
+      <div class="grid">
+        <label>orderId
+          <input id="batchOrderId" inputmode="numeric">
+        </label>
+        <button id="createBatchBtn" type="button">Create Kit Batch</button>
+      </div>
+      <div id="createBatchSummary" class="summary"></div>
+      <div id="createBatchResult"></div>
+    </section>
+
+    <section>
+      <h2>3. Batch Report</h2>
+      <div class="grid">
+        <label>batchId
+          <input id="reportBatchId" inputmode="numeric">
+        </label>
+        <button id="loadReportBtn" type="button">Load Report</button>
+      </div>
+      <div id="reportSummary" class="summary"></div>
+      <div id="reportTables" class="tables"></div>
+      <div id="reportResult"></div>
+    </section>
+
+    <section>
+      <h2>4. Run Batch</h2>
+      <div class="grid">
+        <label>batchId
+          <input id="runBatchId" inputmode="numeric">
+        </label>
+        <button id="runBatchBtn" type="button">Run Batch</button>
+      </div>
+      <div id="runBatchSummary" class="summary"></div>
+      <div id="runBatchResult"></div>
+    </section>
+
+    <section>
+      <h2>5. Register Artifact</h2>
+      <div class="grid">
+        <label>mother_session_id
+          <input id="artifactSessionId" value="SMOKE-TEST-UI-001">
+        </label>
+        <label>artifact_path
+          <input id="artifactPath" value="/tmp/smoke/test.dxf">
+        </label>
+        <label>kit_code
+          <input id="artifactKitCode" value="OPS_S4P4">
+        </label>
+        <label>part_code
+          <input id="artifactPartCode" value="PPV-S4-001">
+        </label>
+        <button id="registerArtifactBtn" type="button">Register Artifact</button>
+      </div>
+      <div id="artifactSummary" class="summary"></div>
+      <div id="artifactResult"></div>
+    </section>
+  </main>
+
+  <script>
+    const apiBase = "/api/dbr/v1";
+    const state = {
+      orderId: null,
+      batchId: null,
+      firstJobId: null
+    };
+
+    function byId(id) {
+      return document.getElementById(id);
+    }
+
+    function esc(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function pill(label, value) {
+      return `<span class="pill"><strong>${esc(label)}</strong>${esc(value)}</span>`;
+    }
+
+    function renderRaw(containerId, payload) {
+      byId(containerId).innerHTML = `
+        <details>
+          <summary>Raw JSON response</summary>
+          <pre>${esc(JSON.stringify(payload, null, 2))}</pre>
+        </details>
+      `;
+    }
+
+    function renderError(containerId, payload) {
+      const error = payload && payload.error ? payload.error : {};
+      byId(containerId).innerHTML = `
+        <div class="message error">
+          <strong>${esc(error.code || "REQUEST_FAILED")}</strong><br>
+          ${esc(error.message || "Request failed.")}
+        </div>
+        <details open>
+          <summary>Raw JSON response</summary>
+          <pre>${esc(JSON.stringify(payload, null, 2))}</pre>
+        </details>
+      `;
+    }
+
+    async function fetchJson(path, options = {}) {
+      const response = await fetch(`${apiBase}${path}`, {
+        cache: "no-store",
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        }
+      });
+      const payload = await response.json().catch(() => ({
+        ok: false,
+        error: {
+          code: "INVALID_JSON_RESPONSE",
+          message: `HTTP ${response.status}`
+        }
+      }));
+      if (!response.ok || !payload.ok) {
+        throw payload;
+      }
+      return payload;
+    }
+
+    async function withButton(buttonId, fn) {
+      const button = byId(buttonId);
+      button.disabled = true;
+      try {
+        await fn();
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function setSharedBatchId(batchId) {
+      state.batchId = batchId;
+      byId("reportBatchId").value = batchId || "";
+      byId("runBatchId").value = batchId || "";
+    }
+
+    function renderStatusCounts(counts) {
+      const rows = Object.entries(counts || {})
+        .map(([status, count]) => `<tr><td>${esc(status)}</td><td>${esc(count)}</td></tr>`)
+        .join("");
+      return `
+        <table>
+          <thead><tr><th>Status</th><th>Count</th></tr></thead>
+          <tbody>${rows || "<tr><td colspan=\"2\">No statuses</td></tr>"}</tbody>
+        </table>
+      `;
+    }
+
+    function renderJobs(jobs) {
+      const rows = (Array.isArray(jobs) ? jobs : [])
+        .map((job) => `
+          <tr>
+            <td>${esc(job.id)}</td>
+            <td>${esc(job.partCode)}</td>
+            <td>${esc(job.status)}</td>
+            <td>${esc(job.createdAt || "")}</td>
+          </tr>
+        `)
+        .join("");
+      return `
+        <table>
+          <thead>
+            <tr><th>job_id</th><th>part_code</th><th>status</th><th>created_at</th></tr>
+          </thead>
+          <tbody>${rows || "<tr><td colspan=\"4\">No jobs</td></tr>"}</tbody>
+        </table>
+      `;
+    }
+
+    byId("createOrderBtn").addEventListener("click", () => withButton("createOrderBtn", async () => {
+      try {
+        const payload = await fetchJson("/orders", {
+          method: "POST",
+          body: JSON.stringify({
+            kit_code: byId("orderKitCode").value.trim() || "OPS_S4P4",
+            quantity: Number(byId("orderQuantity").value || 1)
+          })
+        });
+        const order = payload.data.order;
+        state.orderId = order.id;
+        byId("batchOrderId").value = order.id;
+        byId("createOrderSummary").innerHTML = [
+          pill("order.id", order.id),
+          pill("status", order.status),
+          pill("dbr_key", order.gosoftDnKey)
+        ].join("");
+        renderRaw("createOrderResult", payload);
+      } catch (errorPayload) {
+        renderError("createOrderResult", errorPayload);
+      }
+    }));
+
+    byId("createBatchBtn").addEventListener("click", () => withButton("createBatchBtn", async () => {
+      try {
+        const orderId = byId("batchOrderId").value.trim();
+        const payload = await fetchJson(`/orders/${encodeURIComponent(orderId)}/batches`, {
+          method: "POST",
+          body: "{}"
+        });
+        const batch = payload.data.batch;
+        const jobs = payload.data.jobs || [];
+        state.firstJobId = jobs.length ? jobs[0].id : null;
+        setSharedBatchId(batch.id);
+        byId("createBatchSummary").innerHTML = [
+          pill("batch.id", batch.id),
+          pill("job count", jobs.length)
+        ].join("");
+        renderRaw("createBatchResult", payload);
+      } catch (errorPayload) {
+        renderError("createBatchResult", errorPayload);
+      }
+    }));
+
+    byId("loadReportBtn").addEventListener("click", () => withButton("loadReportBtn", async () => {
+      try {
+        const batchId = byId("reportBatchId").value.trim();
+        const payload = await fetchJson(`/batches/${encodeURIComponent(batchId)}/report`);
+        const report = payload.data.report;
+        byId("reportSummary").innerHTML = [
+          pill("batch.id", report.batch.id),
+          pill("partJobCount", report.partJobCount)
+        ].join("");
+        byId("reportTables").innerHTML = `
+          <div>${renderStatusCounts(report.statusCounts)}</div>
+          <div>${renderJobs(report.partJobs)}</div>
+        `;
+        renderRaw("reportResult", payload);
+      } catch (errorPayload) {
+        byId("reportTables").innerHTML = "";
+        renderError("reportResult", errorPayload);
+      }
+    }));
+
+    byId("runBatchBtn").addEventListener("click", () => withButton("runBatchBtn", async () => {
+      try {
+        const batchId = byId("runBatchId").value.trim();
+        const payload = await fetchJson(`/batches/${encodeURIComponent(batchId)}/run`, {
+          method: "POST",
+          body: "{}"
+        });
+        byId("runBatchSummary").innerHTML = [
+          pill("status", payload.data.status),
+          pill("partJobCount", payload.data.partJobCount)
+        ].join("");
+        renderRaw("runBatchResult", payload);
+      } catch (errorPayload) {
+        renderError("runBatchResult", errorPayload);
+      }
+    }));
+
+    byId("registerArtifactBtn").addEventListener("click", () => withButton("registerArtifactBtn", async () => {
+      try {
+        const payload = await fetchJson("/artifacts", {
+          method: "POST",
+          body: JSON.stringify({
+            mother_session_id: byId("artifactSessionId").value.trim(),
+            artifact_path: byId("artifactPath").value.trim(),
+            kit_code: byId("artifactKitCode").value.trim(),
+            part_code: byId("artifactPartCode").value.trim()
+          })
+        });
+        const artifact = payload.data.artifact;
+        byId("artifactSummary").innerHTML = [
+          pill("artifact id", artifact.id),
+          pill("created_at", artifact.createdAt)
+        ].join("");
+        renderRaw("artifactResult", payload);
+      } catch (errorPayload) {
+        renderError("artifactResult", errorPayload);
+      }
+    }));
+  </script>
+</body>
+</html>

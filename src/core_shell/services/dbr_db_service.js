@@ -130,6 +130,19 @@ async function getProductionOrderByGosoftDnId(gosoftDnId) {
   return result.rows.length ? mapProductionOrderRow(result.rows[0]) : null;
 }
 
+async function deleteProductionOrder(productionOrderId) {
+  await ensureDbrReady();
+  const result = await executeQuery({
+    executor: getPool(),
+    text: "DELETE FROM dbr.dbr_production_order WHERE id = $1 RETURNING *",
+    values: [Number(productionOrderId)],
+    logger,
+    label: "delete-dbr-production-order"
+  });
+
+  return result.rows.length ? mapProductionOrderRow(result.rows[0]) : null;
+}
+
 async function createKitBatch({
   productionOrderId,
   batchKey,
@@ -172,6 +185,120 @@ async function createKitBatch({
   });
 
   return mapKitBatchRow(result.rows[0]);
+}
+
+async function createKitBatchWithPartJobs({
+  productionOrderId,
+  batchKey,
+  productCode,
+  technologyProfile,
+  kitVersion,
+  kitParts,
+  parameterSnapshot,
+  status = "planned",
+  summary = null
+}) {
+  await ensureDbrReady();
+  const pool = getPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const batchResult = await executeQuery({
+      executor: client,
+      text: `
+        INSERT INTO dbr.dbr_kit_batch (
+          production_order_id,
+          batch_key,
+          product_code,
+          technology_profile,
+          kit_version,
+          status,
+          summary
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+        ON CONFLICT (batch_key) DO UPDATE SET
+          status = EXCLUDED.status,
+          summary = EXCLUDED.summary
+        RETURNING *
+      `,
+      values: [
+        Number(productionOrderId),
+        String(batchKey || ""),
+        String(productCode || ""),
+        String(technologyProfile || ""),
+        String(kitVersion || ""),
+        String(status),
+        summary ? JSON.stringify(summary) : null
+      ],
+      logger,
+      label: "create-dbr-kit-batch-atomic"
+    });
+    const batch = mapKitBatchRow(batchResult.rows[0]);
+    const partJobs = [];
+
+    for (const kitPart of Array.isArray(kitParts) ? kitParts : []) {
+      const partJobResult = await executeQuery({
+        executor: client,
+        text: `
+          INSERT INTO dbr.dbr_part_job (
+            kit_batch_id,
+            part_code,
+            part_sequence,
+            mother_artifact_id,
+            parameter_snapshot,
+            idempotency_key,
+            status
+          )
+          VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+          ON CONFLICT (idempotency_key) DO UPDATE SET
+            mother_artifact_id = EXCLUDED.mother_artifact_id,
+            parameter_snapshot = EXCLUDED.parameter_snapshot,
+            status = EXCLUDED.status
+          RETURNING *
+        `,
+        values: [
+          batch.id,
+          String(kitPart.partCode || ""),
+          Number(kitPart.partSequence),
+          kitPart.motherArtifactId === null || kitPart.motherArtifactId === undefined
+            ? null
+            : Number(kitPart.motherArtifactId),
+          JSON.stringify(parameterSnapshot || {}),
+          String(kitPart.idempotencyKey || ""),
+          String(kitPart.status || "queued")
+        ],
+        logger,
+        label: "create-dbr-part-job-atomic"
+      });
+      partJobs.push(mapPartJobRow(partJobResult.rows[0]));
+    }
+
+    await client.query("COMMIT");
+    return {
+      batch,
+      partJobs
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function getKitBatch(kitBatchId) {
+  await ensureDbrReady();
+  const result = await executeQuery({
+    executor: getPool(),
+    text: "SELECT * FROM dbr.dbr_kit_batch WHERE id = $1",
+    values: [Number(kitBatchId)],
+    logger,
+    label: "get-dbr-kit-batch"
+  });
+
+  return result.rows.length ? mapKitBatchRow(result.rows[0]) : null;
 }
 
 async function createPartJob({
@@ -217,6 +344,19 @@ async function createPartJob({
   });
 
   return mapPartJobRow(result.rows[0]);
+}
+
+async function getPartJob(partJobId) {
+  await ensureDbrReady();
+  const result = await executeQuery({
+    executor: getPool(),
+    text: "SELECT * FROM dbr.dbr_part_job WHERE id = $1",
+    values: [Number(partJobId)],
+    logger,
+    label: "get-dbr-part-job"
+  });
+
+  return result.rows.length ? mapPartJobRow(result.rows[0]) : null;
 }
 
 async function listPartJobsForBatch(kitBatchId) {
@@ -280,12 +420,88 @@ async function updatePartJobStatus({
   return result.rows.length ? mapPartJobRow(result.rows[0]) : null;
 }
 
+function mapMotherArtifactRow(row) {
+  return {
+    id: Number(row.id),
+    productCode: String(row.product_code),
+    partCode: String(row.part_code),
+    technologyProfile: String(row.technology_profile),
+    motherSessionId: row.mother_session_id,
+    artifactPath: String(row.artifact_path),
+    artifactHash: row.artifact_hash,
+    approvalStatus: String(row.approval_status),
+    approvedAt: row.approved_at,
+    approvedBy: row.approved_by,
+    documentSem: row.document_sem,
+    metadataSummary: row.metadata_summary,
+    createdAt: row.created_at
+  };
+}
+
+async function createMotherArtifactRegistryEntry({
+  productCode,
+  partCode,
+  technologyProfile,
+  motherSessionId = null,
+  artifactPath,
+  artifactHash = null,
+  approvalStatus = "approved",
+  approvedAt = null,
+  approvedBy = null,
+  documentSem = null,
+  metadataSummary = null
+}) {
+  await ensureDbrReady();
+  const result = await executeQuery({
+    executor: getPool(),
+    text: `
+      INSERT INTO dcm.mother_artifact_registry (
+        product_code,
+        part_code,
+        technology_profile,
+        mother_session_id,
+        artifact_path,
+        artifact_hash,
+        approval_status,
+        approved_at,
+        approved_by,
+        document_sem,
+        metadata_summary
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz, $9, $10::jsonb, $11::jsonb)
+      RETURNING *
+    `,
+    values: [
+      String(productCode || ""),
+      String(partCode || ""),
+      String(technologyProfile || ""),
+      motherSessionId === undefined ? null : motherSessionId,
+      String(artifactPath || ""),
+      artifactHash === undefined ? null : artifactHash,
+      String(approvalStatus || "approved"),
+      approvedAt || null,
+      approvedBy === undefined ? null : approvedBy,
+      documentSem ? JSON.stringify(documentSem) : null,
+      metadataSummary ? JSON.stringify(metadataSummary) : null
+    ],
+    logger,
+    label: "create-mother-artifact-registry-entry"
+  });
+
+  return mapMotherArtifactRow(result.rows[0]);
+}
+
 module.exports = {
   ensureDbrReady,
   upsertProductionOrder,
   getProductionOrderByGosoftDnId,
+  deleteProductionOrder,
   createKitBatch,
+  createKitBatchWithPartJobs,
+  getKitBatch,
   createPartJob,
+  getPartJob,
   listPartJobsForBatch,
-  updatePartJobStatus
+  updatePartJobStatus,
+  createMotherArtifactRegistryEntry
 };

@@ -1,0 +1,45 @@
+{
+  "identity": {
+    "use_case": "dbr_v1",
+    "contract_version": "0.1.0",
+    "module_version": "0.1.0",
+    "owner": "Marn Expert d.o.o."
+  },
+  "description": "Minimal DBR production batch module skeleton for PostgreSQL-backed production order, kit batch, and part job lifecycle records. Resolver internals and ERP production order import are intentionally out of scope.",
+  "runtime": {
+    "core_contract_ref": "core_contract_v1.0.x",
+    "timezone": "Europe/Zagreb",
+    "postgres_foundation": {
+      "schemas": ["catalog", "dcm", "dbr"],
+      "migrations": [
+        "src/core_shell/migrations/catalog/001_create_catalog_foundation.up.sql",
+        "src/core_shell/migrations/dcm/001_create_dcm_foundation.up.sql",
+        "src/core_shell/migrations/dbr/001_create_dbr_foundation.up.sql"
+      ]
+    }
+  },
+  "dependencies": {
+    "core_shell_services": [
+      "src/core_shell/services/catalog_db_service.js",
+      "src/core_shell/services/dbr_db_service.js"
+    ]
+  },
+  "capabilities": {
+    "create_production_order": true,
+    "create_kit_batch": true,
+    "create_part_jobs": true,
+    "run_part_job": "skeleton_only",
+    "get_batch_report": true
+  },
+  "boundaries": {
+    "erp_import": "not_implemented",
+    "resolver_internals": "not_implemented",
+    "mother_dxf_session_storage": "not_touched",
+    "sql_in_module": false
+  },
+  "taxonomy": {
+    "dbr.dbr_production_order": "source_kind: gosoft_reference+gosoft_snapshot | data_class: operational | mutation_owner: BI",
+    "dbr.dbr_kit_batch": "source_kind: bi_native | data_class: operational | mutation_owner: BI",
+    "dbr.dbr_part_job": "source_kind: bi_native | data_class: operational | mutation_owner: BI"
+  }
+}
