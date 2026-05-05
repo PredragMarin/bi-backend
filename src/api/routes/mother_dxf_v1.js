@@ -234,10 +234,15 @@ function createMotherDxfRouterV1() {
         sessionId: String(req.params.sessionId || ""),
         parameterSet
       });
+      const simulationResult = await motherDxfRuntime.simulateSession({
+        sessionId: String(req.params.sessionId || ""),
+        configParameterSet: parameterSet
+      });
       res.json({
         ok: true,
-        session: motherDxfRuntime.projectViewModel(result.session),
-        generation_summary: result.generation_summary
+        session: motherDxfRuntime.projectViewModel(simulationResult.session),
+        generation_summary: result.generation_summary,
+        simulation: simulationResult.simulation
       });
     } catch (err) {
       res.status(400).json({

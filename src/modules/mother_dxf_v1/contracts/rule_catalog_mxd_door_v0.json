@@ -4,22 +4,25 @@
   "profile_id": "MXD_DOOR_V0",
   "source": "initial_mxd_kskr_authoring",
   "rules": {
-    "THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT": {
-      "rule_id": "THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT",
-      "label": "Treca spojnica iznad druge - minimalna visina",
-      "feature": "TRECA_SPOJNICA",
-      "applies_to_variant": "IZNAD_DRUGE",
-      "expression": "VISINA_VRATA>=204cm",
-      "result": "eligible",
-      "status": "draft"
-    },
-    "THIRD_HINGE_BELOW_SECOND_FALLBACK": {
-      "rule_id": "THIRD_HINGE_BELOW_SECOND_FALLBACK",
-      "label": "Treca spojnica ispod druge - fallback",
-      "feature": "TRECA_SPOJNICA",
-      "applies_to_variant": "ISPOD_DRUGE",
-      "expression": "VISINA_VRATA<204cm",
-      "result": "eligible",
+    "MXD_PPV_LAYER_B_OFFSET_9P5": {
+      "rule_id": "MXD_PPV_LAYER_B_OFFSET_9P5",
+      "label": "PPV B-layer offset +9.5 mm",
+      "profile_scope": "MXD",
+      "description": "Ako je TIP_VRATA == PPV, pomakni Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin unutar fixed envelope preview logike.",
+      "condition": {
+        "parameter": "TIP_VRATA",
+        "operator": "==",
+        "value": "PPV"
+      },
+      "target_scope": {
+        "layer": "B"
+      },
+      "action": {
+        "geometry": "offset",
+        "axis": "Y",
+        "value_mm": 9.5,
+        "post_repair": "bounded_trim_rejoin"
+      },
       "status": "draft"
     }
   }

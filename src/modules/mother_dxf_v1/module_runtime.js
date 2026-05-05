@@ -14,10 +14,12 @@ const {
   bboxUnion,
   bboxCenter,
   translateShape,
-  bboxFromShapes,
-  lineLineIntersection,
-  trimLineToPoint
+  bboxFromShapes
 } = require("../../core_shell/geometry");
+const {
+  collectLineCandidates,
+  applyTrimRejoinToTranslatedLine
+} = require("../../core_shell/services/dxf_line_repair_service");
 const {
   defaultRoot,
   saveSession,
@@ -197,6 +199,12 @@ function compareInstructionValues(actual, expected, operator) {
     const equal = valuesEqualForInstruction(actual, expected);
     return operator === "==" ? equal : !equal;
   }
+  if (operator === "IN") {
+    const expectedValues = Array.isArray(expected)
+      ? expected
+      : String(expected || "").trim().replace(/^\[/, "").replace(/\]$/, "").split(",").map((item) => item.trim()).filter(Boolean);
+    return expectedValues.some((candidate) => valuesEqualForInstruction(actual, candidate));
+  }
   const actualNumber = parseComparableNumber(actual);
   const expectedNumber = parseComparableNumber(expected);
   if (!actualNumber || !expectedNumber) return false;
@@ -211,7 +219,19 @@ function compareInstructionValues(actual, expected, operator) {
 }
 
 function parseWhenClause(rawClause) {
-  const raw = String(rawClause || "").trim();
+  const raw = String(rawClause || "").trim().replace(/^\(/, "").replace(/\)$/, "").trim();
+  const inMatch = raw.match(/^(.+?)\s+IN\s+\[(.+)\]$/i);
+  if (inMatch) {
+    const parameter = String(inMatch[1] || "").trim();
+    const expectedValues = String(inMatch[2] || "").split(",").map((item) => item.trim()).filter(Boolean);
+    if (!parameter || !expectedValues.length) return null;
+    return {
+      parameter,
+      operator: "IN",
+      expected: `[${expectedValues.join(",")}]`,
+      expected_values: expectedValues
+    };
+  }
   const operators = [">=", "<=", "!=", "==", ">", "<"];
   const operator = operators.find((token) => raw.includes(token)) || null;
   if (!operator) return null;
@@ -462,12 +482,13 @@ function validateTopoBlock(topoObject) {
   const errors = [];
   const mode = String(topoObject?.mode || "").trim();
   const keys = topoObject?.keys || {};
-  const hasExecutableDraftFields = Boolean(keys.group || keys.chain || keys.axis || keys.parameter || keys.nominal);
+  const hasExecutableDraftFields = Boolean(
+    keys.group || keys.axis
+    || keys.lec_parameter || keys.lec_nominal || keys.rec_parameter || keys.rec_nominal
+  );
 
   if (hasExecutableDraftFields) {
-    const chain = String(keys.chain || "").trim();
     const axis = String(keys.axis || "").trim().toUpperCase();
-    const nominal = Number(keys.nominal);
     if (mode !== "fixed_envelope_slide") {
       errors.push({
         code: "INVALID_TOPO_MODE",
@@ -480,28 +501,18 @@ function validateTopoBlock(topoObject) {
         message: "Missing TOPO group."
       });
     }
-    if (!["single_part", "two_part"].includes(chain)) {
-      errors.push({
-        code: "INVALID_TOPO_CHAIN",
-        message: `Unsupported TOPO chain: ${keys.chain}`
-      });
-    }
     if (axis !== "X") {
       errors.push({
         code: "INVALID_TOPO_AXIS",
         message: `Unsupported TOPO axis: ${keys.axis}`
       });
     }
-    if (!String(keys.parameter || "").trim()) {
+    const hasLeftInput = Boolean(String(keys.lec_parameter || "").trim()) && Number.isFinite(Number(keys.lec_nominal));
+    const hasRightInput = Boolean(String(keys.rec_parameter || "").trim()) && Number.isFinite(Number(keys.rec_nominal));
+    if (!(hasLeftInput && hasRightInput)) {
       errors.push({
-        code: "MISSING_TOPO_PARAMETER",
-        message: "Missing TOPO parameter."
-      });
-    }
-    if (!Number.isFinite(nominal)) {
-      errors.push({
-        code: "INVALID_TOPO_NOMINAL",
-        message: `Invalid TOPO nominal: ${keys.nominal}`
+        code: "MISSING_TOPO_SIDE_INPUTS",
+        message: "TOPO requires both LEC and REC parameter/nominal pairs."
       });
     }
     if (String(keys.delta_rule || "").trim() !== "config_minus_nominal") {
@@ -510,9 +521,7 @@ function validateTopoBlock(topoObject) {
         message: `Unsupported TOPO delta_rule: ${keys.delta_rule}`
       });
     }
-    for (const key of chain === "two_part"
-      ? ["lec_delta_factor", "rec_delta_factor", "lcc_delta_factor", "rcc_delta_factor"]
-      : ["lec_delta_factor", "rec_delta_factor"]) {
+    for (const key of ["lec_delta_factor", "rec_delta_factor"]) {
       if (!Number.isFinite(Number(keys[key]))) {
         errors.push({
           code: "INVALID_TOPO_DELTA_FACTOR",
@@ -717,7 +726,7 @@ function buildEntityTopoRoleComment({ role, group, zone }) {
   if (!normalizedGroup) {
     throw new Error("Missing TOPO entity group.");
   }
-  if (!["LEC", "REC", "LCC", "RCC"].includes(normalizedZone)) {
+  if (!["LEC", "REC"].includes(normalizedZone)) {
     throw new Error(`Unsupported TOPO entity zone: ${zone}`);
   }
   return `TOPO:role=${normalizedRole};group=${normalizedGroup};zone=${normalizedZone}`;
@@ -1353,7 +1362,7 @@ function firstExecutableTopoComment(session) {
   for (const pair of comments) {
     if (String(pair?.code) !== "999") continue;
     const parsed = parseTopoComment(pair.value);
-    if (parsed && parsed.keys && parsed.keys.mode === "fixed_envelope_slide" && parsed.keys.group && parsed.keys.chain) {
+    if (parsed && parsed.keys && parsed.keys.mode === "fixed_envelope_slide" && parsed.keys.group) {
       return parsed;
     }
   }
@@ -1406,6 +1415,35 @@ function zoneDeltaFactor(topoKeys, zone) {
   return Number.isFinite(factor) ? factor : null;
 }
 
+function topoZoneInputKeys(zone) {
+  const normalized = String(zone || "").trim().toUpperCase();
+  if (normalized === "LEC") {
+    return { parameterKey: "lec_parameter", nominalKey: "lec_nominal", side: "left" };
+  }
+  if (normalized === "REC") {
+    return { parameterKey: "rec_parameter", nominalKey: "rec_nominal", side: "right" };
+  }
+  return { parameterKey: null, nominalKey: null, side: null };
+}
+
+function resolveTopoZoneInput(topoKeys, parameters, zone) {
+  const { parameterKey, nominalKey, side } = topoZoneInputKeys(zone);
+  const zoneParameter = parameterKey ? String(topoKeys?.[parameterKey] || "").trim() : "";
+  const parameter = zoneParameter || "";
+  const zoneNominalRaw = nominalKey ? topoKeys?.[nominalKey] : null;
+  const nominal = Number(zoneNominalRaw);
+  const actual = Number(parameters?.[parameter]);
+  return {
+    side,
+    parameter_key: zoneParameter ? parameterKey : null,
+    nominal_key: zoneNominalRaw != null && zoneNominalRaw !== "" ? nominalKey : null,
+    parameter: parameter || null,
+    nominal: Number.isFinite(nominal) ? nominal : null,
+    actual: Number.isFinite(actual) ? actual : null,
+    delta: Number.isFinite(nominal) && Number.isFinite(actual) ? actual - nominal : null
+  };
+}
+
 function materializeChildDocumentTopoPoc(session, config) {
   const view = projectViewModel(session);
   const parameters = config.parameters || {};
@@ -1418,17 +1456,9 @@ function materializeChildDocumentTopoPoc(session, config) {
   if (axis !== "X") {
     throw new Error(`TOPO child POC supports only axis=X, received: ${topoKeys.axis}`);
   }
-  const parameter = String(topoKeys.parameter || "").trim();
-  const nominal = Number(topoKeys.nominal);
-  const actual = Number(parameters[parameter]);
-  if (!parameter) throw new Error("TOPO child POC requires TOPO parameter.");
-  if (!Number.isFinite(nominal)) throw new Error(`Invalid TOPO nominal: ${topoKeys.nominal}`);
-  if (!Number.isFinite(actual)) throw new Error(`Missing numeric config parameter for TOPO: ${parameter}`);
   if (String(topoKeys.delta_rule || "").trim() !== "config_minus_nominal") {
     throw new Error(`Unsupported TOPO delta_rule: ${topoKeys.delta_rule}`);
   }
-
-  const delta = actual - nominal;
   const outputDocument = cloneJson(session.document);
   const outputEntities = entityMapById(outputDocument);
   const decisionsByEntityId = new Map();
@@ -1468,6 +1498,36 @@ function materializeChildDocumentTopoPoc(session, config) {
       continue;
     }
     const zone = String(topoRole.keys?.zone || "").trim().toUpperCase();
+    const zoneInput = resolveTopoZoneInput(topoKeys, parameters, zone);
+    if (!zoneInput.parameter) {
+      skippedTopoEntities.push({
+        entity_id: object.entity_id,
+        object_id: object.id,
+        reason: "MISSING_TOPO_ZONE_PARAMETER",
+        zone
+      });
+      continue;
+    }
+    if (!Number.isFinite(zoneInput.nominal)) {
+      skippedTopoEntities.push({
+        entity_id: object.entity_id,
+        object_id: object.id,
+        reason: "INVALID_TOPO_ZONE_NOMINAL",
+        zone,
+        nominal_key: zoneInput.nominal_key
+      });
+      continue;
+    }
+    if (!Number.isFinite(zoneInput.actual)) {
+      skippedTopoEntities.push({
+        entity_id: object.entity_id,
+        object_id: object.id,
+        reason: "MISSING_NUMERIC_TOPO_ZONE_PARAMETER",
+        zone,
+        parameter: zoneInput.parameter
+      });
+      continue;
+    }
     const factor = zoneDeltaFactor(topoKeys, zone);
     if (!Number.isFinite(factor)) {
       skippedTopoEntities.push({
@@ -1478,7 +1538,7 @@ function materializeChildDocumentTopoPoc(session, config) {
       });
       continue;
     }
-    const dx = delta * factor;
+    const dx = Number(zoneInput.delta) * factor;
     const outputEntity = outputEntities.get(object.entity_id);
     if (!outputEntity) {
       skippedTopoEntities.push({
@@ -1496,6 +1556,10 @@ function materializeChildDocumentTopoPoc(session, config) {
       type: object.type,
       group: topoRole.keys.group,
       zone,
+      parameter: zoneInput.parameter,
+      nominal: zoneInput.nominal,
+      actual: zoneInput.actual,
+      delta: zoneInput.delta,
       factor,
       dx,
       dy: 0
@@ -1517,12 +1581,15 @@ function materializeChildDocumentTopoPoc(session, config) {
       product_code: config.product_code,
       technology_profile: config.technology_profile,
       topo_group: topoKeys.group,
-      chain: topoKeys.chain,
       axis,
-      parameter,
-      nominal,
-      actual,
-      delta,
+      parameter: null,
+      nominal: null,
+      actual: null,
+      delta: null,
+      zone_inputs: {
+        left: resolveTopoZoneInput(topoKeys, parameters, "LEC"),
+        right: resolveTopoZoneInput(topoKeys, parameters, "REC")
+      },
       trim_policy: topoKeys.trim_policy || null,
       trim_policy_status: topoKeys.trim_policy ? "declared_not_executed" : "none",
       entity_count: (Array.isArray(view.objects) ? view.objects : []).length,
@@ -1549,160 +1616,6 @@ function generateChildDxfTopoPoc(session, parameterSet) {
 
 function cloneShapes(shapes) {
   return JSON.parse(JSON.stringify(Array.isArray(shapes) ? shapes : []));
-}
-
-function lineShapeToPoints(shape) {
-  if (!shape || shape.kind !== "line") return null;
-  const x1 = Number(shape.x1);
-  const y1 = Number(shape.y1);
-  const x2 = Number(shape.x2);
-  const y2 = Number(shape.y2);
-  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
-  return {
-    startPoint: { x: x1, y: y1 },
-    endPoint: { x: x2, y: y2 }
-  };
-}
-
-function linePointsToShape(line) {
-  if (!line || !line.startPoint || !line.endPoint) return null;
-  return {
-    kind: "line",
-    x1: Number(line.startPoint.x),
-    y1: Number(line.startPoint.y),
-    x2: Number(line.endPoint.x),
-    y2: Number(line.endPoint.y)
-  };
-}
-
-function lineOrientation(line, tolerance = 0.001) {
-  const x1 = Number(line?.startPoint?.x);
-  const y1 = Number(line?.startPoint?.y);
-  const x2 = Number(line?.endPoint?.x);
-  const y2 = Number(line?.endPoint?.y);
-  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
-  const dx = Math.abs(x2 - x1);
-  const dy = Math.abs(y2 - y1);
-  if (dx <= tolerance && dy <= tolerance) return null;
-  if (dx <= tolerance) return "vertical";
-  if (dy <= tolerance) return "horizontal";
-  return dx >= dy ? "horizontal" : "vertical";
-}
-
-function pointsOverlap(a, b, tolerance = 0.001) {
-  const ax = Number(a?.x);
-  const ay = Number(a?.y);
-  const bx = Number(b?.x);
-  const by = Number(b?.y);
-  if (![ax, ay, bx, by].every(Number.isFinite)) return false;
-  return Math.abs(ax - bx) <= tolerance && Math.abs(ay - by) <= tolerance;
-}
-
-function collectLineCandidates(objects) {
-  return (Array.isArray(objects) ? objects : []).flatMap((object) => {
-    return (Array.isArray(object.shapes) ? object.shapes : [])
-      .map((shape, index) => ({ shape, index }))
-      .filter((entry) => entry.shape && entry.shape.kind === "line")
-      .map((entry) => ({
-        object_id: object.id,
-        entity_id: object.entity_id,
-        primary_layer: object.primary_layer,
-        shape_index: entry.index,
-        line: lineShapeToPoints(entry.shape)
-      }))
-      .filter((entry) => entry.line);
-  });
-}
-
-function resolveSlidingLineVertexPairing(originalLineShape, lineCandidates, selfRef, vertexName) {
-  const originalLine = lineShapeToPoints(originalLineShape);
-  const originalOrientation = lineOrientation(originalLine);
-  const targetVertex = vertexName === "end" ? "end" : "start";
-  if (!originalLine) {
-    return {
-      status: "invalid_line",
-      candidate: null,
-      paired_vertex: targetVertex,
-      candidate_vertex: null
-    };
-  }
-
-  const matches = [];
-  for (const candidate of Array.isArray(lineCandidates) ? lineCandidates : []) {
-    if (
-      candidate &&
-      selfRef &&
-      candidate.object_id === selfRef.object_id &&
-      candidate.shape_index === selfRef.shape_index
-    ) {
-      continue;
-    }
-    const candidateLine = candidate.line;
-    if (!candidateLine) continue;
-    if (targetVertex === "start" && pointsOverlap(originalLine.startPoint, candidateLine.startPoint)) {
-      matches.push({
-        paired_vertex: "start",
-        candidate_vertex: "start",
-        candidate_orientation: lineOrientation(candidateLine),
-        candidate
-      });
-    }
-    if (targetVertex === "start" && pointsOverlap(originalLine.startPoint, candidateLine.endPoint)) {
-      matches.push({
-        paired_vertex: "start",
-        candidate_vertex: "end",
-        candidate_orientation: lineOrientation(candidateLine),
-        candidate
-      });
-    }
-    if (targetVertex === "end" && pointsOverlap(originalLine.endPoint, candidateLine.startPoint)) {
-      matches.push({
-        paired_vertex: "end",
-        candidate_vertex: "start",
-        candidate_orientation: lineOrientation(candidateLine),
-        candidate
-      });
-    }
-    if (targetVertex === "end" && pointsOverlap(originalLine.endPoint, candidateLine.endPoint)) {
-      matches.push({
-        paired_vertex: "end",
-        candidate_vertex: "end",
-        candidate_orientation: lineOrientation(candidateLine),
-        candidate
-      });
-    }
-  }
-
-  if (!matches.length) {
-    return {
-      status: "none",
-      candidate: null,
-      paired_vertex: targetVertex,
-      candidate_vertex: null
-    };
-  }
-
-  const perpendicularMatches = originalOrientation
-    ? matches.filter((item) => item.candidate_orientation && item.candidate_orientation !== originalOrientation)
-    : [];
-  const effectiveMatches = perpendicularMatches.length ? perpendicularMatches : matches;
-
-  const uniqueMatches = new Set(effectiveMatches.map((item) => `${item.paired_vertex}:${item.candidate_vertex}:${item.candidate.object_id}:${item.candidate.shape_index}`));
-  if (uniqueMatches.size > 1) {
-    return {
-      status: "unresolved",
-        candidate: null,
-        paired_vertex: targetVertex,
-        candidate_vertex: null
-    };
-  }
-
-  return {
-    status: "paired",
-    candidate: effectiveMatches[0].candidate,
-    paired_vertex: effectiveMatches[0].paired_vertex,
-    candidate_vertex: effectiveMatches[0].candidate_vertex
-  };
 }
 
 function shapeAnchorPoint(shape) {
@@ -1802,97 +1715,6 @@ function inferredRigidYOffsetForVerticalBand(shape, layer, offset, bandContext) 
   if (topDistance < bottomDistance) return Number(offset?.dy_top || 0);
   if (bottomDistance < topDistance) return Number(offset?.dy_bottom || 0);
   return 0;
-}
-
-function buildReciprocalTrim(pairing, simulatedShapeMap, intersection) {
-  const candidateRef = pairing.candidate
-    ? `${pairing.candidate.object_id}:${pairing.candidate.shape_index}`
-    : null;
-  const candidateShape = candidateRef ? simulatedShapeMap.get(candidateRef) : null;
-  const candidateLine = lineShapeToPoints(candidateShape);
-  if (!candidateLine) return null;
-  const reciprocalTrimmed = trimLineToPoint(
-    candidateLine,
-    intersection,
-    pairing.candidate_vertex === "start" ? "end" : "start"
-  );
-  return reciprocalTrimmed
-    ? {
-        object_id: pairing.candidate.object_id,
-        shape_index: pairing.candidate.shape_index,
-        shape: linePointsToShape(reciprocalTrimmed),
-        entity_id: pairing.candidate.entity_id
-      }
-    : null;
-}
-
-function applyTrimRejoinToTranslatedLine(originalLineShape, translatedLineShape, lineCandidates, selfRef, simulatedShapeMap) {
-  const pairings = [
-    resolveSlidingLineVertexPairing(originalLineShape, lineCandidates, selfRef, "start"),
-    resolveSlidingLineVertexPairing(originalLineShape, lineCandidates, selfRef, "end")
-  ];
-  let currentLine = lineShapeToPoints(translatedLineShape);
-  if (!currentLine) {
-    return {
-      shape: translatedLineShape,
-      pairings,
-      reciprocals: []
-    };
-  }
-
-  const resolvedPairings = [];
-  const reciprocals = [];
-  for (const pairing of pairings) {
-    if (pairing.status !== "paired") {
-      resolvedPairings.push(pairing);
-      continue;
-    }
-    const candidateRef = pairing.candidate
-      ? `${pairing.candidate.object_id}:${pairing.candidate.shape_index}`
-      : null;
-    const candidateShape = candidateRef ? simulatedShapeMap.get(candidateRef) : null;
-    const candidateLine = lineShapeToPoints(candidateShape);
-    if (!candidateLine) {
-      resolvedPairings.push({
-        ...pairing,
-        status: "unresolved"
-      });
-      continue;
-    }
-    const intersection = lineLineIntersection(currentLine, candidateLine);
-    if (!intersection) {
-      resolvedPairings.push({
-        ...pairing,
-        status: "unresolved"
-      });
-      continue;
-    }
-    const trimmed = trimLineToPoint(
-      currentLine,
-      intersection,
-      pairing.paired_vertex === "start" ? "end" : "start"
-    );
-    if (!trimmed) {
-      resolvedPairings.push({
-        ...pairing,
-        status: "unresolved"
-      });
-      continue;
-    }
-    currentLine = trimmed;
-    resolvedPairings.push({
-      ...pairing,
-      intersection
-    });
-    const reciprocal = buildReciprocalTrim(pairing, simulatedShapeMap, intersection);
-    if (reciprocal) reciprocals.push(reciprocal);
-  }
-
-  return {
-    shape: linePointsToShape(currentLine) || translatedLineShape,
-    pairings: resolvedPairings,
-    reciprocals
-  };
 }
 
 function readNumericParameter(parameters, keys, fallback) {
@@ -2028,6 +1850,221 @@ function buildStandardGeometrySimulationMap(objects, parameters) {
   return objectMap;
 }
 
+function quantileFromSorted(values, p) {
+  if (!Array.isArray(values) || !values.length) return null;
+  const index = Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * p)));
+  const value = Number(values[index]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function bboxIntersects(a, b, margin = 0) {
+  if (!a || !b) return false;
+  return Number(a.maxX) >= Number(b.minX) - margin
+    && Number(a.minX) <= Number(b.maxX) + margin
+    && Number(a.maxY) >= Number(b.minY) - margin
+    && Number(a.minY) <= Number(b.maxY) + margin;
+}
+
+function normalizeLineForEnvelope(shape, originalBBox, envelope, width, height) {
+  if (!shape || shape.kind !== "line" || !originalBBox || !envelope) return shape;
+  const x1 = Number(shape.x1);
+  const y1 = Number(shape.y1);
+  const x2 = Number(shape.x2);
+  const y2 = Number(shape.y2);
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return shape;
+  const horizontal = Math.abs(y1 - y2) <= 0.5;
+  const vertical = Math.abs(x1 - x2) <= 0.5;
+  const minX = Number(envelope.minX);
+  const maxX = Number(envelope.maxX);
+  const minY = Number(envelope.minY);
+  const maxY = Number(envelope.maxY);
+  const lineWidth = Number(originalBBox.maxX) - Number(originalBBox.minX);
+  const lineHeight = Number(originalBBox.maxY) - Number(originalBBox.minY);
+  const widthThreshold = Number(width) * 0.4;
+  const heightThreshold = Number(height) * 0.4;
+
+  if (horizontal && lineWidth >= widthThreshold) {
+    if (Math.abs(Number(originalBBox.maxY) - maxY) <= 2 && Math.abs(Number(originalBBox.minY) - maxY) <= 2) {
+      return { kind: "line", x1: minX, y1: maxY, x2: maxX, y2: maxY };
+    }
+    if (Math.abs(Number(originalBBox.maxY) - minY) <= 2 && Math.abs(Number(originalBBox.minY) - minY) <= 2) {
+      return { kind: "line", x1: minX, y1: minY, x2: maxX, y2: minY };
+    }
+  }
+
+  if (vertical && lineHeight >= heightThreshold) {
+    if (Math.abs(Number(originalBBox.maxX) - minX) <= 2 && Math.abs(Number(originalBBox.minX) - minX) <= 2) {
+      return { kind: "line", x1: minX, y1: minY, x2: minX, y2: maxY };
+    }
+    if (Math.abs(Number(originalBBox.maxX) - maxX) <= 15 && Math.abs(Number(originalBBox.minX) - maxX) <= 15) {
+      return { kind: "line", x1: maxX, y1: minY, x2: maxX, y2: maxY };
+    }
+  }
+
+  return shape;
+}
+
+function buildTopoPreviewEnvelope(objects) {
+  const xs = [];
+  const ys = [];
+  for (const object of Array.isArray(objects) ? objects : []) {
+    if (!object?.bbox) continue;
+    if ([object.bbox.minX, object.bbox.maxX].every(Number.isFinite)) {
+      xs.push(Number(object.bbox.minX), Number(object.bbox.maxX));
+    }
+    if ([object.bbox.minY, object.bbox.maxY].every(Number.isFinite)) {
+      ys.push(Number(object.bbox.minY), Number(object.bbox.maxY));
+    }
+  }
+  if (!xs.length || !ys.length) return null;
+  xs.sort((a, b) => a - b);
+  ys.sort((a, b) => a - b);
+  const minX = quantileFromSorted(xs, 0.05);
+  const maxX = quantileFromSorted(xs, 0.95);
+  const minY = quantileFromSorted(ys, 0.05);
+  const maxY = quantileFromSorted(ys, 0.95);
+  if (![minX, maxX, minY, maxY].every(Number.isFinite)) return null;
+  return { minX, maxX, minY, maxY };
+}
+
+function sustainFixedEnvelopeBoundaries(objectMap, objects, envelope) {
+  if (!objectMap || !envelope) return;
+  const width = Number(envelope.maxX) - Number(envelope.minX);
+  const height = Number(envelope.maxY) - Number(envelope.minY);
+  for (const object of Array.isArray(objects) ? objects : []) {
+    const preview = objectMap.get(object.id);
+    if (!preview || preview.applied_offset?.dx || preview.applied_offset?.dy) continue;
+    preview.simulated_shapes = (Array.isArray(preview.simulated_shapes) ? preview.simulated_shapes : []).map((shape, index) => {
+      const originalShape = Array.isArray(object.shapes) ? object.shapes[index] : null;
+      if (!originalShape || originalShape.kind !== "line") return shape;
+      return normalizeLineForEnvelope(shape, object.bbox, envelope, width, height);
+    });
+  }
+}
+
+function buildTopoGeometrySimulationMap(session, objects, parameters, topologyMode) {
+  const topo = firstExecutableTopoComment(session);
+  if (!topo) {
+    return null;
+  }
+  const topoKeys = topo.keys || {};
+  const axis = String(topoKeys.axis || "").trim().toUpperCase();
+  if (String(topo.mode || "").trim() !== "fixed_envelope_slide" || axis !== "X") {
+    return null;
+  }
+
+  const objectsList = Array.isArray(objects) ? objects : [];
+  const objectDecisions = new Map();
+  const objectMap = new Map();
+  const simulatedShapeMap = new Map();
+  const repairEnvelope = buildTopoPreviewEnvelope(objectsList);
+  const repairOptions = {
+    bounds: repairEnvelope,
+    maxExtension: 30
+  };
+
+  for (const object of objectsList) {
+    objectDecisions.set(object.id, evaluateChildEntityInclusion(object, parameters));
+  }
+
+  const includedObjects = objectsList.filter((object) => objectDecisions.get(object.id)?.included);
+  const lineCandidates = collectLineCandidates(includedObjects);
+
+  for (const object of objectsList) {
+    const decision = objectDecisions.get(object.id);
+    const originalShapes = cloneShapes(object?.shapes);
+    const sourceEntity = findEntity(session.document, object.entity_id);
+    const topoRole = decision?.included ? entityTopoRoleMetadata(sourceEntity) : null;
+    const sameGroup = topoRole
+      && String(topoRole.keys?.role || "").trim() === "mover"
+      && String(topoRole.keys?.group || "").trim() === String(topoKeys.group || "").trim();
+    const zone = sameGroup ? String(topoRole.keys?.zone || "").trim().toUpperCase() : null;
+    const zoneInput = zone ? resolveTopoZoneInput(topoKeys, parameters, zone) : null;
+    const factor = zone ? zoneDeltaFactor(topoKeys, zone) : null;
+    const dx = zoneInput && Number.isFinite(zoneInput.delta) && Number.isFinite(factor)
+      ? Number(zoneInput.delta) * factor
+      : 0;
+    const dy = 0;
+    const objectLinePairing = [];
+    const simulatedShapes = originalShapes.map((shape, shapeIndex) => {
+      const translatedShape = translateShape(shape, dx, dy);
+      simulatedShapeMap.set(`${object.id}:${shapeIndex}`, translatedShape);
+      return translatedShape;
+    });
+    objectMap.set(object.id, {
+      geometry_simulation_mode: `topology_mode:${topologyMode}_line_repair_v1`,
+      simulated_shapes: simulatedShapes,
+      simulated_bbox: simulatedShapes.length ? bboxFromShapes(simulatedShapes) : (object?.bbox ? cloneJson(object.bbox) : null),
+      applied_offset: { dx, dy },
+      render_visible: repairEnvelope ? bboxIntersects(object?.bbox, repairEnvelope, 15) : true,
+      topo_zone: zone,
+      topo_group: topoRole?.keys?.group || null,
+      topo_reference: zoneInput ? {
+        parameter: zoneInput.parameter,
+        nominal: zoneInput.nominal,
+        actual: zoneInput.actual,
+        delta: zoneInput.delta,
+        factor
+      } : null,
+      line_pairing: objectLinePairing
+    });
+  }
+
+  for (const object of includedObjects) {
+    const preview = objectMap.get(object.id);
+    if (!preview || !preview.applied_offset || (!preview.applied_offset.dx && !preview.applied_offset.dy)) {
+      continue;
+    }
+    for (let index = 0; index < preview.simulated_shapes.length; index += 1) {
+      const originalShape = object?.shapes?.[index];
+      const translatedShape = preview.simulated_shapes[index];
+      if (!originalShape || originalShape.kind !== "line") continue;
+      const resolved = applyTrimRejoinToTranslatedLine(
+        originalShape,
+        translatedShape,
+        lineCandidates,
+        { object_id: object.id, shape_index: index },
+        simulatedShapeMap,
+        repairOptions
+      );
+      for (const pairing of resolved.pairings || []) {
+        preview.line_pairing.push({
+          status: pairing.status,
+          paired_vertex: pairing.paired_vertex || null,
+          anchor_object_id: pairing.candidate ? pairing.candidate.object_id : null,
+          anchor_shape_index: pairing.candidate ? pairing.candidate.shape_index : null,
+          anchor_vertex: pairing.candidate_vertex || null,
+          intersection: pairing.intersection || null
+        });
+      }
+      preview.simulated_shapes[index] = resolved.shape;
+      simulatedShapeMap.set(`${object.id}:${index}`, resolved.shape);
+      for (const reciprocal of resolved.reciprocals || []) {
+        const reciprocalPreview = objectMap.get(reciprocal.object_id);
+        if (reciprocalPreview && reciprocalPreview.simulated_shapes[reciprocal.shape_index]) {
+          reciprocalPreview.simulated_shapes[reciprocal.shape_index] = reciprocal.shape;
+          simulatedShapeMap.set(
+            `${reciprocal.object_id}:${reciprocal.shape_index}`,
+            reciprocal.shape
+          );
+        }
+      }
+    }
+  }
+
+  sustainFixedEnvelopeBoundaries(objectMap, objectsList, repairEnvelope);
+
+  for (const object of objectsList) {
+    const preview = objectMap.get(object.id);
+    if (!preview) continue;
+    preview.simulated_bbox = preview.simulated_shapes.length
+      ? bboxFromShapes(preview.simulated_shapes)
+      : (object?.bbox ? cloneJson(object.bbox) : null);
+  }
+
+  return objectMap;
+}
+
 function buildIdentityGeometrySimulation(object, topologyMode) {
   return {
     geometry_simulation_mode: topologyMode ? `topology_mode:${topologyMode}` : "none_topology_identity",
@@ -2045,6 +2082,9 @@ function simulateChildPreview(session) {
   const topologyMode = topoRuntime?.mode || "none";
   const standardSimulationMap = topologyMode === "none"
     ? buildStandardGeometrySimulationMap(view.objects, config.parameters)
+    : null;
+  const topoSimulationMap = topologyMode !== "none"
+    ? buildTopoGeometrySimulationMap(session, view.objects, config.parameters, topologyMode)
     : null;
   const limitator = normalizeBooleanLike(config.parameters.LIMITATOR);
   const brava = config.parameters.BRAVA == null ? null : String(config.parameters.BRAVA);
@@ -2081,7 +2121,7 @@ function simulateChildPreview(session) {
     const visibilityReason = presenceEval.visibility_reason;
     const geometryPreview = topologyMode === "none"
       ? (standardSimulationMap && standardSimulationMap.get(object.id)) || buildIdentityGeometrySimulation(object, topologyMode)
-      : buildIdentityGeometrySimulation(object, topologyMode);
+      : (topoSimulationMap && topoSimulationMap.get(object.id)) || buildIdentityGeometrySimulation(object, topologyMode);
     const preview_actions = [];
     if (object.primary_layer) preview_actions.push(`LAYER=${object.primary_layer}`);
     if (partHint) preview_actions.push(`PART=${partHint}`);
@@ -2124,6 +2164,7 @@ function simulateChildPreview(session) {
         simulated_bbox: geometryPreview.simulated_bbox,
         applied_offset: geometryPreview.applied_offset || null,
         reference_deltas: geometryPreview.reference_deltas || null,
+        render_visible: geometryPreview.render_visible !== false,
         line_pairing: geometryPreview.line_pairing || [],
         preview_actions,
         ready_for_child_planning: object.classification_state === "classified" && Boolean(object.primary_layer)

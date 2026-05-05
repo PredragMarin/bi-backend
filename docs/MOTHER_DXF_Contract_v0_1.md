@@ -348,7 +348,7 @@ Geometry role:
 
 ```text
 999
-SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref=THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT
+SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref={RULE_ID}
 ```
 
 Prototype role:
@@ -385,7 +385,7 @@ Current implementation:
 - authors canonical `SEM:` comments through guided UI controls
 - supports multiple `SEM:` metadata comments per target entity and preserves their order
 - parses key/value metadata records into structured `semantic_metadata`
-- parses simple `when` expressions with `==`, `!=`, `>`, `>=`, `<`, `<=`, and flat `AND` / `OR`
+- parses simple `when` expressions with `==` and `!=`
 
 Not yet fully implemented:
 
@@ -441,7 +441,7 @@ SEM:feature=TRECA_SPOJNICA;presence=conditional;when=TRECA_SPOJNICA==Da
 
 ```text
 999
-SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref=THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT
+SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref={RULE_ID}
 ```
 
 Purpose of this level:
@@ -689,9 +689,6 @@ Supported authoring modes:
 ```text
 SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}=={VALUE}
 SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}!={VALUE}
-SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}>={VALUE}
-SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}=={VALUE} AND {OTHER_PARAMETER}>={OTHER_VALUE}
-SEM:feature={PARAMETER_KEY};presence=conditional;when={PARAMETER_KEY}=={VALUE} OR {PARAMETER_KEY}=={OTHER_VALUE}
 ```
 
 `Geometry role` builds metadata of this form:
@@ -717,6 +714,7 @@ Current limitation:
 - `Variant / operation id` remains a text field until a Variant Catalog / Operation Catalog exists.
 - `Rule ref` is selected from the current rule catalog.
 - The UI builds metadata records; it does not execute rule or operation semantics.
+- Canonical `SEM` preview should be treated as generated output, not as the primary authoring input.
 
 ---
 
@@ -729,8 +727,7 @@ To uključuje:
 - presence gating
 - variant selection
 - cutout selection
-- threshold uvjete
-- male `AND` / `OR` kombinacije
+- simple equality / inequality uvjete koji stanu u trenutni `when` grammar
 - komplementarne fallback grane
 
 `Rule Catalog` nije default authoring put.
@@ -740,12 +737,25 @@ On se koristi tek kada:
 - isti izraz treba reusable named rule
 - logika više nije dovoljno čitljiva iz samog `SEM` zapisa
 - treba profile-specific domain meaning
-- uvjet prelazi simple local metadata expression
+- uvjet prelazi simple local metadata expression, npr. threshold ili compound logiku
 
 Operational principle:
 
 - prvo `SEM-simple`
 - zatim `rule_ref` samo kada explicitni metadata authoring više nije dobar ili održiv prikaz intenta
+
+Everyday authoring direction:
+
+- `Metadata Authoring` nije free-text editor
+- default authoring treba biti picker-driven i catalog-backed gdje god je to moguće
+- canonical `SEM` string je output authoring surfacea, ne početna authoring rečenica
+- raw `SEM` edit može postojati samo kao admin/debug fallback, jasno odvojen od everyday moda
+
+Catalog scope direction:
+
+- catalog-backed choices trebaju biti filtrirane po aktivnom profile scopeu
+- `MXD`, `INOX`, i budući profili mogu imati različite catalogs
+- grammar ostaje generički; catalog scope određuje koje su vrijednosti dopuštene u konkretnom authoring contextu
 
 ---
 
@@ -763,7 +773,7 @@ Prvi `TOPO` mode u `v0` je:
 
 ```text
 999
-TOPO:mode=fixed_envelope_slide;sliding_band=L;fixed_dimension=X;inner_side=RIGHT;outer_side=LEFT
+TOPO:mode=fixed_envelope_slide;group=LBRA_X_SLIDE;axis=X;lec_parameter=LIJEVI_CUTOUT_DIFF;lec_nominal=890;rec_parameter=DESNI_CUTOUT_DIFF;rec_nominal=890;delta_rule=config_minus_nominal;lec_delta_factor=-1.0;rec_delta_factor=1.0;trim_policy=rejoin
 ```
 
 Za `fixed_envelope_slide` vrijedi:
@@ -771,7 +781,9 @@ Za `fixed_envelope_slide` vrijedi:
 - sliding entiteti assignaju se ručno kroz postojeći forced layer assignment workflow
 - resolver ne radi automatic band detection
 - anchor entiteti su `A` layer
-- `inner` / `outer` anchor razlikovanje je geometrijsko u odnosu na sliding band bbox
+- executable topology opisuje jedan part under processing
+- `LEC` i `REC` su dvije side-specific cutout zone istog parta
+- lijevi i desni delta input mogu biti različiti bez uvođenja `chain` semantike
 
 Structural invariant i dalje vrijedi:
 
@@ -827,8 +839,16 @@ Current artifact:
 
 Current MXD draft rules:
 
-- `THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT`
-- `THIRD_HINGE_BELOW_SECOND_FALLBACK`
+- `MXD_PPV_LAYER_B_OFFSET_9P5`
+
+Current MXD rule example:
+
+- `MXD_PPV_LAYER_B_OFFSET_9P5`
+  - `profile_scope = MXD`
+  - condition: `TIP_VRATA == PPV`
+  - target scope: `Layer B`
+  - action: `offset Y +9.5 mm`
+  - post repair: `bounded local trim/rejoin`
 
 Current use:
 
@@ -842,6 +862,8 @@ Current limitation:
 - approval-grade validation over rule expressions is not yet implemented
 
 Rule Catalog is domain/profile-specific. It is not a universal hardcoded rule table for all future products.
+
+Current catalog content in `rule_catalog_mxd_door_v0.json` is `MXD`-specific and must not be treated as `INOX` rule inventory.
 
 ---
 

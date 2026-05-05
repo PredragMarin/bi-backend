@@ -215,24 +215,28 @@
               </label>
             </div>
             <div class="grid-2" style="margin-top:10px">
-              <label>Chain type
-                <select id="topoChain">
-                  <option value="single_part">single_part</option>
-                  <option value="two_part">two_part</option>
-                </select>
-              </label>
               <label>Axis
                 <input id="topoAxis" type="text" value="X" readonly />
               </label>
             </div>
-            <div class="grid-2" style="margin-top:10px">
-              <label>Parameter
-                <select id="topoParameter">
+            <div id="topoParameterRowA" class="grid-2" style="margin-top:10px">
+              <label>LEC parameter
+                <select id="topoLecParameter">
                   <option value="">No catalog loaded</option>
                 </select>
               </label>
-              <label>Nominal
-                <input id="topoNominal" type="number" step="0.001" />
+              <label>LEC nominal
+                <input id="topoLecNominal" type="number" step="0.001" />
+              </label>
+            </div>
+            <div id="topoParameterRowB" class="grid-2" style="margin-top:10px">
+              <label>REC parameter
+                <select id="topoRecParameter">
+                  <option value="">No catalog loaded</option>
+                </select>
+              </label>
+              <label>REC nominal
+                <input id="topoRecNominal" type="number" step="0.001" />
               </label>
             </div>
             <div class="grid-2" style="margin-top:10px">
@@ -249,14 +253,6 @@
               </label>
               <label>rec_delta_factor
                 <input id="topoRecDeltaFactor" type="number" step="0.1" value="1.0" />
-              </label>
-            </div>
-            <div class="grid-2" style="margin-top:10px">
-              <label>lcc_delta_factor
-                <input id="topoLccDeltaFactor" type="number" step="0.1" value="-1.0" disabled />
-              </label>
-              <label>rcc_delta_factor
-                <input id="topoRccDeltaFactor" type="number" step="0.1" value="1.0" disabled />
               </label>
             </div>
             <label style="margin-top:10px;display:block">Generated file-level `999`
@@ -295,6 +291,7 @@
           </div>
           <div id="semStagePanel" style="display:none">
             <div id="metadataTargetBox" class="meta" style="margin-bottom:10px">Select one relevant object to author `999` metadata.</div>
+            <div class="meta" style="margin-bottom:10px">Default authoring stays inside current canonical SEM grammar. Generated `999` is output, not the primary input.</div>
             <label>Authoring mode
               <select id="metadataMode">
                 <option value="presence">Presence condition</option>
@@ -302,65 +299,65 @@
                 <option value="operation_ref">Operation reference</option>
               </select>
             </label>
-            <div class="grid-2">
-              <label>Operator
-                <select id="metadataOperation">
-                  <option value="==">==</option>
-                  <option value="!=">!=</option>
-                  <option value=">">&gt;</option>
-                  <option value=">=">&gt;=</option>
-                  <option value="<">&lt;</option>
-                  <option value="<=">&lt;=</option>
-                </select>
-              </label>
-              <label>Parameter
+            <div id="metadataPresencePrimaryRow" class="grid-2">
+              <label>Source
                 <select id="metadataParameter">
                   <option value="">No catalog loaded</option>
                 </select>
               </label>
+              <label>Operator
+                <select id="metadataOperation">
+                  <option value="==">==</option>
+                  <option value="!=">!=</option>
+                </select>
+              </label>
             </div>
-            <div class="grid-2" style="margin-top:10px">
+            <div id="metadataExpectedValuePrimaryWrap" class="grid-2" style="margin-top:10px">
               <label>Expected value
                 <select id="metadataExpectedValue">
                   <option value="">No catalog value loaded</option>
                 </select>
+                <select id="metadataExpectedValueMulti" multiple size="4" style="display:none;margin-top:8px"></select>
                 <input id="metadataExpectedValueNumber" type="number" style="display:none;margin-top:8px" />
                 <div id="metadataExpectedValueMeta" class="meta" style="margin-top:6px"></div>
               </label>
-              <label>Logical operator
-                <select id="metadataLogicalOperator">
-                  <option value="">Single condition</option>
-                  <option value="AND">AND</option>
-                  <option value="OR">OR</option>
-                </select>
-              </label>
             </div>
-            <div class="grid-2" style="margin-top:10px">
-              <label>Second parameter
-                <select id="metadataParameterSecondary">
-                  <option value="">No catalog loaded</option>
-                </select>
-              </label>
-              <label>Second operator
-                <select id="metadataOperationSecondary">
-                  <option value="==">==</option>
-                  <option value="!=">!=</option>
-                  <option value=">">&gt;</option>
-                  <option value=">=">&gt;=</option>
-                  <option value="<">&lt;</option>
-                  <option value="<=">&lt;=</option>
-                </select>
-              </label>
+            <div id="metadataSecondConditionToggleRow" class="toolbar" style="margin-top:10px;display:none">
+              <button id="metadataToggleSecondConditionBtn" type="button" class="secondary">Add second condition</button>
             </div>
-            <label style="margin-top:10px;display:block">Second expected value
-              <select id="metadataExpectedValueSecondary">
-                <option value="">No catalog value loaded</option>
-              </select>
-              <input id="metadataExpectedValueSecondaryNumber" type="number" style="display:none;margin-top:8px" />
-              <div id="metadataExpectedValueSecondaryMeta" class="meta" style="margin-top:6px"></div>
-            </label>
-            <div class="grid-2" style="margin-top:10px">
-              <label>Geometry role
+            <div id="metadataSecondConditionPanel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+              <div class="grid-2">
+                <label>Connector
+                  <select id="metadataLogicalOperator">
+                    <option value="AND">AND</option>
+                    <option value="OR">OR</option>
+                  </select>
+                </label>
+                <label>Second source
+                  <select id="metadataParameterSecondary">
+                    <option value="">No catalog loaded</option>
+                  </select>
+                </label>
+              </div>
+              <div class="grid-2" style="margin-top:10px">
+                <label>Second operator
+                  <select id="metadataOperationSecondary">
+                    <option value="==">==</option>
+                    <option value="!=">!=</option>
+                  </select>
+                </label>
+                <label>Second expected value
+                  <select id="metadataExpectedValueSecondary">
+                    <option value="">No catalog value loaded</option>
+                  </select>
+                  <select id="metadataExpectedValueSecondaryMulti" multiple size="4" style="display:none;margin-top:8px"></select>
+                  <input id="metadataExpectedValueSecondaryNumber" type="number" style="display:none;margin-top:8px" />
+                  <div id="metadataExpectedValueSecondaryMeta" class="meta" style="margin-top:6px"></div>
+                </label>
+              </div>
+            </div>
+            <div id="metadataRoleRow" class="grid-2" style="margin-top:10px">
+              <label id="metadataRoleLabelWrap">Geometry role
                 <select id="metadataRole">
                   <option value="variant">variant</option>
                   <option value="prototype">prototype</option>
@@ -368,18 +365,27 @@
                   <option value="reference">reference</option>
                 </select>
               </label>
-              <label>Variant / operation id
-                <input id="metadataVariant" type="text" placeholder="ABOVE_SECOND or WORKTOP_SINK_PAIR_PLACEMENT" />
+              <label><span id="metadataVariantLabel">Variant id</span>
+                <input id="metadataVariant" type="text" placeholder="IZNAD_DRUGE" />
               </label>
             </div>
-            <label style="margin-top:10px;display:block">Rule ref
+            <label id="metadataRuleRefWrap" style="margin-top:10px;display:block">Rule ref
               <select id="metadataRuleRef">
                 <option value="">No rule ref</option>
               </select>
             </label>
+            <div id="metadataOperationHelp" class="meta" style="margin-top:8px;display:none">Operation reference is still text-based until an Operation Catalog exists. Use a stable operation id.</div>
+            <details id="metadataDebugDetails" style="margin-top:10px">
+              <summary>Admin/debug override</summary>
+              <div class="meta" style="margin-top:8px">Use only for debugging or controlled exception authoring. This can bypass default UX grammar constraints.</div>
+              <label style="margin-top:10px;display:block">Raw SEM override
+                <textarea id="metadataRawOverride" style="min-height:88px" placeholder="SEM:feature=..."></textarea>
+              </label>
+            </details>
             <label style="margin-top:10px;display:block">Generated `999`
               <input id="metadataPreview" type="text" readonly />
             </label>
+            <div id="metadataPreviewSummary" class="meta" style="margin-top:8px">No canonical metadata generated yet.</div>
             <div class="toolbar" style="margin-top:12px">
               <button id="applyMetadataBtn" class="secondary" disabled>Apply Metadata</button>
               <button id="clearMetadataBtn" class="secondary" disabled>Clear Metadata</button>
@@ -480,21 +486,36 @@
     const simulationOut = document.getElementById("simulationOut");
     const metadataTargetBox = document.getElementById("metadataTargetBox");
     const metadataMode = document.getElementById("metadataMode");
+    const metadataPresencePrimaryRow = document.getElementById("metadataPresencePrimaryRow");
     const metadataOperation = document.getElementById("metadataOperation");
     const metadataParameter = document.getElementById("metadataParameter");
+    const metadataExpectedValuePrimaryWrap = document.getElementById("metadataExpectedValuePrimaryWrap");
+    const metadataRoleRow = document.getElementById("metadataRoleRow");
+    const metadataRoleLabelWrap = document.getElementById("metadataRoleLabelWrap");
     const metadataRole = document.getElementById("metadataRole");
     const metadataVariant = document.getElementById("metadataVariant");
+    const metadataVariantLabel = document.getElementById("metadataVariantLabel");
+    const metadataRuleRefWrap = document.getElementById("metadataRuleRefWrap");
     const metadataRuleRef = document.getElementById("metadataRuleRef");
+    const metadataOperationHelp = document.getElementById("metadataOperationHelp");
     const metadataExpectedValue = document.getElementById("metadataExpectedValue");
+    const metadataExpectedValueMulti = document.getElementById("metadataExpectedValueMulti");
     const metadataExpectedValueNumber = document.getElementById("metadataExpectedValueNumber");
     const metadataExpectedValueMeta = document.getElementById("metadataExpectedValueMeta");
+    const metadataSecondConditionToggleRow = document.getElementById("metadataSecondConditionToggleRow");
+    const metadataToggleSecondConditionBtn = document.getElementById("metadataToggleSecondConditionBtn");
+    const metadataSecondConditionPanel = document.getElementById("metadataSecondConditionPanel");
+    const metadataDebugDetails = document.getElementById("metadataDebugDetails");
+    const metadataRawOverride = document.getElementById("metadataRawOverride");
     const metadataLogicalOperator = document.getElementById("metadataLogicalOperator");
     const metadataParameterSecondary = document.getElementById("metadataParameterSecondary");
     const metadataOperationSecondary = document.getElementById("metadataOperationSecondary");
     const metadataExpectedValueSecondary = document.getElementById("metadataExpectedValueSecondary");
+    const metadataExpectedValueSecondaryMulti = document.getElementById("metadataExpectedValueSecondaryMulti");
     const metadataExpectedValueSecondaryNumber = document.getElementById("metadataExpectedValueSecondaryNumber");
     const metadataExpectedValueSecondaryMeta = document.getElementById("metadataExpectedValueSecondaryMeta");
     const metadataPreview = document.getElementById("metadataPreview");
+    const metadataPreviewSummary = document.getElementById("metadataPreviewSummary");
     const parameterCatalogMeta = document.getElementById("parameterCatalogMeta");
     const parameterCatalogOut = document.getElementById("parameterCatalogOut");
     const ruleCatalogMeta = document.getElementById("ruleCatalogMeta");
@@ -506,16 +527,17 @@
     const topoOut = document.getElementById("topoOut");
     const topoMode = document.getElementById("topoMode");
     const topoGroup = document.getElementById("topoGroup");
-    const topoChain = document.getElementById("topoChain");
+    const topoParameterRowA = document.getElementById("topoParameterRowA");
+    const topoParameterRowB = document.getElementById("topoParameterRowB");
     const topoAxis = document.getElementById("topoAxis");
-    const topoParameter = document.getElementById("topoParameter");
-    const topoNominal = document.getElementById("topoNominal");
+    const topoLecParameter = document.getElementById("topoLecParameter");
+    const topoLecNominal = document.getElementById("topoLecNominal");
+    const topoRecParameter = document.getElementById("topoRecParameter");
+    const topoRecNominal = document.getElementById("topoRecNominal");
     const topoDeltaRule = document.getElementById("topoDeltaRule");
     const topoTrimPolicy = document.getElementById("topoTrimPolicy");
     const topoLecDeltaFactor = document.getElementById("topoLecDeltaFactor");
     const topoRecDeltaFactor = document.getElementById("topoRecDeltaFactor");
-    const topoLccDeltaFactor = document.getElementById("topoLccDeltaFactor");
-    const topoRccDeltaFactor = document.getElementById("topoRccDeltaFactor");
     const topoEntityMeta = document.getElementById("topoEntityMeta");
     const topoEntityRole = document.getElementById("topoEntityRole");
     const topoEntityZone = document.getElementById("topoEntityZone");
@@ -693,18 +715,23 @@
     }
 
     function effectiveShapesForObject(object) {
+      const preview = simulationGeometryByObjectId(object?.id);
+      if (preview && Array.isArray(preview.simulated_shapes)) {
+        return preview.simulated_shapes;
+      }
       const topoMove = topoPreviewMoveByEntityId(object?.entity_id);
       if (topoMove) {
         return (Array.isArray(object?.shapes) ? object.shapes : [])
           .map((shape) => translatePreviewShape(shape, topoMove.dx, topoMove.dy));
       }
-      const preview = simulationGeometryByObjectId(object?.id);
-      return preview && Array.isArray(preview.simulated_shapes)
-        ? preview.simulated_shapes
-        : (Array.isArray(object?.shapes) ? object.shapes : []);
+      return Array.isArray(object?.shapes) ? object.shapes : [];
     }
 
     function effectiveBBoxForObject(object) {
+      const preview = simulationGeometryByObjectId(object?.id);
+      if (preview && preview.simulated_bbox) {
+        return preview.simulated_bbox;
+      }
       const topoMove = topoPreviewMoveByEntityId(object?.entity_id);
       if (topoMove && object?.bbox) {
         return {
@@ -714,10 +741,7 @@
           maxY: Number(object.bbox.maxY) + Number(topoMove.dy || 0)
         };
       }
-      const preview = simulationGeometryByObjectId(object?.id);
-      return preview && preview.simulated_bbox
-        ? preview.simulated_bbox
-        : (object?.bbox || null);
+      return object?.bbox || null;
     }
 
     function objectScreenBBox(object) {
@@ -752,6 +776,11 @@
         ctx.arc(center.x, center.y, Math.abs(shape.radius * state.view.scale), start, end, true);
       }
       ctx.stroke();
+    }
+
+    function drawSelectedShape(shape) {
+      drawShape(shape, "#ffffff", 6);
+      drawShape(shape, "#dc2626", 3.5);
     }
 
     function snapPointLabel(point) {
@@ -937,8 +966,9 @@
     }
 
     function isObjectVisibleInSimulation(objectId) {
-      if (state.topoPreview) return true;
       const item = simulationItemByObjectId(objectId);
+      if (item && item.preview && item.preview.render_visible === false) return false;
+      if (state.topoPreview) return true;
       if (!item || !item.preview) return true;
       return item.preview.visible !== false;
     }
@@ -1003,7 +1033,6 @@
       const targetTop = Math.max(0, (item.source.line_start - 2) * lineHeight);
 
       editorShell.classList.add("entity-focus");
-      dxfInput.focus();
       dxfInput.scrollTop = targetTop;
       dxfInput.setSelectionRange(start, Math.max(start, end - 1));
       requestAnimationFrame(() => {
@@ -1136,9 +1165,46 @@
       return parts.join(" | ");
     }
 
-    function readExpectedValue(selectEl, numberEl, parameter) {
+    function isEnumCatalogParameter(parameter) {
+      return parameter && String(parameter.type || "").trim().toLowerCase() === "enum";
+    }
+
+    function allowedOperatorsForParameter(parameter) {
+      if (isNumericCatalogParameter(parameter)) {
+        return ["==", "!=", ">", ">=", "<", "<="];
+      }
+      if (isEnumCatalogParameter(parameter)) {
+        return ["==", "!=", "IN"];
+      }
+      return ["==", "!="];
+    }
+
+    function operatorLabel(operator) {
+      return operator;
+    }
+
+    function syncOperatorOptionsForParameter(parameter, operatorSelect) {
+      const allowed = allowedOperatorsForParameter(parameter);
+      const previous = String(operatorSelect.value || "").trim();
+      operatorSelect.innerHTML = allowed.map((operator) => `<option value="${esc(operator)}">${esc(operatorLabel(operator))}</option>`).join("");
+      operatorSelect.value = allowed.includes(previous) ? previous : allowed[0];
+    }
+
+    function selectedValuesFromMultiSelect(selectEl) {
+      return Array.from(selectEl.selectedOptions || []).map((option) => String(option.value || "").trim()).filter(Boolean);
+    }
+
+    function bracketListFromValues(values) {
+      return `[${values.join(",")}]`;
+    }
+
+    function readExpectedValue(selectEl, multiSelectEl, numberEl, parameter, operator) {
       if (isNumericCatalogParameter(parameter)) {
         return String(numberEl.value || "").trim();
+      }
+      if (operator === "IN") {
+        const values = selectedValuesFromMultiSelect(multiSelectEl);
+        return values.length ? bracketListFromValues(values) : "";
       }
       return String(selectEl.value || "").trim();
     }
@@ -1281,47 +1347,46 @@
     function syncTopoParameterOptions() {
       const parameters = currentCatalogParameters();
       if (!parameters.length) {
-        topoParameter.innerHTML = `<option value="">No catalog parameters</option>`;
+        topoLecParameter.innerHTML = `<option value="">No catalog parameters</option>`;
+        topoRecParameter.innerHTML = `<option value="">No catalog parameters</option>`;
         return;
       }
-      const previous = topoParameter.value;
-      topoParameter.innerHTML = parameters
+      const buildOptions = () => parameters
         .map((item) => `<option value="${esc(item.key)}">${esc(item.code || item.key)} | ${esc(item.label || "")}</option>`)
         .join("");
-      const preferred = parameters.find((item) => item.key === previous)
+      topoLecParameter.innerHTML = buildOptions();
+      topoRecParameter.innerHTML = buildOptions();
+      const preferredKey = String(topoLecParameter.value || topoRecParameter.value || "").trim();
+      const preferred = parameters.find((item) => item.key === preferredKey)
         || parameters.find((item) => String(item.key || "").toUpperCase() === "SIRINA_VRATA")
         || parameters[0];
-      topoParameter.value = preferred ? preferred.key : "";
+      const nextValue = preferred ? preferred.key : "";
+      topoLecParameter.value = Array.from(topoLecParameter.options).some((option) => option.value === topoLecParameter.value) ? topoLecParameter.value : nextValue;
+      topoRecParameter.value = Array.from(topoRecParameter.options).some((option) => option.value === topoRecParameter.value) ? topoRecParameter.value : nextValue;
     }
 
     function syncTopoZoneOptions() {
       const previous = topoEntityZone.value;
-      const zones = String(topoChain.value || "single_part") === "two_part"
-        ? ["LEC", "LCC", "RCC", "REC"]
-        : ["LEC", "REC"];
+      const zones = ["LEC", "REC"];
       topoEntityZone.innerHTML = zones.map((zone) => `<option value="${zone}">${zone}</option>`).join("");
       topoEntityZone.value = zones.includes(previous) ? previous : zones[0];
-      topoLccDeltaFactor.disabled = String(topoChain.value || "single_part") !== "two_part";
-      topoRccDeltaFactor.disabled = String(topoChain.value || "single_part") !== "two_part";
+      topoParameterRowA.style.display = "grid";
+      topoParameterRowB.style.display = "grid";
     }
 
     function buildGeneratedTopoComment() {
-      const chain = String(topoChain.value || "single_part").trim();
       const parts = [
         "TOPO:mode=fixed_envelope_slide",
         `group=${String(topoGroup.value || "LBRA_X_SLIDE").trim()}`,
-        `chain=${chain}`,
         "axis=X",
-        `parameter=${String(topoParameter.value || "").trim()}`,
-        `nominal=${numberText(topoNominal.value, state.session?.document_sem?.nominal_width || 900)}`,
         "delta_rule=config_minus_nominal",
+        `lec_parameter=${String(topoLecParameter.value || "").trim()}`,
+        `lec_nominal=${numberText(topoLecNominal.value, state.session?.document_sem?.nominal_width || 900)}`,
+        `rec_parameter=${String(topoRecParameter.value || "").trim()}`,
+        `rec_nominal=${numberText(topoRecNominal.value, state.session?.document_sem?.nominal_width || 900)}`,
         `lec_delta_factor=${numberText(topoLecDeltaFactor.value, -1.0)}`,
         `rec_delta_factor=${numberText(topoRecDeltaFactor.value, 1.0)}`
       ];
-      if (chain === "two_part") {
-        parts.push(`lcc_delta_factor=${numberText(topoLccDeltaFactor.value, -1.0)}`);
-        parts.push(`rcc_delta_factor=${numberText(topoRccDeltaFactor.value, 1.0)}`);
-      }
       parts.push("trim_policy=rejoin");
       return parts.join(";");
     }
@@ -1334,24 +1399,25 @@
 
     function syncTopoFormFromSession() {
       const raw = state.session && state.session.topo_metadata && Array.isArray(state.session.topo_metadata.raw_comments)
-        ? state.session.topo_metadata.raw_comments.find((value) => String(value || "").includes("chain=")) || ""
+        ? state.session.topo_metadata.raw_comments.find((value) => String(value || "").includes("mode=fixed_envelope_slide")) || ""
         : "";
       const parsed = parseMetadataPairs(raw, "TOPO");
       syncTopoParameterOptions();
       topoMode.value = "fixed_envelope_slide";
       topoGroup.value = parsed.group || topoGroup.value || "LBRA_X_SLIDE";
-      topoChain.value = parsed.chain || topoChain.value || "single_part";
       topoAxis.value = "X";
-      if (parsed.parameter && Array.from(topoParameter.options).some((option) => option.value === parsed.parameter)) {
-        topoParameter.value = parsed.parameter;
+      if (parsed.lec_parameter && Array.from(topoLecParameter.options).some((option) => option.value === parsed.lec_parameter)) {
+        topoLecParameter.value = parsed.lec_parameter;
       }
-      topoNominal.value = parsed.nominal || topoNominal.value || state.session?.document_sem?.nominal_width || 900;
+      if (parsed.rec_parameter && Array.from(topoRecParameter.options).some((option) => option.value === parsed.rec_parameter)) {
+        topoRecParameter.value = parsed.rec_parameter;
+      }
+      topoLecNominal.value = parsed.lec_nominal || topoLecNominal.value || state.session?.document_sem?.nominal_width || 900;
+      topoRecNominal.value = parsed.rec_nominal || topoRecNominal.value || state.session?.document_sem?.nominal_width || 900;
       topoDeltaRule.value = "config_minus_nominal";
       topoTrimPolicy.value = "rejoin";
       topoLecDeltaFactor.value = parsed.lec_delta_factor || topoLecDeltaFactor.value || "-1.0";
       topoRecDeltaFactor.value = parsed.rec_delta_factor || topoRecDeltaFactor.value || "1.0";
-      topoLccDeltaFactor.value = parsed.lcc_delta_factor || topoLccDeltaFactor.value || "-1.0";
-      topoRccDeltaFactor.value = parsed.rcc_delta_factor || topoRccDeltaFactor.value || "1.0";
       syncTopoZoneOptions();
       topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
       topoInput.value = buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
@@ -1378,16 +1444,15 @@
     function setTopoControlsDisabled(disabled) {
       topoMode.disabled = disabled;
       topoGroup.disabled = disabled;
-      topoChain.disabled = disabled;
       topoAxis.disabled = disabled;
-      topoParameter.disabled = disabled;
-      topoNominal.disabled = disabled;
+      topoLecParameter.disabled = disabled;
+      topoLecNominal.disabled = disabled;
+      topoRecParameter.disabled = disabled;
+      topoRecNominal.disabled = disabled;
       topoDeltaRule.disabled = disabled;
       topoTrimPolicy.disabled = disabled;
       topoLecDeltaFactor.disabled = disabled;
       topoRecDeltaFactor.disabled = disabled;
-      topoLccDeltaFactor.disabled = disabled || String(topoChain.value || "single_part") !== "two_part";
-      topoRccDeltaFactor.disabled = disabled || String(topoChain.value || "single_part") !== "two_part";
       topoEntityRole.disabled = disabled;
       topoEntityZone.disabled = disabled;
       document.getElementById("saveTopoBtn").disabled = disabled;
@@ -1445,9 +1510,10 @@
       if (!parameters.length) {
         metadataParameter.innerHTML = `<option value="">No catalog parameters</option>`;
         metadataParameterSecondary.innerHTML = `<option value="">No catalog parameters</option>`;
-        topoParameter.innerHTML = `<option value="">No catalog parameters</option>`;
         metadataExpectedValue.innerHTML = `<option value="">No catalog value loaded</option>`;
+        metadataExpectedValueMulti.innerHTML = "";
         metadataExpectedValueSecondary.innerHTML = `<option value="">No catalog value loaded</option>`;
+        metadataExpectedValueSecondaryMulti.innerHTML = "";
         metadataExpectedValueMeta.textContent = "";
         metadataExpectedValueSecondaryMeta.textContent = "";
         return;
@@ -1468,9 +1534,10 @@
       syncMetadataSecondaryExpectedValueFromSelection();
     }
 
-    function syncExpectedValuesForParameter(parameter, expectedSelect, expectedNumber, expectedMeta) {
+    function syncExpectedValuesForParameter(parameter, operator, expectedSelect, expectedMultiSelect, expectedNumber, expectedMeta) {
       if (isNumericCatalogParameter(parameter)) {
         expectedSelect.style.display = "none";
+        expectedMultiSelect.style.display = "none";
         expectedNumber.style.display = "block";
         expectedMeta.textContent = formatNumericMeta(parameter);
         expectedNumber.min = parameter.min;
@@ -1492,82 +1559,228 @@
           }
         }
         expectedSelect.innerHTML = `<option value="">Numeric value</option>`;
+        expectedMultiSelect.innerHTML = "";
+        expectedSelect.multiple = false;
         return;
       }
       const values = parameter && Array.isArray(parameter.values) ? parameter.values : [];
-      expectedSelect.style.display = "block";
+      const useMultiSelect = operator === "IN";
+      expectedSelect.style.display = useMultiSelect ? "none" : "block";
+      expectedMultiSelect.style.display = useMultiSelect ? "block" : "none";
       expectedNumber.style.display = "none";
       expectedMeta.textContent = "";
       if (!values.length) {
         expectedSelect.innerHTML = `<option value="">No catalog values</option>`;
+        expectedMultiSelect.innerHTML = "";
+        return;
+      }
+      if (useMultiSelect) {
+        const previousValues = new Set(selectedValuesFromMultiSelect(expectedMultiSelect));
+        expectedMultiSelect.innerHTML = values.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
+        Array.from(expectedMultiSelect.options).forEach((option, index) => {
+          option.selected = previousValues.size ? previousValues.has(option.value) : index === 0;
+        });
+        expectedSelect.innerHTML = `<option value="">Enum membership</option>`;
         return;
       }
       const previous = expectedSelect.value;
       expectedSelect.innerHTML = values.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
       expectedSelect.value = values.includes(previous) ? previous : values[0];
+      expectedMultiSelect.innerHTML = "";
     }
 
     function syncMetadataExpectedValueFromSelection() {
-      syncExpectedValuesForParameter(selectedCatalogParameter(), metadataExpectedValue, metadataExpectedValueNumber, metadataExpectedValueMeta);
+      const parameter = selectedCatalogParameter();
+      syncOperatorOptionsForParameter(parameter, metadataOperation);
+      syncExpectedValuesForParameter(
+        parameter,
+        metadataOperation.value,
+        metadataExpectedValue,
+        metadataExpectedValueMulti,
+        metadataExpectedValueNumber,
+        metadataExpectedValueMeta
+      );
       renderMetadataPreview();
     }
 
     function syncMetadataSecondaryExpectedValueFromSelection() {
+      const parameter = selectedCatalogParameterByKey(metadataParameterSecondary.value);
+      syncOperatorOptionsForParameter(parameter, metadataOperationSecondary);
       syncExpectedValuesForParameter(
-        selectedCatalogParameterByKey(metadataParameterSecondary.value),
+        parameter,
+        metadataOperationSecondary.value,
         metadataExpectedValueSecondary,
+        metadataExpectedValueSecondaryMulti,
         metadataExpectedValueSecondaryNumber,
         metadataExpectedValueSecondaryMeta
       );
       renderMetadataPreview();
     }
 
-    function renderMetadataPreview() {
+    function metadataDebugModeEnabled() {
+      return Boolean(metadataDebugDetails && metadataDebugDetails.open);
+    }
+
+    function secondConditionEnabled() {
+      return metadataSecondConditionPanel.style.display !== "none";
+    }
+
+    function setSecondConditionEnabled(enabled) {
+      metadataSecondConditionPanel.style.display = enabled ? "block" : "none";
+      metadataToggleSecondConditionBtn.textContent = enabled ? "Remove second condition" : "Add second condition";
+      if (!enabled) {
+        metadataLogicalOperator.value = "AND";
+      }
+    }
+
+    function syncMetadataAuthoringLayout() {
       const mode = String(metadataMode.value || "presence").trim();
+      const isPresence = mode === "presence";
+      const isGeometryRole = mode === "geometry_role";
+      const isOperationRef = mode === "operation_ref";
+
+      metadataPresencePrimaryRow.style.display = isPresence ? "grid" : "none";
+      metadataExpectedValuePrimaryWrap.style.display = isPresence ? "grid" : "none";
+      metadataSecondConditionToggleRow.style.display = isPresence ? "flex" : "none";
+      metadataSecondConditionPanel.style.display = isPresence && secondConditionEnabled() ? "block" : "none";
+      metadataRoleRow.style.display = (isGeometryRole || isOperationRef) ? "grid" : "none";
+      metadataRoleLabelWrap.style.display = isOperationRef ? "none" : "block";
+      metadataRuleRefWrap.style.display = isGeometryRole ? "block" : "none";
+      metadataOperationHelp.style.display = isOperationRef ? "block" : "none";
+      metadataDebugDetails.style.display = "block";
+
+      if (!isPresence) {
+        setSecondConditionEnabled(false);
+      }
+
+      if (isGeometryRole) {
+        metadataVariantLabel.textContent = "Variant id";
+        metadataVariant.placeholder = "IZNAD_DRUGE";
+      } else if (isOperationRef) {
+        metadataVariantLabel.textContent = "Operation ref id";
+        metadataVariant.placeholder = "SBRA_BOTTOM_TRIM_JOIN";
+      } else {
+        metadataVariantLabel.textContent = "Variant id";
+        metadataVariant.placeholder = "IZNAD_DRUGE";
+      }
+    }
+
+    function canonicalConditionSummary(parameterDef, operator, expectedValue) {
+      const label = parameterDef ? (parameterDef.label || parameterDef.key) : "-";
+      return `${label} ${operator || "-"} ${expectedValue || "-"}`;
+    }
+
+    function metadataSummaryForPreview(rawComment, mode) {
+      if (!rawComment) return "No canonical metadata generated yet.";
+      if (metadataRawOverride.value.trim()) {
+        return "Admin/debug raw SEM override is active.";
+      }
+      if (mode === "geometry_role") {
+        const role = String(metadataRole.value || "").trim();
+        const feature = String(metadataParameter.value || "").trim();
+        const variant = String(metadataVariant.value || "").trim();
+        const ruleRef = String(metadataRuleRef.value || "").trim();
+        return `Role ${role || "-"} over ${feature || "-"} with variant ${variant || "-"}${ruleRef ? ` via rule ${ruleRef}` : ""}.`;
+      }
+      if (mode === "operation_ref") {
+        const feature = String(metadataParameter.value || "").trim();
+        const operationRef = String(metadataVariant.value || "").trim();
+        return feature
+          ? `Operation reference ${operationRef || "-"} bound to feature ${feature}.`
+          : `Operation reference ${operationRef || "-"}.`;
+      }
+      const primaryDef = selectedCatalogParameter();
+      const secondaryDef = selectedCatalogParameterByKey(metadataParameterSecondary.value);
+      const primaryExpected = readExpectedValue(metadataExpectedValue, metadataExpectedValueMulti, metadataExpectedValueNumber, primaryDef, metadataOperation.value);
+      const primarySummary = canonicalConditionSummary(primaryDef, metadataOperation.value, primaryExpected);
+      if (!secondConditionEnabled()) {
+        return `Presence is conditional when ${primarySummary}.`;
+      }
+      const secondaryExpected = readExpectedValue(metadataExpectedValueSecondary, metadataExpectedValueSecondaryMulti, metadataExpectedValueSecondaryNumber, secondaryDef, metadataOperationSecondary.value);
+      const secondarySummary = canonicalConditionSummary(secondaryDef, metadataOperationSecondary.value, secondaryExpected);
+      return `Presence is conditional when (${primarySummary}) ${metadataLogicalOperator.value || "AND"} (${secondarySummary}).`;
+    }
+
+    function buildWhenClause(parameter, operator, expectedValue) {
+      const safeParameter = String(parameter || "").trim();
+      const safeOperator = String(operator || "").trim().toUpperCase();
+      const safeExpected = String(expectedValue || "").trim();
+      if (!safeParameter || !safeOperator || !safeExpected) return "";
+      if (safeOperator === "IN") {
+        return `${safeParameter} IN ${safeExpected}`;
+      }
+      return `${safeParameter}${operator}${safeExpected}`;
+    }
+
+    function renderMetadataPreview() {
+      syncMetadataAuthoringLayout();
+      const mode = String(metadataMode.value || "presence").trim();
+      const rawOverride = String(metadataRawOverride.value || "").trim();
+      if (rawOverride) {
+        metadataPreview.value = rawOverride;
+        metadataPreviewSummary.textContent = metadataSummaryForPreview(rawOverride, mode);
+        document.getElementById("applyMetadataBtn").disabled = !selectedObject();
+        return;
+      }
       const parameter = String(metadataParameter.value || "").trim();
       const primaryParameterDef = selectedCatalogParameter();
       const secondaryParameterDef = selectedCatalogParameterByKey(metadataParameterSecondary.value);
-      const expected = readExpectedValue(metadataExpectedValue, metadataExpectedValueNumber, primaryParameterDef);
+      const expected = readExpectedValue(metadataExpectedValue, metadataExpectedValueMulti, metadataExpectedValueNumber, primaryParameterDef, metadataOperation.value);
       const operation = String(metadataOperation.value || "").trim();
       const logicalOperator = String(metadataLogicalOperator.value || "").trim().toUpperCase();
       const parameterSecondary = String(metadataParameterSecondary.value || "").trim();
       const operationSecondary = String(metadataOperationSecondary.value || "").trim();
-      const expectedSecondary = readExpectedValue(metadataExpectedValueSecondary, metadataExpectedValueSecondaryNumber, secondaryParameterDef);
+      const expectedSecondary = readExpectedValue(metadataExpectedValueSecondary, metadataExpectedValueSecondaryMulti, metadataExpectedValueSecondaryNumber, secondaryParameterDef, metadataOperationSecondary.value);
       const role = String(metadataRole.value || "").trim();
       const variant = String(metadataVariant.value || "").trim();
       const ruleRef = String(metadataRuleRef.value || "").trim();
       if (mode === "geometry_role") {
         if (!parameter || !role || !variant) {
           metadataPreview.value = "";
+          metadataPreviewSummary.textContent = "Geometry role authoring needs feature, role, and variant id.";
+          document.getElementById("applyMetadataBtn").disabled = true;
           return;
         }
         metadataPreview.value = `SEM:role=${role};feature=${parameter};variant=${variant}${ruleRef ? `;rule_ref=${ruleRef}` : ""}`;
+        metadataPreviewSummary.textContent = metadataSummaryForPreview(metadataPreview.value, mode);
+        document.getElementById("applyMetadataBtn").disabled = !selectedObject();
         return;
       }
       if (mode === "operation_ref") {
-        const operationRef = ruleRef || variant;
+        const operationRef = variant;
         if (!operationRef) {
           metadataPreview.value = "";
+          metadataPreviewSummary.textContent = "Operation reference authoring needs a stable operation ref id.";
+          document.getElementById("applyMetadataBtn").disabled = true;
           return;
         }
         metadataPreview.value = parameter
           ? `SEM:operation_ref=${operationRef};feature=${parameter}`
           : `SEM:operation_ref=${operationRef}`;
+        metadataPreviewSummary.textContent = metadataSummaryForPreview(metadataPreview.value, mode);
+        document.getElementById("applyMetadataBtn").disabled = !selectedObject();
         return;
       }
       if (!parameter || !expected || !operation) {
         metadataPreview.value = "";
+        metadataPreviewSummary.textContent = "Presence authoring needs parameter, operator, and expected value.";
+        document.getElementById("applyMetadataBtn").disabled = true;
         return;
       }
-      let whenExpression = `${parameter}${operation}${expected}`;
-      if (logicalOperator) {
+      let whenExpression = buildWhenClause(parameter, operation, expected);
+      if (secondConditionEnabled()) {
         if (!parameterSecondary || !expectedSecondary || !operationSecondary) {
           metadataPreview.value = "";
+          metadataPreviewSummary.textContent = "Second condition needs source, operator, and expected value.";
+          document.getElementById("applyMetadataBtn").disabled = true;
           return;
         }
-        whenExpression = `${whenExpression} ${logicalOperator} ${parameterSecondary}${operationSecondary}${expectedSecondary}`;
+        const secondaryClause = buildWhenClause(parameterSecondary, operationSecondary, expectedSecondary);
+        whenExpression = `(${whenExpression}) ${logicalOperator} (${secondaryClause})`;
       }
       metadataPreview.value = `SEM:feature=${parameter};presence=conditional;when=${whenExpression}`;
+      metadataPreviewSummary.textContent = metadataSummaryForPreview(metadataPreview.value, mode);
+      document.getElementById("applyMetadataBtn").disabled = !selectedObject();
     }
 
     function renderMetadataTarget() {
@@ -1582,7 +1795,7 @@
         ? ` | existing=${object.semantic_metadata.raw_comments.join(" | ")}`
         : "";
       metadataTargetBox.textContent = `Target: ${object.display_label} | entity_id=${object.entity_id}${semantic}`;
-      document.getElementById("applyMetadataBtn").disabled = false;
+      document.getElementById("applyMetadataBtn").disabled = !metadataPreview.value;
       document.getElementById("clearMetadataBtn").disabled = false;
     }
 
@@ -1614,22 +1827,30 @@
       renderLegend();
 
       if (!state.session) return;
+      const hasSelection = state.selectedIds.size > 0;
       for (const object of state.session.objects) {
         if (!isObjectVisibleInSimulation(object.id)) continue;
         const isSelected = state.selectedIds.has(object.id);
         const isHover = state.hoverId === object.id;
         for (const shape of effectiveShapesForObject(object)) {
-          drawShape(shape, object.semantic_color || "#cbd5e1", isSelected ? 3 : 1.5);
+          const baseColor = object.semantic_color || "#cbd5e1";
+          const passiveColor = hasSelection && !isSelected ? "#d7ddd7" : baseColor;
+          drawShape(shape, passiveColor, hasSelection && !isSelected ? 1 : 1.5);
+          if (isSelected) {
+            drawSelectedShape(shape);
+          }
           if (isHover) drawShape(shape, "#111827", 3.5);
         }
         if (isSelected) {
           const bbox = objectScreenBBox(object);
           if (bbox) {
-            ctx.strokeStyle = "#111827";
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = "#dc2626";
+            ctx.lineWidth = 1.5;
             ctx.setLineDash([6, 4]);
             ctx.strokeRect(bbox.minX, bbox.minY, bbox.maxX - bbox.minX, bbox.maxY - bbox.minY);
             ctx.setLineDash([]);
+            ctx.fillStyle = "#dc2626";
+            ctx.fillRect(bbox.minX - 2, bbox.minY - 2, 4, 4);
           }
         }
       }
@@ -1802,8 +2023,14 @@
         setStatus("Prvo spremi Document Properties.", "error");
         return;
       }
-      if (!String(topoGroup.value || "").trim() || !String(topoParameter.value || "").trim() || !Number.isFinite(Number(topoNominal.value))) {
-        setStatus("TOPO traži group, parameter i nominal.", "error");
+      const topoConfigOk = Boolean(
+        String(topoLecParameter.value || "").trim()
+        && Number.isFinite(Number(topoLecNominal.value))
+        && String(topoRecParameter.value || "").trim()
+        && Number.isFinite(Number(topoRecNominal.value))
+      );
+      if (!String(topoGroup.value || "").trim() || !topoConfigOk) {
+        setStatus("TOPO traži group, LEC/REC parameter i LEC/REC nominal.", "error");
         return;
       }
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/topo`, {
@@ -1909,7 +2136,13 @@
         setStatus("Select one relevant object first.", "error");
         return;
       }
-      const expectedValue = readExpectedValue(metadataExpectedValue, metadataExpectedValueNumber, selectedCatalogParameter());
+      const expectedValue = readExpectedValue(
+        metadataExpectedValue,
+        metadataExpectedValueMulti,
+        metadataExpectedValueNumber,
+        selectedCatalogParameter(),
+        metadataOperation.value
+      );
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/metadata`, {
         method: "POST",
         body: JSON.stringify({
@@ -2051,8 +2284,9 @@
       const moved = response.headers.get("X-Mother-DXF-Moved-Count") || "?";
       const delta = response.headers.get("X-Mother-DXF-Topo-Delta") || "?";
       const trim = response.headers.get("X-Mother-DXF-Trim-Policy-Status") || "";
+      const deltaSummary = "per-side";
       childSummaryBox.style.display = "";
-      childSummaryBox.textContent = `TOPO Child DXF generated: included=${included}, excluded=${excluded}, moved=${moved}, delta=${delta}, trim=${trim}`;
+      childSummaryBox.textContent = `TOPO Child DXF generated: included=${included}, excluded=${excluded}, moved=${moved}, delta=${deltaSummary}, trim=${trim}`;
       setStatus("TOPO child DXF download ready.", "ok");
     }
 
@@ -2065,7 +2299,7 @@
         body: JSON.stringify(config_parameter_set)
       });
       state.session = data.session;
-      state.simulation = null;
+      state.simulation = data.simulation || null;
       state.topoPreview = {
         ok: true,
         mode: "topo_child_poc_preview",
@@ -2075,7 +2309,9 @@
       render();
       const moved = data.generation_summary ? data.generation_summary.moved_count : "?";
       const delta = data.generation_summary ? data.generation_summary.delta : "?";
-      setStatus(`TOPO child preview ready. moved=${moved}, delta=${delta}`, "ok");
+      const zoneInputs = data.generation_summary && data.generation_summary.zone_inputs ? data.generation_summary.zone_inputs : null;
+      const deltaSummary = zoneInputs ? "per-side" : delta;
+      setStatus(`TOPO child preview ready. moved=${moved}, delta=${deltaSummary}`, "ok");
     }
 
     canvas.addEventListener("mousemove", (event) => {
@@ -2171,7 +2407,13 @@
         }
       } else {
         const ids = objectIdsInRect(state.dragRect);
-        state.selectedIds = new Set(ids);
+        if (event.ctrlKey || event.metaKey) {
+          for (const id of ids) {
+            state.selectedIds.add(id);
+          }
+        } else {
+          state.selectedIds = new Set(ids);
+        }
       }
       state.dragStart = null;
       state.dragRect = null;
@@ -2215,27 +2457,34 @@
       lineGutter.scrollTop = dxfInput.scrollTop;
     });
     topoGroup.addEventListener("input", syncTopoInputFromSession);
-    topoChain.addEventListener("change", syncTopoInputFromSession);
-    topoParameter.addEventListener("change", syncTopoInputFromSession);
-    topoNominal.addEventListener("input", syncTopoInputFromSession);
+    topoLecParameter.addEventListener("change", syncTopoInputFromSession);
+    topoLecNominal.addEventListener("input", syncTopoInputFromSession);
+    topoRecParameter.addEventListener("change", syncTopoInputFromSession);
+    topoRecNominal.addEventListener("input", syncTopoInputFromSession);
     topoLecDeltaFactor.addEventListener("input", syncTopoInputFromSession);
     topoRecDeltaFactor.addEventListener("input", syncTopoInputFromSession);
-    topoLccDeltaFactor.addEventListener("input", syncTopoInputFromSession);
-    topoRccDeltaFactor.addEventListener("input", syncTopoInputFromSession);
     topoEntityRole.addEventListener("change", syncTopoEntityInput);
     topoEntityZone.addEventListener("change", syncTopoEntityInput);
     metadataMode.addEventListener("change", renderMetadataPreview);
     metadataParameter.addEventListener("change", syncMetadataExpectedValueFromSelection);
-    metadataOperation.addEventListener("change", renderMetadataPreview);
+    metadataOperation.addEventListener("change", syncMetadataExpectedValueFromSelection);
+    metadataToggleSecondConditionBtn.addEventListener("click", () => {
+      setSecondConditionEnabled(!secondConditionEnabled());
+      renderMetadataPreview();
+    });
     metadataLogicalOperator.addEventListener("change", renderMetadataPreview);
     metadataParameterSecondary.addEventListener("change", syncMetadataSecondaryExpectedValueFromSelection);
-    metadataOperationSecondary.addEventListener("change", renderMetadataPreview);
+    metadataOperationSecondary.addEventListener("change", syncMetadataSecondaryExpectedValueFromSelection);
     metadataRole.addEventListener("change", renderMetadataPreview);
     metadataVariant.addEventListener("input", renderMetadataPreview);
     metadataRuleRef.addEventListener("change", renderMetadataPreview);
+    metadataRawOverride.addEventListener("input", renderMetadataPreview);
+    metadataDebugDetails.addEventListener("toggle", renderMetadataPreview);
     metadataExpectedValue.addEventListener("change", renderMetadataPreview);
+    metadataExpectedValueMulti.addEventListener("change", renderMetadataPreview);
     metadataExpectedValueNumber.addEventListener("input", renderMetadataPreview);
     metadataExpectedValueSecondary.addEventListener("change", renderMetadataPreview);
+    metadataExpectedValueSecondaryMulti.addEventListener("change", renderMetadataPreview);
     metadataExpectedValueSecondaryNumber.addEventListener("input", renderMetadataPreview);
 
     document.getElementById("startBtn").addEventListener("click", () => {
@@ -2313,6 +2562,7 @@
 
     initAssignToolbar();
     arrangeWorkspaceCards();
+    setSecondConditionEnabled(false);
     renderValidation({ ok: false, note: "Validation not run yet." });
     renderSimulation({ ok: false, note: "Simulation not run yet." });
     configInput.value = JSON.stringify({

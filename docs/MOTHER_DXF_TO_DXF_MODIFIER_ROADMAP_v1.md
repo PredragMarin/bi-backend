@@ -14,7 +14,7 @@ Ovaj dokument nije:
 
 - uputa za broad rewrite
 - Stage 2 implementation spec
-- zahtjev da se odmah zamijeni cijeli postojeći working chain
+- zahtjev da se odmah zamijeni cijeli postojeći working flow
 
 Praktični cilj je:
 
@@ -110,7 +110,7 @@ Trenutna slabost:
 Preporučeni smjer:
 
 - ne nastavljati širiti `dxf-modifier` kao dugoročni canonical engine
-- ne raditi odmah rewrite cijelog working chaina od nule
+- ne raditi odmah rewrite cijelog working flowa od nule
 - proširiti `mother_dxf_v1` u čist canonical manipulation core
 - tretirati postojeći `dxf-modifier` kao:
   - referencu ponašanja

@@ -225,8 +225,16 @@ Current artifacts:
 
 Current MXD draft rules:
 
-- `THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT`
-- `THIRD_HINGE_BELOW_SECOND_FALLBACK`
+- `MXD_PPV_LAYER_B_OFFSET_9P5`
+
+Current MXD rule example:
+
+- `MXD_PPV_LAYER_B_OFFSET_9P5`
+  - `profile_scope = MXD`
+  - condition: `TIP_VRATA == PPV`
+  - target scope: `Layer B`
+  - action: `offset Y +9.5 mm`
+  - post repair: `bounded local trim/rejoin`
 
 Ovi artefakti su privremeni module contract JSON artefakti.
 

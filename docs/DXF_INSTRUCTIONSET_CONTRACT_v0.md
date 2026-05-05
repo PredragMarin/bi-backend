@@ -144,7 +144,7 @@ Geometry role:
 
 ```text
 999
-SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref=THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT
+SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref={RULE_ID}
 ```
 
 Prototype role:
@@ -281,7 +281,7 @@ Geometry role result:
     "role": "variant",
     "feature": "TRECA_SPOJNICA",
     "variant": "IZNAD_DRUGE",
-    "rule_ref": "THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT"
+    "rule_ref": "{RULE_ID}"
   },
   "instruction_family": "geometry_role"
 }
@@ -330,6 +330,77 @@ Svaki parsed instruction zapis u `v0` mora imati:
 U `v0` ne zaključavamo još puni production vocabulary.
 
 Ali zaključavamo kategorije ključeva koje sustav očekuje.
+
+Ovo poglavlje je nucleus generičkog `SEM` vocabularyja.
+
+Sve nove `SEM:` formulacije moraju se prvo nominirati ovdje prije nego postanu canonical authoring pattern.
+
+### 8.0 Vocabulary governance baseline
+
+`SEM` vocabulary u `v0` održava se kroz tri razine discipline:
+
+1. controlled keys
+2. controlled expression operators
+3. controlled value forms
+
+Generic parser ne smije prihvaćati nove "zgodne" formulacije samo zato što zvuče smisleno.
+
+Ako novi intent ne stane u ovdje odobreni shape, mora se dogoditi jedno od sljedećeg:
+
+- proširenje ovog contracta
+- novi catalog entry
+- `rule_ref`
+- `operation_ref`
+
+No new grammar by example:
+
+- novi key ne postaje canonical zato što se pojavio u screenshotu, testu, ili ad hoc `SEM:` stringu
+- novi operator ne postaje canonical zato što ga je netko ručno upisao u `when`
+- grammar ulazi u sustav tek nakon contract updatea
+
+### 8.1 Current generic key nucleus
+
+Ovo je trenutni generički nucleus ključeva koji se smatra odobrenim vocabulary baselineom:
+
+| Key | Status | Meaning |
+| --- | --- | --- |
+| `feature` | current | Catalog-controlled feature / parameter key |
+| `presence` | current | Presence mode such as `always`, `conditional`, `never` |
+| `when` | current | Inline simple condition expression |
+| `role` | current | Geometry role such as `variant`, `prototype`, `anchor`, `reference` |
+| `variant` | current | Stable variant or prototype identifier |
+| `rule_ref` | current | Reference to Rule Catalog logic |
+| `operation_ref` | current | Reference to future Operation Catalog / execution intent |
+| `document` | approved next | Marks document-level SEM record |
+| `geometry` | approved next | Geometry intent family key |
+| `axis` | approved next | Axis for geometry intent |
+| `ref` | approved next | Parameter or family registry reference such as `@FAMILY.KEY` |
+| `exclusive_group` | approved next | Mutually exclusive entity group marker |
+| `instance` | approved next | Stable instance index for repeated semantic members |
+
+Pravilo:
+
+- `current` znači da je key već canonical u dokumentaciji ili implementaciji
+- `approved next` znači da je key arhitekturno odobren, ali ne mora još biti izvršiv u runtimeu
+- svi drugi keyevi su `non-canonical` dok se eksplicitno ne dodaju u ovaj baseline
+
+### 8.2 Current generic value nucleus
+
+Odobreni generički oblici vrijednosti u `v0` su:
+
+- catalog key, npr. `TIP_VRATA`
+- enum literal, npr. `EUROPA`
+- stable variant id, npr. `IZNAD_DRUGE`
+- stable rule id, npr. `MXD_PPV_LAYER_B_OFFSET_9P5`
+- stable operation id, npr. `WORKTOP_SINK_PAIR_PLACEMENT`
+
+Odobreni sljedeći oblici vrijednosti su:
+
+- family registry ref, npr. `@FAMILY.BOTTOM_NARROW`
+- numeric literal, npr. `9.5`
+- document marker literal `true` u `document=true`
+
+Display labels, slobodni opisni stringovi i improvizirani pseudo-natural-language izrazi nisu canonical vocabulary.
 
 ### A. Operation keys
 
@@ -442,6 +513,16 @@ Trenutno nije podržano:
 - unit-aware range parsing
 - nested expressions
 
+Operator registry discipline:
+
+- `==` and `!=` su `current`
+- svi ostali operatori su `non-canonical` dok se eksplicitno ne dodaju u contract
+- novi operator mora imati:
+  - grammar update
+  - parser update
+  - authoring UX update
+  - canonical example
+
 Složenija domain logika ne treba se širiti kao inline `when` string u DXF komentaru.
 
 Za složene slučajeve koristi se:
@@ -467,6 +548,13 @@ Catalog relationship:
 - `role` mora dolaziti iz `InstructionSet` role vocabularyja
 - `variant` mora biti stabilni operation/variant id, ne slobodni opis
 
+Catalog entry minimum discipline:
+
+- svaki catalog-backed entry mora imati stabilni `id`
+- svaki entry mora imati kratki `label` ili `description`
+- svaki entry mora imati eksplicitni `profile_scope`
+- `generic` je dozvoljen `profile_scope`, ali mora biti eksplicitno zapisan
+
 Current concrete artifacts:
 
 - `src/modules/mother_dxf_v1/contracts/parameter_catalog_legacy_door_v0.json`
@@ -476,6 +564,8 @@ UI pravilo:
 
 - DCM authoring UI ne bi trebao poticati slobodno tipkanje catalog-controlled ključeva i vrijednosti.
 - Ako catalog entry ne postoji, to je `needs_rule` / `needs_catalog_entry` situacija, ne razlog za ad hoc string u DXF-u.
+- canonical `SEM` string u everyday authoring modu treba biti generated output, ne ručni input
+- `rule_ref` i `operation_ref` u everyday authoring modu trebaju biti picker-based, ne free-text
 
 Binding consequences:
 
@@ -563,6 +653,11 @@ U trenutnoj implementaciji invalid je svaki `when` koji nije parsabilan kao:
 
 Ovo je contract rule; puni validator još nije implementiran.
 
+Approval-grade direction:
+
+- unknown `rule_ref` ne smije proći approval-grade validation
+- strict runtime / approval export treba ga tretirati kao hard failure, ne kao tihi warning
+
 ### Rule 10
 
 - `feature` koji ne postoji u aktivnom Parameter Catalogu treba biti validation problem
@@ -574,6 +669,11 @@ Ovo je contract rule; puni validator još nije implementiran.
 - `operation_ref` bez matcha u budućem Operation Catalogu treba biti validation problem
 
 Dok Operation Catalog ne postoji, takav zapis smije biti draft metadata, ali ne approval-grade metadata.
+
+Kad Operation Catalog postoji:
+
+- unknown `operation_ref` ne smije proći approval-grade validation
+- strict runtime / approval export treba ga tretirati kao hard failure
 
 ### Rule 12
 
@@ -667,7 +767,7 @@ Variant pattern example:
 
 ```text
 999
-SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref=THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT
+SEM:role=variant;feature=TRECA_SPOJNICA;variant=IZNAD_DRUGE;rule_ref={RULE_ID}
 ```
 
 Prototype pattern example:
@@ -837,10 +937,15 @@ Semantika polja:
 
 Za executable `fixed_envelope_slide` intent potrebna su dodatna polja:
 
-- `parameter` — configurator key koji upravlja slideom
-- `nominal` — nominalna dimenzija u Mother DXF-u
+- `group` — stable topology group id
+- `axis` — os po kojoj se slide događa; v0 koristi `X`
+- `lec_parameter` — configurator key za lijevi cutout delta input
+- `lec_nominal` — nominalna lijeva vrijednost u Mother DXF-u
+- `rec_parameter` — configurator key za desni cutout delta input
+- `rec_nominal` — nominalna desna vrijednost u Mother DXF-u
 - `delta_rule` — formula za izračun delta, npr. `config_minus_nominal`
-- `delta_factor` — faktor primjene delte, npr. `-0.5` ili `1.0`
+- `lec_delta_factor` — faktor primjene delte za `LEC`
+- `rec_delta_factor` — faktor primjene delte za `REC`
 - `follower_policy` — kako se ponašaju rigid followers; v0 vrijednost: `rigid`
 - `trim_policy` — što se radi s `LINE` geometrijom; v0 vrijednost: `rejoin`
 
@@ -852,24 +957,20 @@ Za `fixed_envelope_slide` v0 vrijedi:
 - `LEFT` / `RIGHT` se čitaju duž machine-local `X` osi
 - ovo je machining constraint choice za v0, ne geometrijska nužnost
 
-### Chain vocabulary
+### Zone vocabulary
 
-TOPO v0 koristi sljedeći chain vocabulary:
+TOPO `fixed_envelope_slide` v0 više ne koristi `chain` model.
 
-- `LES` = Left End Scrap
+Executable draft radi nad jednim partom i dvama side-specific cutout zonama:
+
 - `LEC` = Left End Cutout
-- `PA` = Part A
-- `LCC` = Left Center Cutout
-- `CS` = Center Scrap
-- `RCC` = Right Center Cutout
-- `PB` = Part B
 - `REC` = Right End Cutout
-- `RES` = Right End Scrap
 
-Allowed chains:
+Ovo znači:
 
-- single part: `LES - LEC - PA - REC - RES`
-- two parts: `LES - LEC - PA - LCC - CS - RCC - PB - REC - RES`
+- jedan Mother DXF session opisuje jedan part under processing
+- lijeva i desna strana mogu imati različite delta inpute
+- broj delta input kanala nije isto što i broj partova
 
 ### Entity roles
 
@@ -881,18 +982,11 @@ Za executable `fixed_envelope_slide` draft vrijede sljedeće role:
 
 ### Executable draft syntax
 
-File-level, single part:
+File-level:
 
 ```text
 999
-TOPO:mode=fixed_envelope_slide;group=LBRA_X_SLIDE;chain=single_part;axis=X;parameter=SIRINA_VRATA;nominal=890;delta_rule=config_minus_nominal;lec_delta_factor=-1.0;rec_delta_factor=1.0;trim_policy=rejoin
-```
-
-File-level, two parts:
-
-```text
-999
-TOPO:mode=fixed_envelope_slide;group=LBRA_X_SLIDE;chain=two_part;axis=X;parameter=SIRINA_VRATA;nominal=890;delta_rule=config_minus_nominal;lec_delta_factor=-1.0;lcc_delta_factor=-1.0;rcc_delta_factor=1.0;rec_delta_factor=1.0;trim_policy=rejoin
+TOPO:mode=fixed_envelope_slide;group=LBRA_X_SLIDE;axis=X;lec_parameter=LIJEVI_CUTOUT_DIFF;lec_nominal=890;rec_parameter=DESNI_CUTOUT_DIFF;rec_nominal=890;delta_rule=config_minus_nominal;lec_delta_factor=-1.0;rec_delta_factor=1.0;trim_policy=rejoin
 ```
 
 Entity-level:
@@ -900,6 +994,11 @@ Entity-level:
 ```text
 999
 TOPO:role=mover;group=LBRA_X_SLIDE;zone=LEC
+```
+
+```text
+999
+TOPO:role=mover;group=LBRA_X_SLIDE;zone=REC
 ```
 
 ### Anchor identifikacija
@@ -991,7 +1090,7 @@ Technology profile radi:
 
 Primjer:
 
-- `MXD_DOOR_V0` može tumačiti `feature=TRECA_SPOJNICA` i `rule_ref=THIRD_HINGE_ABOVE_SECOND_MIN_HEIGHT`
+- `MXD_DOOR_V0` može tumačiti `rule_ref=MXD_PPV_LAYER_B_OFFSET_9P5` kao `MXD`-specific catalog-backed rule
 - `OPS_S4P4` može kasnije tumačiti `operation_ref=combine` ili dedicated operation catalog entries
 - drugi future profile možda to neće podržavati
 
