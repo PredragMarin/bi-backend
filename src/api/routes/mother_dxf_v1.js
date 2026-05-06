@@ -10,7 +10,7 @@ function createMotherDxfRouterV1() {
     return {
       ok: true,
       session: motherDxfRuntime.projectViewModel(session),
-      dxf_text: motherDxfRuntime.serializeDocument(session.document),
+      dxf_text: motherDxfRuntime.serializeCurrentMotherDraft(session),
       validation: session.validation || null
     };
   }
@@ -32,12 +32,15 @@ function createMotherDxfRouterV1() {
 
   router.post("/sessions", async (req, res) => {
     try {
-      const session = await motherDxfRuntime.createSession({
+      const result = await motherDxfRuntime.createSession({
         dxfText: String(req.body?.dxf_text || ""),
         sourceName: String(req.body?.source_name || "mother_dxf_input.dxf"),
         bands: req.body?.bands || {}
       });
-      res.json(buildSessionResponse(session));
+      res.json({
+        ...buildSessionResponse(result.session),
+        session_action: result.action || "created_new"
+      });
     } catch (err) {
       res.status(400).json({
         error: "MOTHER_DXF_CREATE_SESSION_FAILED",
@@ -115,7 +118,8 @@ function createMotherDxfRouterV1() {
           nominal_height: req.body?.nominal_height,
           family: req.body?.family,
           product: req.body?.product,
-          part: req.body?.part
+          part: req.body?.part,
+          rule_refs: req.body?.rule_refs
         }
       });
       res.json(buildSessionResponse(session));
@@ -290,6 +294,28 @@ function createMotherDxfRouterV1() {
     }
   });
 
+  router.post("/sessions/:sessionId/xdata", async (req, res) => {
+    try {
+      const result = await motherDxfRuntime.updateEntityXdataMetadata({
+        sessionId: String(req.params.sessionId || ""),
+        entityIds: Array.isArray(req.body?.entity_ids) ? req.body.entity_ids.map((id) => String(id || "")) : [],
+        value: req.body?.value,
+        previousValue: req.body?.previous_value
+      });
+      res.json({
+        ...buildSessionResponse(result.session),
+        xdata_value: result.xdata_value,
+        previous_value: result.previous_value,
+        affected_entity_ids: result.affected_entity_ids
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_XDATA_ASSIGN_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.post("/sessions/:sessionId/entities/:entityId/topo-role", async (req, res) => {
     try {
       const result = await motherDxfRuntime.updateEntityTopoRoleMetadata({
@@ -305,7 +331,8 @@ function createMotherDxfRouterV1() {
         ok: true,
         session: view,
         entity,
-        topo_comment: result.topo_comment
+        topo_comment: result.topo_comment,
+        dxf_text: motherDxfRuntime.serializeCurrentMotherDraft(result.session)
       });
     } catch (err) {
       res.status(400).json({

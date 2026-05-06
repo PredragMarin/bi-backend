@@ -37,6 +37,20 @@ async function saveSession({ rootDir, session }) {
   return { filePath };
 }
 
+async function deleteSession({ rootDir, sessionId }) {
+  const base = rootDir || defaultRoot();
+  const filePath = sessionFile(base, sessionId);
+  try {
+    await fsp.unlink(filePath);
+    return { filePath, deleted: true };
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      return { filePath, deleted: false };
+    }
+    throw err;
+  }
+}
+
 async function loadSession({ rootDir, sessionId }) {
   const base = rootDir || defaultRoot();
   const filePath = sessionFile(base, sessionId);
@@ -88,6 +102,7 @@ async function saveChildExport({ rootDir, sessionId, dxfText, suffix }) {
 module.exports = {
   defaultRoot,
   saveSession,
+  deleteSession,
   loadSession,
   listSessions,
   saveExport,

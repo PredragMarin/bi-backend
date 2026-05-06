@@ -93,11 +93,14 @@
     <section class="layout">
       <div class="stack">
         <div class="card" id="cardInput">
-          <h2>Input</h2>
+          <h2>Current Mother DXF</h2>
           <div class="row" style="margin-bottom:10px">
             <input id="fileInput" type="file" accept=".dxf,text/plain" />
+            <input id="sessionSourceOverride" type="text" placeholder="Working name / source override (e.g. SBRA_MJ)" />
+            <button id="jumpDocumentMetadataBtn" class="secondary" type="button">Jump to Document Metadata</button>
+            <button id="jumpEntitiesSectionBtn" class="secondary" type="button">Jump to ENTITIES</button>
           </div>
-          <div class="meta" style="margin-bottom:8px">Možeš učitati `.dxf` file ili zalijepiti sadržaj ručno.</div>
+          <div class="meta" style="margin-bottom:8px">Za novi session ovdje učitavaš raw `.dxf`, a po želji zadaješ i Working Name koji postaje ljudski naziv working sessiona. Nakon toga kartica prikazuje trenutno exportabilno stanje Mother DXF artefakta. File-level `SEM` i `TOPO` nisu na vrhu `BLOCKS` sekcije, nego na početku `ENTITIES` dijela kao `999` komentari.</div>
           <div id="editorShell" class="editor-shell">
             <div id="lineGutter" class="line-gutter"></div>
             <textarea id="dxfInput" class="editor-textarea" placeholder="Paste raw DXF text here"></textarea>
@@ -114,7 +117,7 @@
             <label>Bottom band (mm)<input id="bandBottom" type="number" value="80" min="0" step="1" /></label>
           </div>
           <div class="toolbar" style="margin-top:12px">
-            <button id="startBtn">Create Session</button>
+            <button id="startBtn">Create / Refresh Working Session</button>
             <button id="reclassifyBtn" class="secondary" disabled>Re-run Auto-Suggest</button>
           </div>
         </div>
@@ -125,9 +128,35 @@
           <div id="selectionBox" class="selection"><div class="meta">No selection.</div></div>
         </div>
 
+        <div class="card" id="cardForceXdata">
+          <details id="forceXdataDetails">
+            <summary><strong>Force XDATA Add</strong></summary>
+            <div class="meta" style="margin-top:10px">Dok je kartica otvorena, klik na XDATA entitet može otvoriti cijelu grupu za edit. CTRL+click i CTRL+drag dodaju entitete u selekciju. Ghost overlay translira trenutnu grupu za +1500 mm po Y samo za pregled.</div>
+            <div id="xdataModeMeta" class="meta" style="margin-top:10px">Assign mode.</div>
+            <div id="xdataStatus" class="status" style="margin-top:10px">0 entities selected.</div>
+            <div id="xdataBreakdown" class="selection" style="margin-top:10px"><div class="meta">No selection.</div></div>
+            <label style="margin-top:10px;display:block">XDATA value
+              <input id="xdataValueInput" type="text" placeholder="VARIANT=1" />
+            </label>
+            <div class="meta" style="margin-top:6px">Leave the value empty and assign again if you want to clear XDATA from the current selection.</div>
+            <div class="row" style="margin-top:10px">
+              <label style="display:flex;align-items:center;gap:8px">
+                <input id="xdataGhostToggle" type="checkbox" checked style="width:auto" />
+                <span>Ghost overlay ON</span>
+              </label>
+            </div>
+            <div class="toolbar" style="margin-top:12px">
+              <button id="assignXdataBtn" class="secondary" type="button">Assign XDATA to selection</button>
+              <button id="clearSelectionBtn" class="secondary" type="button">Clear selection</button>
+            </div>
+          </details>
+        </div>
+
         <div class="card" id="cardForceAssign">
-          <h2>Force Assign</h2>
-          <div class="toolbar" id="assignToolbar"></div>
+          <details id="forceAssignLayerDetails">
+            <summary><strong>Force Assign Layer</strong></summary>
+            <div class="toolbar" id="assignToolbar" style="margin-top:12px"></div>
+          </details>
         </div>
 
         <div class="card" id="cardSessionLifecycle">
@@ -177,7 +206,9 @@
           </div>
           <div id="authoringStageMeta" class="meta" style="margin-bottom:10px">Stage 1 definira part topology. Stage 2 otvara entity-level `SEM` authoring.</div>
           <div id="documentSemPanel" style="margin-bottom:14px">
-            <div id="documentSemMeta" class="meta" style="margin-bottom:8px">Document properties not saved.</div>
+            <div id="documentSemMeta" class="meta" style="margin-bottom:8px">Document SEM not saved.</div>
+            <div class="meta" style="margin-bottom:10px">Identity definira document contract, a document rules aktiviraju profile/product-specific runtime ponašanja nad cijelim mother artefaktom.</div>
+            <div class="meta" style="margin-bottom:8px"><strong>Identity</strong></div>
             <div class="grid-2">
               <label>Nominal width
                 <input id="documentSemNominalWidth" type="number" step="1" min="0" placeholder="900" />
@@ -199,8 +230,25 @@
                 <input id="documentSemPart" type="text" placeholder="KSKR" />
               </label>
             </div>
+            <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
+              <div class="meta" style="margin-bottom:8px"><strong>Document Rules</strong></div>
+              <div class="grid-2">
+                <label>Add rule
+                  <select id="documentSemRuleRef">
+                    <option value="">No rule ref</option>
+                  </select>
+                </label>
+                <div style="display:flex;align-items:end">
+                  <button id="addDocumentSemRuleBtn" class="secondary" type="button" style="width:100%">Add Rule</button>
+                </div>
+              </div>
+              <div id="documentSemRulesBox" class="selection" style="margin-top:10px"><div class="meta">No active document rules.</div></div>
+            </div>
+            <label style="margin-top:10px;display:block">Generated document-level `999`
+              <textarea id="documentSemPreview" style="min-height:110px" readonly></textarea>
+            </label>
             <div class="toolbar" style="margin-top:12px">
-              <button id="saveDocumentSemBtn" class="secondary" disabled>Save Document Properties</button>
+              <button id="saveDocumentSemBtn" class="secondary" disabled>Save Document SEM</button>
             </div>
             <pre id="documentSemOut">{"ok":false,"note":"Document SEM not loaded yet."}</pre>
           </div>
@@ -459,6 +507,15 @@
         pointB: null,
         hoverPoint: null
       },
+      xdata: {
+        mode: "assign",
+        previousValue: "",
+        ghostEnabled: true
+      },
+      documentSem: {
+        ruleRefs: [],
+        dirtyRules: false
+      },
       authoring: {
         activeStage: "topo",
         topoSkipped: false
@@ -473,6 +530,9 @@
     const statusBox = document.getElementById("statusBox");
     const sessionMeta = document.getElementById("sessionMeta");
     const dxfInput = document.getElementById("dxfInput");
+    const sessionSourceOverride = document.getElementById("sessionSourceOverride");
+    const jumpDocumentMetadataBtn = document.getElementById("jumpDocumentMetadataBtn");
+    const jumpEntitiesSectionBtn = document.getElementById("jumpEntitiesSectionBtn");
     const configInput = document.getElementById("configInput");
     const generateChildBtn = document.getElementById("generateChildBtn");
     const generateTopoChildBtn = document.getElementById("generateTopoChildBtn");
@@ -550,11 +610,38 @@
     const documentSemFamily = document.getElementById("documentSemFamily");
     const documentSemProduct = document.getElementById("documentSemProduct");
     const documentSemPart = document.getElementById("documentSemPart");
+    const documentSemRuleRef = document.getElementById("documentSemRuleRef");
+    const addDocumentSemRuleBtn = document.getElementById("addDocumentSemRuleBtn");
+    const documentSemRulesBox = document.getElementById("documentSemRulesBox");
+    const documentSemPreview = document.getElementById("documentSemPreview");
     const topoStagePanel = document.getElementById("topoStagePanel");
     const semStagePanel = document.getElementById("semStagePanel");
     const authoringStageMeta = document.getElementById("authoringStageMeta");
     const authoringStageTopoBtn = document.getElementById("authoringStageTopoBtn");
     const authoringStageSemBtn = document.getElementById("authoringStageSemBtn");
+    const forceXdataDetails = document.getElementById("forceXdataDetails");
+    const forceAssignLayerDetails = document.getElementById("forceAssignLayerDetails");
+    const xdataModeMeta = document.getElementById("xdataModeMeta");
+    const xdataStatus = document.getElementById("xdataStatus");
+    const xdataBreakdown = document.getElementById("xdataBreakdown");
+    const xdataValueInput = document.getElementById("xdataValueInput");
+    const xdataGhostToggle = document.getElementById("xdataGhostToggle");
+    const assignXdataBtn = document.getElementById("assignXdataBtn");
+    const clearSelectionBtn = document.getElementById("clearSelectionBtn");
+    const DOCUMENT_RULE_FALLBACKS = [
+      {
+        rule_id: "MXD_LAYER_B_OFFSET_9P5",
+        label: "Layer B offset +9.5 mm",
+        profile_scope: "MXD",
+        description: "Ako je TIP_VRATA u [Europa, EuroMax], pomakni Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin."
+      },
+      {
+        rule_id: "MXD_PPV_LAYER_B_OFFSET_9P5",
+        label: "PPV B-layer offset +9.5 mm",
+        profile_scope: "MXD",
+        description: "Ako je TIP_VRATA == PPV, pomakni Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin unutar fixed envelope preview logike."
+      }
+    ];
 
     function setStatus(message, tone = "info") {
       statusBox.textContent = message;
@@ -584,7 +671,7 @@
         viewerWideRow.id = "viewerWideRow";
         viewerWideRow.className = "viewer-card-wide-row";
       }
-      move(leftStack, ["cardSessionLifecycle", "cardAutoSuggestion", "cardSelection", "cardForceAssign", "cardConfigParameterSet"]);
+      move(leftStack, ["cardSessionLifecycle", "cardAutoSuggestion", "cardSelection", "cardForceXdata", "cardForceAssign", "cardConfigParameterSet"]);
       move(workStack, ["cardMetadataAuthoring"]);
       move(viewerStack, ["cardViewer"]);
       viewerStack.appendChild(viewerRow);
@@ -610,9 +697,48 @@
       };
     }
 
+    function syncBandsInputFromSession() {
+      const bands = state.session && state.session.bands ? state.session.bands : null;
+      if (!bands) return;
+      document.getElementById("bandLeft").value = Number(bands.left ?? 80);
+      document.getElementById("bandRight").value = Number(bands.right ?? 80);
+      document.getElementById("bandTop").value = Number(bands.top ?? 80);
+      document.getElementById("bandBottom").value = Number(bands.bottom ?? 80);
+    }
+
+    function stripDxfExtension(name) {
+      return String(name || "").replace(/\.[^.]+$/i, "").trim();
+    }
+
+    function humanWorkingNameFromSession(session) {
+      if (!session) return "";
+      const title = String(session.title || "").trim();
+      if (title && !/^mother_dxf_input(\.dxf)?$/i.test(title)) return stripDxfExtension(title);
+      const sourceName = String(session.source_name || "").trim();
+      if (sourceName && !/^mother_dxf_input(\.dxf)?$/i.test(sourceName)) return stripDxfExtension(sourceName);
+      return "";
+    }
+
     function fileNameFromInput() {
+      const override = String(sessionSourceOverride?.value || "").trim();
+      if (override) {
+        return /\.[^.]+$/i.test(override) ? override : `${override}.dxf`;
+      }
       const file = document.getElementById("fileInput").files[0];
-      return file ? file.name : "mother_dxf_input.dxf";
+      if (file && file.name) return file.name;
+      const sessionSourceName = String(state.session?.source_name || "").trim();
+      if (sessionSourceName && !/^mother_dxf_input(\.dxf)?$/i.test(sessionSourceName)) {
+        return sessionSourceName;
+      }
+      return "";
+    }
+
+    function syncSessionSourceOverrideFromSession() {
+      if (!sessionSourceOverride) return;
+      const nextValue = humanWorkingNameFromSession(state.session);
+      if (nextValue) {
+        sessionSourceOverride.value = nextValue;
+      }
     }
 
     async function fetchJson(url, options) {
@@ -681,6 +807,126 @@
       return state.session && Array.isArray(state.session.objects)
         ? state.session.objects.find((item) => item.id === id) || null
         : null;
+    }
+
+    function xdataCardOpen() {
+      return Boolean(forceXdataDetails?.open);
+    }
+
+    function syncCurrentDxfText(text) {
+      if (text === undefined || text === null) return;
+      dxfInput.value = String(text);
+      renderLineNumbers();
+    }
+
+    function jumpToDxfPattern(patterns) {
+      const haystack = String(dxfInput.value || "");
+      const list = Array.isArray(patterns) ? patterns : [patterns];
+      const found = list
+        .map((pattern) => ({
+          pattern,
+          index: haystack.indexOf(pattern)
+        }))
+        .filter((entry) => entry.index >= 0)
+        .sort((a, b) => a.index - b.index)[0];
+      if (!found) {
+        setStatus("Traženi metadata marker nije pronađen u Current Mother DXF.", "error");
+        return;
+      }
+      const lineHeight = getTextareaLineHeight();
+      const prefix = haystack.slice(0, found.index);
+      const lineNumber = prefix.split("\n").length;
+      const targetTop = Math.max(0, (lineNumber - 2) * lineHeight);
+      dxfInput.scrollTop = targetTop;
+      dxfInput.setSelectionRange(found.index, Math.min(haystack.length, found.index + found.pattern.length));
+      requestAnimationFrame(() => {
+        dxfInput.scrollTop = targetTop;
+        lineGutter.scrollTop = targetTop;
+        renderLineNumbers();
+      });
+      setStatus(`Jumped to line ${lineNumber} in Current Mother DXF.`, "ok");
+    }
+
+    function currentSelectionObjects() {
+      return Array.from(state.selectedIds)
+        .map((id) => objectById(id))
+        .filter(Boolean);
+    }
+
+    function clearXdataEditor() {
+      state.xdata.mode = "assign";
+      state.xdata.previousValue = "";
+      xdataValueInput.value = "";
+    }
+
+    function sharedXdataValueForSelection() {
+      const values = Array.from(new Set(
+        currentSelectionObjects()
+          .map((object) => String(object?.xdata_metadata?.value || "").trim())
+          .filter(Boolean)
+      ));
+      return values.length === 1 ? values[0] : "";
+    }
+
+    function objectTypeBreakdown(objects) {
+      return (Array.isArray(objects) ? objects : []).reduce((acc, object) => {
+        const key = String(object?.type || "UNKNOWN").toUpperCase();
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+    }
+
+    function objectIdsForXdataValue(value) {
+      const normalized = String(value || "").trim();
+      if (!normalized || !state.session) return [];
+      return (state.session.objects || [])
+        .filter((object) => String(object?.xdata_metadata?.value || "").trim() === normalized)
+        .map((object) => object.id);
+    }
+
+    function syncXdataEditorFromSelection(cause = "replace") {
+      if (!state.session) {
+        clearXdataEditor();
+        return;
+      }
+      if (!state.selectedIds.size) {
+        clearXdataEditor();
+        return;
+      }
+      if (cause === "toggle" && state.xdata.mode === "edit") {
+        return;
+      }
+      const selected = selectedObject();
+      const selectedValue = String(selected?.xdata_metadata?.value || "").trim();
+      if (!xdataCardOpen()) {
+        if (!sharedValue) {
+          state.xdata.mode = "assign";
+          state.xdata.previousValue = "";
+        }
+        return;
+      }
+      if (cause === "replace" && state.selectedIds.size === 1 && selectedValue) {
+        const groupIds = objectIdsForXdataValue(selectedValue);
+        if (groupIds.length > 1) {
+          state.selectedIds = new Set(groupIds);
+        }
+        state.xdata.mode = "edit";
+        state.xdata.previousValue = selectedValue;
+        xdataValueInput.value = selectedValue;
+        forceXdataDetails.open = true;
+        return;
+      }
+      const sharedValue = sharedXdataValueForSelection();
+      if (sharedValue) {
+        state.xdata.mode = "edit";
+        state.xdata.previousValue = sharedValue;
+        if (!String(xdataValueInput.value || "").trim() || cause !== "toggle") {
+          xdataValueInput.value = sharedValue;
+        }
+        return;
+      }
+      state.xdata.mode = "assign";
+      state.xdata.previousValue = "";
     }
 
     function simulationGeometryByObjectId(objectId) {
@@ -960,9 +1206,53 @@
       selectionBox.innerHTML = rows;
     }
 
+    function renderXdataPanel() {
+      const objects = currentSelectionObjects();
+      const breakdown = objectTypeBreakdown(objects);
+      const breakdownEntries = Object.entries(breakdown);
+      const selectionCount = objects.length;
+      const sharedValue = sharedXdataValueForSelection();
+      const modeLabel = state.xdata.mode === "edit"
+        ? `Edit mode${state.xdata.previousValue ? ` | group=${state.xdata.previousValue}` : ""}`
+        : "Assign mode";
+      xdataModeMeta.textContent = modeLabel;
+      xdataStatus.textContent = `${selectionCount} ${selectionCount === 1 ? "entity" : "entities"} selected.`;
+      xdataStatus.style.background = selectionCount ? "#dcfce7" : "#d8e4df";
+      xdataStatus.style.color = selectionCount ? "#166534" : "#14323d";
+      if (!selectionCount) {
+        xdataBreakdown.innerHTML = `<div class="meta">No selection.</div>`;
+      } else {
+        const rows = [
+          `<div class="selection-item"><strong>Total:</strong> ${esc(selectionCount)}</div>`,
+          `<div class="selection-item"><strong>Types:</strong> ${esc(breakdownEntries.map(([type, count]) => `${type}=${count}`).join(" | ") || "-")}</div>`
+        ];
+        if (state.xdata.mode === "edit" && state.xdata.previousValue) {
+          rows.push(`<div class="selection-item"><strong>Editing group:</strong> ${esc(state.xdata.previousValue)}</div>`);
+        } else if (sharedValue) {
+          rows.push(`<div class="selection-item"><strong>Shared XDATA:</strong> ${esc(sharedValue)}</div>`);
+        }
+        xdataBreakdown.innerHTML = rows.join("");
+      }
+      assignXdataBtn.disabled = !state.session || !selectionCount;
+      clearSelectionBtn.disabled = !selectionCount;
+      state.xdata.ghostEnabled = Boolean(xdataGhostToggle.checked);
+    }
+
     function simulationItemByObjectId(objectId) {
       const items = state.simulation && Array.isArray(state.simulation.items) ? state.simulation.items : [];
       return items.find((item) => item.object_id === objectId) || null;
+    }
+
+    function drawGhostOverlay() {
+      if (!state.session || !xdataCardOpen() || !state.xdata.ghostEnabled || !state.selectedIds.size) return;
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      for (const object of currentSelectionObjects()) {
+        for (const shape of effectiveShapesForObject(object)) {
+          drawShape(translatePreviewShape(shape, 0, 1500), "#c7c7c7", 1);
+        }
+      }
+      ctx.restore();
     }
 
     function isObjectVisibleInSimulation(objectId) {
@@ -1027,23 +1317,9 @@
         return;
       }
 
-      const start = lineCharOffset(dxfInput.value, item.source.line_start);
-      const end = lineCharOffset(dxfInput.value, (item.source.line_end || item.source.line_start) + 1);
-      const lineHeight = getTextareaLineHeight();
-      const targetTop = Math.max(0, (item.source.line_start - 2) * lineHeight);
-
       editorShell.classList.add("entity-focus");
-      dxfInput.scrollTop = targetTop;
-      dxfInput.setSelectionRange(start, Math.max(start, end - 1));
-      requestAnimationFrame(() => {
-        dxfInput.scrollTop = targetTop;
-        dxfInput.setSelectionRange(start, Math.max(start, end - 1));
-        lineGutter.scrollTop = targetTop;
-        renderLineNumbers();
-      });
-
       inputFocusNote.style.display = "block";
-      inputFocusNote.innerHTML = `<strong>Focused raw entity:</strong> ${esc(item.display_label || item.id)} | lines ${esc(item.source.line_start)}-${esc(item.source.line_end || item.source.line_start)} | ${esc(item.id)} je interni parsed ID.`;
+      inputFocusNote.innerHTML = `<strong>Selected entity source:</strong> ${esc(item.display_label || item.id)} | lines ${esc(item.source.line_start)}-${esc(item.source.line_end || item.source.line_start)} | Current Mother DXF više se ne skrola automatski, pa file-level SEM/TOPO ostaje vidljiv na vrhu dokumenta.`;
       renderLineNumbers();
     }
 
@@ -1213,9 +1489,15 @@
       const rules = state.session && state.session.rule_catalog && state.session.rule_catalog.rules
         ? state.session.rule_catalog.rules
         : null;
-      return rules && typeof rules === "object"
+      const entries = rules && typeof rules === "object"
         ? Object.values(rules).sort((a, b) => String(a.rule_id || "").localeCompare(String(b.rule_id || "")))
         : [];
+      if (entries.length) return entries;
+      const profileId = String(state.session?.rule_catalog?.profile_id || "").trim().toUpperCase();
+      if (profileId.includes("MXD")) {
+        return DOCUMENT_RULE_FALLBACKS.map((item) => ({ ...item }));
+      }
+      return [];
     }
 
     function renderParameterCatalog() {
@@ -1269,9 +1551,28 @@
         : "";
     }
 
+    function availableDocumentRules() {
+      const rules = currentRuleEntries();
+      const profileId = String(state.session?.rule_catalog?.profile_id || "").trim().toUpperCase();
+      return rules.filter((rule) => {
+        const scope = String(rule?.profile_scope || "").trim().toUpperCase();
+        if (!scope || scope === "GENERIC") return true;
+        if (scope === "MXD" && profileId.includes("MXD")) return true;
+        if (scope === "INOX" && profileId.includes("INOX")) return true;
+        return !profileId || profileId.includes(scope);
+      });
+    }
+
     function hasDocumentSemConfigured() {
       const sem = state.session && state.session.document_sem ? state.session.document_sem : null;
       return Boolean(sem && sem.nominal_width && sem.nominal_height && sem.family && sem.product && sem.part);
+    }
+
+    function syncDocumentSemRuleOptions() {
+      const rules = availableDocumentRules();
+      documentSemRuleRef.innerHTML = [`<option value="">No rule ref</option>`]
+        .concat(rules.map((rule) => `<option value="${esc(rule.rule_id)}">${esc(rule.rule_id)} | ${esc(rule.label || "")}</option>`))
+        .join("");
     }
 
     function syncDocumentSemFormFromSession() {
@@ -1283,6 +1584,10 @@
       documentSemProduct.value = sem && sem.product ? sem.product : "PPV";
       documentSemPart.value = sem && sem.part ? sem.part : productCode;
       documentSemPart.readOnly = false;
+      if (!state.documentSem.dirtyRules) {
+        state.documentSem.ruleRefs = Array.isArray(sem?.rule_refs) ? [...sem.rule_refs] : [];
+      }
+      syncDocumentSemRuleOptions();
     }
 
     function readDocumentSemPayload() {
@@ -1291,8 +1596,41 @@
         nominal_height: Number(documentSemNominalHeight.value || 0),
         family: String(documentSemFamily.value || "").trim(),
         product: String(documentSemProduct.value || "").trim(),
-        part: String(documentSemPart.value || "").trim()
+        part: String(documentSemPart.value || "").trim(),
+        rule_refs: Array.from(new Set((state.documentSem.ruleRefs || []).map((item) => String(item || "").trim()).filter(Boolean)))
       };
+    }
+
+    function generatedDocumentSemPreviewLines() {
+      const payload = readDocumentSemPayload();
+      const lines = [];
+      if (payload.nominal_width && payload.nominal_height && payload.family && payload.product && payload.part) {
+        lines.push(`SEM:document=true;nominal_width=${payload.nominal_width};nominal_height=${payload.nominal_height};family=${payload.family};product=${payload.product};part=${payload.part}`);
+      }
+      for (const ruleRef of payload.rule_refs || []) {
+        lines.push(`SEM:document=true;rule_ref=${ruleRef}`);
+      }
+      return lines;
+    }
+
+    function removeDocumentSemRule(ruleRef) {
+      state.documentSem.ruleRefs = (state.documentSem.ruleRefs || []).filter((item) => item !== ruleRef);
+      state.documentSem.dirtyRules = true;
+      render();
+    }
+
+    function addDocumentSemRule() {
+      const ruleRef = String(documentSemRuleRef.value || "").trim();
+      if (!ruleRef) {
+        setStatus("Select a document rule first.", "error");
+        return;
+      }
+      if (!(state.documentSem.ruleRefs || []).includes(ruleRef)) {
+        state.documentSem.ruleRefs = [...(state.documentSem.ruleRefs || []), ruleRef];
+      }
+      state.documentSem.dirtyRules = true;
+      render();
+      setStatus(`Document rule queued: ${ruleRef}`, "ok");
     }
 
     function renderDocumentSemPanel() {
@@ -1300,6 +1638,8 @@
       const saveBtn = document.getElementById("saveDocumentSemBtn");
       if (!state.session) {
         documentSemMeta.textContent = "No active session.";
+        documentSemRulesBox.innerHTML = `<div class="meta">No active document rules.</div>`;
+        documentSemPreview.value = "";
         documentSemOut.textContent = JSON.stringify({ ok: false, note: "Document SEM not loaded yet." }, null, 2);
         saveBtn.disabled = true;
         return;
@@ -1307,11 +1647,25 @@
       syncDocumentSemFormFromSession();
       saveBtn.disabled = false;
       documentSemMeta.textContent = hasDocumentSemConfigured()
-        ? `Document SEM saved | ${sem.nominal_width} x ${sem.nominal_height} | ${sem.family} | product ${sem.product} | part ${sem.part}`
-        : "Document properties required before TOPO authoring.";
+        ? `Document SEM saved | ${sem.nominal_width} x ${sem.nominal_height} | ${sem.family} | product ${sem.product} | part ${sem.part} | rules ${Array.isArray(sem.rule_refs) ? sem.rule_refs.length : 0}`
+        : "Document SEM identity required before TOPO authoring.";
+      const activeRules = state.documentSem.ruleRefs || [];
+      if (!activeRules.length) {
+        documentSemRulesBox.innerHTML = `<div class="meta">No active document rules.</div>`;
+      } else {
+        const catalogRules = new Map(availableDocumentRules().map((rule) => [rule.rule_id, rule]));
+        documentSemRulesBox.innerHTML = activeRules.map((ruleRef) => {
+          const rule = catalogRules.get(ruleRef) || null;
+          return `<div class="selection-item"><strong>${esc(ruleRef)}</strong>${rule ? ` | ${esc(rule.label || "")}` : ""}<br><span class="meta">${esc(rule?.description || "No rule description loaded.")}</span><div class="toolbar" style="margin-top:6px"><button type="button" class="secondary" data-remove-doc-rule="${esc(ruleRef)}">Remove</button></div></div>`;
+        }).join("");
+        documentSemRulesBox.querySelectorAll("[data-remove-doc-rule]").forEach((button) => {
+          button.addEventListener("click", () => removeDocumentSemRule(button.dataset.removeDocRule));
+        });
+      }
+      documentSemPreview.value = generatedDocumentSemPreviewLines().join("\n");
       documentSemOut.textContent = JSON.stringify({
         document_sem: sem || null,
-        canonical_999: sem && sem.raw_comment ? `999\n${sem.raw_comment}` : null
+        generated_999_comments: generatedDocumentSemPreviewLines()
       }, null, 2);
     }
 
@@ -1473,7 +1827,7 @@
       if (state.authoring.activeStage === "topo") {
         authoringStageMeta.textContent = hasDocumentSemConfigured()
           ? "Stage 1 definira file-level TOPO metadata za part topology prije entity-level SEM authoringa."
-          : "Prvo spremi Document Properties; TOPO authoring je zaključan dok document-level SEM ne postoji.";
+          : "Prvo spremi Document SEM identity; TOPO authoring je zaključan dok document-level SEM ne postoji.";
       } else {
         authoringStageMeta.textContent = hasTopoConfigured()
           ? "Stage 2 koristi spremljeni TOPO context i otvara entity-level SEM authoring."
@@ -1491,7 +1845,7 @@
       const topoLocked = !hasDocumentSemConfigured();
       const topo = state.session.topo_metadata;
       topoMeta.textContent = topoLocked
-        ? "TOPO locked until Document Properties are saved."
+        ? "TOPO locked until Document SEM identity is saved."
         : `TOPO records ${Array.isArray(topo.raw_comments) ? topo.raw_comments.length : 0} | valid=${topo.validation && topo.validation.ok ? "true" : "false"}`;
       syncTopoFormFromSession();
       setTopoControlsDisabled(topoLocked);
@@ -1805,8 +2159,21 @@
         sessionSelect.innerHTML = `<option value="">No saved sessions found</option>`;
         return;
       }
+      const sessionLabel = (session) => {
+        const title = String(session?.title || "").trim();
+        const source = stripDxfExtension(String(session?.source_name || "").trim());
+        const titleGeneric = !title || /^mother_dxf_input(\.dxf)?$/i.test(title);
+        const sourceGeneric = !source || /^mother_dxf_input$/i.test(source);
+        const lead = !titleGeneric ? stripDxfExtension(title) : (!sourceGeneric ? source : "Untitled import");
+        return lead;
+      };
       sessionSelect.innerHTML = [`<option value="">Select session</option>`]
-        .concat(items.map((session) => `<option value="${esc(session.session_id)}">${esc(session.title || session.session_id)} | ${esc(session.status || "draft")} | ${esc(session.updated_at || "")}</option>`))
+        .concat(items.map((session) => {
+          const lead = sessionLabel(session);
+          const source = stripDxfExtension(String(session?.source_name || "").trim());
+          const sourceSuffix = source && source !== lead ? ` | source=${source}` : "";
+          return `<option value="${esc(session.session_id)}">${esc(lead)} | ${esc(session.status || "draft")} | ${esc(session.updated_at || "")}${esc(sourceSuffix)}</option>`;
+        }))
         .join("");
     }
 
@@ -1814,6 +2181,7 @@
       syncCanvasSize();
       ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
       renderSelectionBox();
+      renderXdataPanel();
       renderMeasurementBox();
       focusSelectedEntityInInput();
       renderSessionMeta();
@@ -1828,6 +2196,7 @@
 
       if (!state.session) return;
       const hasSelection = state.selectedIds.size > 0;
+      drawGhostOverlay();
       for (const object of state.session.objects) {
         if (!isObjectVisibleInSimulation(object.id)) continue;
         const isSelected = state.selectedIds.has(object.id);
@@ -1902,10 +2271,15 @@
         setStatus("DXF input is empty.", "error");
         return;
       }
-      setStatus("Creating sanitized Stage 0 session...");
+      const sourceName = fileNameFromInput();
+      if (!sourceName) {
+        setStatus("Load a DXF file or enter Working name / source override before creating a working session.", "error");
+        return;
+      }
+      setStatus("Creating or refreshing working session...");
       const payload = {
         dxf_text: dxfText,
-        source_name: fileNameFromInput(),
+        source_name: sourceName,
         bands: bandsPayload()
       };
       const data = await fetchJson("/api/mother-dxf/v1/sessions", {
@@ -1918,7 +2292,12 @@
       state.authoring.topoSkipped = false;
       state.authoring.activeStage = hasTopoConfigured() ? "sem" : "topo";
       state.selectedIds.clear();
+      clearXdataEditor();
+      state.documentSem.dirtyRules = false;
       state.hoverId = null;
+      syncCurrentDxfText(data.dxf_text);
+      syncBandsInputFromSession();
+      syncSessionSourceOverrideFromSession();
       fitViewToDocument();
       renderValidation({ ok: false, note: "Validation not run yet." });
       renderSimulation({ ok: false, note: "Simulation not run yet." });
@@ -1932,7 +2311,13 @@
       syncConfigInputFromSession();
       syncTopoInputFromSession();
       document.getElementById("saveSessionMetaBtn").disabled = false;
-      setStatus("Session ready. Auto-suggestion applied.", "ok");
+      if (data.session_action === "reused_existing_preserved") {
+        setStatus("Existing working session loaded and preserved. Current enrichment stayed intact.", "ok");
+      } else if (data.session_action === "refreshed_existing") {
+        setStatus("Existing working session refreshed from raw DXF. Auto-suggestion applied.", "ok");
+      } else {
+        setStatus("Working session ready. Auto-suggestion applied.", "ok");
+      }
       await refreshSessionList();
       render();
     }
@@ -1947,6 +2332,10 @@
       state.session = data.session;
       state.simulation = null;
       clearTopoPreview();
+      state.documentSem.dirtyRules = false;
+      syncCurrentDxfText(data.dxf_text);
+      syncBandsInputFromSession();
+      syncSessionSourceOverrideFromSession();
       fitViewToDocument();
       render();
       setStatus("Auto-suggestion recomputed. Manual assignments were preserved.", "ok");
@@ -1967,8 +2356,43 @@
       state.session = data.session;
       state.simulation = null;
       clearTopoPreview();
+      syncCurrentDxfText(data.dxf_text);
       render();
       setStatus(`Assigned ${layer} to ${state.selectedIds.size} object(s).`, "ok");
+    }
+
+    async function assignXdataToSelection() {
+      if (!state.session || !state.selectedIds.size) {
+        setStatus("Select one or more objects before assigning XDATA.", "error");
+        return;
+      }
+      const entityIds = currentSelectionObjects().map((object) => object.entity_id).filter(Boolean);
+      const value = String(xdataValueInput.value || "").trim();
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/xdata`, {
+        method: "POST",
+        body: JSON.stringify({
+          entity_ids: entityIds,
+          value,
+          previous_value: state.xdata.mode === "edit" ? state.xdata.previousValue : ""
+        })
+      });
+      state.session = data.session;
+      state.selectedIds = new Set(
+        (state.session.objects || [])
+          .filter((object) => entityIds.includes(object.entity_id))
+          .map((object) => object.id)
+      );
+      syncXdataEditorFromSelection(value ? "toggle" : "clear");
+      syncCurrentDxfText(data.dxf_text);
+      render();
+      setStatus(value ? `Assigned XDATA ${value} to ${entityIds.length} entiteta.` : `Cleared XDATA for ${entityIds.length} entiteta.`, "ok");
+    }
+
+    function clearSelection() {
+      state.selectedIds.clear();
+      clearXdataEditor();
+      render();
+      setStatus("Selection cleared.", "ok");
     }
 
     async function validateMotherDraft() {
@@ -1981,6 +2405,7 @@
       state.session = data.session;
       state.simulation = null;
       clearTopoPreview();
+      syncCurrentDxfText(data.dxf_text);
       renderValidation(data.validation);
       render();
       setStatus(data.validation.ok ? "Validation passed." : "Validation failed. See details below.", data.validation.ok ? "ok" : "error");
@@ -1995,6 +2420,7 @@
       });
       state.session = data.session;
       clearTopoPreview();
+      syncCurrentDxfText(data.dxf_text);
       syncConfigInputFromSession();
       render();
       setStatus("Config parameter set saved to session.", "ok");
@@ -2002,9 +2428,13 @@
 
     async function saveDocumentSemMetadata() {
       if (!state.session) return;
+      const pendingRuleRef = String(documentSemRuleRef.value || "").trim();
+      if (pendingRuleRef && !(state.documentSem.ruleRefs || []).includes(pendingRuleRef)) {
+        state.documentSem.ruleRefs = [...(state.documentSem.ruleRefs || []), pendingRuleRef];
+      }
       const payload = readDocumentSemPayload();
       if (!payload.nominal_width || !payload.nominal_height || !payload.family || !payload.product || !payload.part) {
-        setStatus("Document Properties traže nominal width, nominal height, family, product i part.", "error");
+        setStatus("Document SEM identity traži nominal width, nominal height, family, product i part.", "error");
         return;
       }
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/document-sem`, {
@@ -2013,14 +2443,16 @@
       });
       state.session = data.session;
       clearTopoPreview();
+      state.documentSem.dirtyRules = false;
+      syncCurrentDxfText(data.dxf_text);
       render();
-      setStatus("Document Properties saved as document-level SEM.", "ok");
+      setStatus("Document SEM identity and document rules saved.", "ok");
     }
 
     async function saveTopoMetadata() {
       if (!state.session) return;
       if (!hasDocumentSemConfigured()) {
-        setStatus("Prvo spremi Document Properties.", "error");
+        setStatus("Prvo spremi Document SEM.", "error");
         return;
       }
       const topoConfigOk = Boolean(
@@ -2038,6 +2470,7 @@
         body: JSON.stringify({ topo_text: String(topoInput.value || "") })
       });
       state.session = data.session;
+      syncCurrentDxfText(data.dxf_text);
       const selectedObjects = Array.from(state.selectedIds)
         .map((id) => objectById(id))
         .filter(Boolean);
@@ -2050,7 +2483,8 @@
             zone: String(topoEntityZone.value || "").trim()
           })
         });
-      state.session = roleData.session;
+        state.session = roleData.session;
+        syncCurrentDxfText(roleData.dxf_text);
       }
       clearTopoPreview();
       state.authoring.topoSkipped = false;
@@ -2063,7 +2497,7 @@
     function continueWithoutTopo() {
       if (!state.session) return;
       if (!hasDocumentSemConfigured()) {
-        setStatus("Prvo spremi Document Properties.", "error");
+        setStatus("Prvo spremi Document SEM.", "error");
         return;
       }
       state.authoring.topoSkipped = true;
@@ -2083,7 +2517,7 @@
       });
       state.session = data.session;
       clearTopoPreview();
-      document.getElementById("dxfInput").value = data.dxf_text || document.getElementById("dxfInput").value;
+      syncCurrentDxfText(data.dxf_text);
       await refreshSessionList();
       render();
       setStatus("Session title/status saved.", "ok");
@@ -2111,7 +2545,11 @@
       state.authoring.topoSkipped = false;
       state.authoring.activeStage = hasTopoConfigured() ? "sem" : "topo";
       state.selectedIds.clear();
-      document.getElementById("dxfInput").value = data.dxf_text || "";
+      clearXdataEditor();
+      state.documentSem.dirtyRules = false;
+      syncCurrentDxfText(data.dxf_text || "");
+      syncBandsInputFromSession();
+      syncSessionSourceOverrideFromSession();
       syncConfigInputFromSession();
       renderValidation(data.validation || { ok: false, note: "Validation not run yet." });
       renderSimulation({ ok: false, note: "Simulation not run yet." });
@@ -2124,10 +2562,9 @@
       document.getElementById("saveTopoBtn").disabled = false;
       document.getElementById("saveSessionMetaBtn").disabled = false;
       fitViewToDocument();
-      renderLineNumbers();
       syncTopoInputFromSession();
       render();
-      setStatus("Session loaded.", "ok");
+      setStatus("Working session loaded.", "ok");
     }
 
     async function applyMetadataRule() {
@@ -2155,8 +2592,7 @@
       });
       state.session = data.session;
       clearTopoPreview();
-      document.getElementById("dxfInput").value = data.dxf_text || document.getElementById("dxfInput").value;
-      renderLineNumbers();
+      syncCurrentDxfText(data.dxf_text);
       render();
       setStatus(`Metadata applied: ${data.semantic_comment}`, "ok");
     }
@@ -2171,8 +2607,7 @@
         method: "DELETE"
       });
       state.session = data.session;
-      document.getElementById("dxfInput").value = data.dxf_text || document.getElementById("dxfInput").value;
-      renderLineNumbers();
+      syncCurrentDxfText(data.dxf_text);
       render();
       setStatus("Semantic metadata cleared.", "ok");
     }
@@ -2391,9 +2826,11 @@
 
       const dx = point.x - state.dragStart.x;
       const dy = point.y - state.dragStart.y;
+      let selectionCause = "replace";
       if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
         const hit = objectIdAtPoint(point);
         if (event.ctrlKey || event.metaKey) {
+          selectionCause = "toggle";
           if (hit) {
             if (state.selectedIds.has(hit)) {
               state.selectedIds.delete(hit);
@@ -2402,21 +2839,25 @@
             }
           }
         } else {
+          selectionCause = "replace";
           state.selectedIds.clear();
           if (hit) state.selectedIds.add(hit);
         }
       } else {
         const ids = objectIdsInRect(state.dragRect);
         if (event.ctrlKey || event.metaKey) {
+          selectionCause = "toggle";
           for (const id of ids) {
             state.selectedIds.add(id);
           }
         } else {
+          selectionCause = "replace";
           state.selectedIds = new Set(ids);
         }
       }
       state.dragStart = null;
       state.dragRect = null;
+      syncXdataEditorFromSelection(selectionCause);
       render();
     });
 
@@ -2448,6 +2889,9 @@
       if (!file) return;
       const text = await file.text();
       document.getElementById("dxfInput").value = text;
+      if (sessionSourceOverride && !String(sessionSourceOverride.value || "").trim()) {
+        sessionSourceOverride.value = stripDxfExtension(file.name);
+      }
       renderLineNumbers();
       setStatus(`Loaded ${file.name}.`, "ok");
     });
@@ -2456,6 +2900,22 @@
     dxfInput.addEventListener("scroll", () => {
       lineGutter.scrollTop = dxfInput.scrollTop;
     });
+    jumpDocumentMetadataBtn.addEventListener("click", () => {
+      jumpToDxfPattern([
+        "999\nSEM:document=true",
+        "999\r\nSEM:document=true",
+        "999\nTOPO:",
+        "999\r\nTOPO:"
+      ]);
+    });
+    jumpEntitiesSectionBtn.addEventListener("click", () => {
+      jumpToDxfPattern([
+        "0\nSECTION\n2\nENTITIES",
+        "0\r\nSECTION\r\n2\r\nENTITIES"
+      ]);
+    });
+    documentSemProduct.addEventListener("input", render);
+    addDocumentSemRuleBtn.addEventListener("click", addDocumentSemRule);
     topoGroup.addEventListener("input", syncTopoInputFromSession);
     topoLecParameter.addEventListener("change", syncTopoInputFromSession);
     topoLecNominal.addEventListener("input", syncTopoInputFromSession);
@@ -2486,6 +2946,18 @@
     metadataExpectedValueSecondary.addEventListener("change", renderMetadataPreview);
     metadataExpectedValueSecondaryMulti.addEventListener("change", renderMetadataPreview);
     metadataExpectedValueSecondaryNumber.addEventListener("input", renderMetadataPreview);
+    forceXdataDetails.addEventListener("toggle", () => {
+      syncXdataEditorFromSelection("replace");
+      render();
+    });
+    xdataGhostToggle.addEventListener("change", () => {
+      state.xdata.ghostEnabled = Boolean(xdataGhostToggle.checked);
+      render();
+    });
+    assignXdataBtn.addEventListener("click", () => {
+      assignXdataToSelection().catch((error) => setStatus(error.message, "error"));
+    });
+    clearSelectionBtn.addEventListener("click", clearSelection);
 
     document.getElementById("startBtn").addEventListener("click", () => {
       createSession().catch((error) => setStatus(error.message, "error"));
@@ -2512,7 +2984,7 @@
     });
     authoringStageSemBtn.addEventListener("click", () => {
       if (!canOpenSemStage()) {
-        setStatus(hasDocumentSemConfigured() ? "Prvo spremi ili preskoči TOPO setup." : "Prvo spremi Document Properties.", "error");
+        setStatus(hasDocumentSemConfigured() ? "Prvo spremi ili preskoči TOPO setup." : "Prvo spremi Document SEM.", "error");
         return;
       }
       state.authoring.activeStage = "sem";

@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
+const path = require("path");
 const {
   ALLOWED_PRIMARY_LAYERS,
   sanitizeDocument,
@@ -23,6 +24,7 @@ const {
 const {
   defaultRoot,
   saveSession,
+  deleteSession,
   loadSession,
   listSessions,
   saveExport,
@@ -37,6 +39,8 @@ const DEFAULT_BANDS = {
   top: 80,
   bottom: 80
 };
+
+const MOTHER_XDATA_APP_NAME = "MOTHERDXF";
 
 const SEMANTIC_COLORS = {
   A: "#111827",
@@ -115,6 +119,44 @@ function normalizeSessionTitle(value, fallback) {
   return String(fallback || "Untitled Mother DXF Session");
 }
 
+function defaultSessionTitleForSource(sourceName) {
+  const normalized = String(sourceName || "").trim();
+  if (!normalized) return "Untitled Mother DXF Session";
+  const baseName = path.basename(normalized).replace(/\.[^.]+$/i, "").trim();
+  return baseName || "Untitled Mother DXF Session";
+}
+
+function titleLooksLikeDefault(title, sourceName) {
+  const normalizedTitle = String(title || "").trim();
+  if (!normalizedTitle) return true;
+  const defaultTitle = defaultSessionTitleForSource(sourceName);
+  const legacyDefault = String(sourceName || "").trim();
+  return normalizedTitle === defaultTitle || normalizedTitle === legacyDefault;
+}
+
+function sessionHasAuthoringState(session) {
+  const documentComments = Array.isArray(session?.document?.preComments) ? session.document.preComments : [];
+  const hasDocumentLevelMetadata = documentComments.some((pair) => {
+    if (String(pair?.code) !== "999") return false;
+    const value = String(pair?.value || "").trim().toUpperCase();
+    return value.startsWith("SEM:") || value.startsWith("TOPO:");
+  });
+  if (hasDocumentLevelMetadata) return true;
+
+  const entities = Array.isArray(session?.document?.entities) ? session.document.entities : [];
+  const hasEntityMetadata = entities.some((entity) => {
+    const comments = Array.isArray(entity?.preComments) ? entity.preComments : [];
+    return comments.some((pair) => {
+      if (String(pair?.code) !== "999") return false;
+      const value = String(pair?.value || "").trim().toUpperCase();
+      return value.startsWith("SEM:") || value.startsWith("TOPO:");
+    });
+  });
+  if (hasEntityMetadata) return true;
+
+  return Boolean(session?.xdata_assignments && Object.keys(session.xdata_assignments).length);
+}
+
 function normalizeConfigParameterSet(input) {
   const source = input && typeof input === "object" ? input : {};
   const parameters = source.parameters && typeof source.parameters === "object"
@@ -130,6 +172,144 @@ function normalizeConfigParameterSet(input) {
       ...parameters
     })
   };
+}
+
+function normalizeParameterCatalogSnapshot(input) {
+  const source = input && typeof input === "object" ? input : null;
+  const parameters = source && source.parameters && typeof source.parameters === "object"
+    ? source.parameters
+    : null;
+  if (!source || !parameters || !Object.keys(parameters).length) {
+    return cloneJson(DEFAULT_PARAMETER_CATALOG);
+  }
+  return cloneJson(source);
+}
+
+function normalizeRuleCatalogSnapshot(input) {
+  const source = input && typeof input === "object" ? input : null;
+  const rules = source && source.rules && typeof source.rules === "object"
+    ? source.rules
+    : null;
+  if (!source || !rules || !Object.keys(rules).length) {
+    return cloneJson(DEFAULT_RULE_CATALOG);
+  }
+  return cloneJson(source);
+}
+
+function isEmptyConfigParameterSetInput(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return true;
+  const keys = Object.keys(input);
+  if (!keys.length) return true;
+  if (keys.length === 1 && keys[0] === "parameters") {
+    const parameters = input.parameters;
+    return !parameters || typeof parameters !== "object" || !Object.keys(parameters).length;
+  }
+  if (keys.length === 1 && keys[0] === "configuratorData") {
+    const parameters = input.configuratorData;
+    return !parameters || typeof parameters !== "object" || !Object.keys(parameters).length;
+  }
+  return false;
+}
+
+function normalizeXdataValue(value) {
+  const normalized = String(value || "").trim();
+  return normalized || "";
+}
+
+function extractMotherXdataValue(entity) {
+  const pairs = Array.isArray(entity?.pairs) ? entity.pairs : [];
+  for (let index = 0; index < pairs.length; index += 1) {
+    const pair = pairs[index];
+    if (String(pair?.code) !== "1001") continue;
+    if (String(pair?.value || "").trim() !== MOTHER_XDATA_APP_NAME) continue;
+    for (let nextIndex = index + 1; nextIndex < pairs.length; nextIndex += 1) {
+      const nextPair = pairs[nextIndex];
+      if (String(nextPair?.code) === "1001") break;
+      if (String(nextPair?.code) === "1000") {
+        return normalizeXdataValue(nextPair.value);
+      }
+    }
+  }
+  return "";
+}
+
+function collectMotherXdataAssignments(document) {
+  const assignments = {};
+  for (const entity of Array.isArray(document?.entities) ? document.entities : []) {
+    const value = extractMotherXdataValue(entity);
+    if (!value) continue;
+    assignments[entity.id] = {
+      app: MOTHER_XDATA_APP_NAME,
+      value
+    };
+  }
+  return assignments;
+}
+
+function hoistMotherXdataFromDocument(document) {
+  const assignments = collectMotherXdataAssignments(document);
+  for (const entity of Array.isArray(document?.entities) ? document.entities : []) {
+    entity.pairs = stripMotherXdataPairs(entity.pairs);
+  }
+  return assignments;
+}
+
+function normalizeXdataAssignments(document, input) {
+  const derived = collectMotherXdataAssignments(document);
+  const next = { ...derived };
+  const source = input && typeof input === "object" ? input : {};
+  for (const [entityId, assignment] of Object.entries(source)) {
+    if (!findEntity(document, entityId)) continue;
+    const value = normalizeXdataValue(assignment && typeof assignment === "object" ? assignment.value : assignment);
+    if (!value) {
+      delete next[entityId];
+      continue;
+    }
+    next[entityId] = {
+      app: MOTHER_XDATA_APP_NAME,
+      value
+    };
+  }
+  return next;
+}
+
+function collectEntityXdataMetadata(session, entityId) {
+  const assignment = session?.xdata_assignments && session.xdata_assignments[entityId]
+    ? session.xdata_assignments[entityId]
+    : null;
+  if (!assignment || !normalizeXdataValue(assignment.value)) return null;
+  return {
+    app: MOTHER_XDATA_APP_NAME,
+    value: normalizeXdataValue(assignment.value)
+  };
+}
+
+function stripMotherXdataPairs(pairs) {
+  const next = [];
+  let skipping = false;
+  for (const pair of Array.isArray(pairs) ? pairs : []) {
+    const code = String(pair?.code || "");
+    const value = String(pair?.value || "");
+    if (code === "1001" && value.trim() === MOTHER_XDATA_APP_NAME) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && code === "1001") {
+      skipping = false;
+    }
+    if (skipping) continue;
+    next.push({ ...pair });
+  }
+  return next;
+}
+
+function applyMotherXdataToPairs(pairs, value) {
+  const next = stripMotherXdataPairs(pairs);
+  const normalizedValue = normalizeXdataValue(value);
+  if (!normalizedValue) return next;
+  next.push({ code: "1001", value: MOTHER_XDATA_APP_NAME });
+  next.push({ code: "1000", value: normalizedValue });
+  return next;
 }
 
 function normalizeTopoCommentsInput(input) {
@@ -367,13 +547,18 @@ function normalizeDocumentSemPayload(payload) {
   };
 }
 
+function normalizeDocumentSemRuleRefs(value) {
+  const source = Array.isArray(value) ? value : value ? [value] : [];
+  return Array.from(new Set(source.map((item) => String(item || "").trim()).filter(Boolean)));
+}
+
 function formatDocumentSemNumber(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return String(value);
   return Number.isInteger(numeric) ? String(numeric) : String(numeric);
 }
 
-function buildDocumentSemComment(payload) {
+function buildDocumentSemIdentityComment(payload) {
   const sem = normalizeDocumentSemPayload(payload);
   return [
     "SEM:document=true",
@@ -382,6 +567,17 @@ function buildDocumentSemComment(payload) {
     `family=${sem.family}`,
     `product=${sem.product}`,
     `part=${sem.part}`
+  ].join(";");
+}
+
+function buildDocumentSemRuleComment(ruleRef) {
+  const normalizedRuleRef = String(ruleRef || "").trim();
+  if (!normalizedRuleRef) {
+    throw new Error("Missing document-level rule_ref.");
+  }
+  return [
+    "SEM:document=true",
+    `rule_ref=${normalizedRuleRef}`
   ].join(";");
 }
 
@@ -405,19 +601,302 @@ function parseDocumentSem(parsedDocument) {
 }
 
 function collectDocumentSemMetadata(parsedDocument) {
-  const parsed = parseDocumentSem(parsedDocument);
-  if (!parsed) return null;
-  const keys = parsed.keys || {};
+  const comments = Array.isArray(parsedDocument?.preComments) ? parsedDocument.preComments : [];
+  const parsedComments = comments
+    .filter((pair) => String(pair?.code) === "999")
+    .map((pair) => parseSemanticComment(pair.value))
+    .filter((parsed) => parsed && String(parsed.keys?.document || "").trim().toLowerCase() === "true");
+  if (!parsedComments.length) return null;
+  const identity = parsedComments.find((parsed) => {
+    const keys = parsed.keys || {};
+    return keys.nominal_width || keys.nominal_height || keys.family || keys.product || keys.part;
+  }) || null;
+  const ruleComments = parsedComments.filter((parsed) => String(parsed.keys?.rule_ref || "").trim());
+  const keys = identity?.keys || {};
   const nominalWidth = Number(keys.nominal_width);
   const nominalHeight = Number(keys.nominal_height);
   return {
+    identity_raw_comment: identity?.raw_comment || null,
+    raw_comments: parsedComments.map((parsed) => parsed.raw_comment),
     nominal_width: Number.isFinite(nominalWidth) ? nominalWidth : null,
     nominal_height: Number.isFinite(nominalHeight) ? nominalHeight : null,
     family: keys.family || null,
     product: keys.product || null,
     part: keys.part || null,
-    raw_comment: parsed.raw_comment,
-    validation: parsed.validation
+    rule_refs: ruleComments.map((parsed) => String(parsed.keys.rule_ref).trim()),
+    rule_comments: ruleComments.map((parsed) => ({
+      rule_ref: String(parsed.keys.rule_ref).trim(),
+      raw_comment: parsed.raw_comment,
+      validation: parsed.validation
+    })),
+    raw_comment: identity?.raw_comment || null,
+    validation: {
+      ok: parsedComments.every((parsed) => parsed.validation?.ok !== false),
+      errors: parsedComments.flatMap((parsed) => parsed.validation?.errors || []),
+      warnings: []
+    }
+  };
+}
+
+function evaluateCatalogRuleCondition(condition, parameters) {
+  const source = condition && typeof condition === "object" ? condition : {};
+  const parameter = String(source.parameter || "").trim();
+  const operator = String(source.operator || "").trim().toUpperCase();
+  if (!parameter || !operator) return false;
+  const actual = parameters ? parameters[parameter] : undefined;
+  if (operator === "==") {
+    return String(actual ?? "").trim() === String(source.value ?? "").trim();
+  }
+  if (operator === "IN") {
+    const values = Array.isArray(source.values) ? source.values.map((item) => String(item ?? "").trim()) : [];
+    return values.includes(String(actual ?? "").trim());
+  }
+  return false;
+}
+
+function resolveExecutableDocumentRules(session, parameters) {
+  const documentSem = collectDocumentSemMetadata(session?.document);
+  const ruleRefs = Array.isArray(documentSem?.rule_refs) ? documentSem.rule_refs : [];
+  if (!ruleRefs.length) return [];
+  const catalog = normalizeRuleCatalogSnapshot(session?.rule_catalog);
+  const catalogRules = catalog && catalog.rules && typeof catalog.rules === "object" ? catalog.rules : {};
+  const matches = [];
+  for (const ruleRef of ruleRefs) {
+    const rule = catalogRules[ruleRef];
+    if (!rule || typeof rule !== "object") continue;
+    const profileScope = String(rule.profile_scope || "").trim().toUpperCase();
+    if (profileScope && profileScope !== "MXD") continue;
+    if (!evaluateCatalogRuleCondition(rule.condition, parameters)) continue;
+    matches.push(rule);
+  }
+  return matches;
+}
+
+function buildObjectsFromSimulationMap(objects, objectMap) {
+  return (Array.isArray(objects) ? objects : []).map((object) => {
+    const preview = objectMap?.get(object.id);
+    return {
+      id: object.id,
+      primary_layer: object.primary_layer,
+      shapes: cloneShapes(preview?.simulated_shapes || object?.shapes),
+      bbox: preview?.simulated_bbox ? cloneJson(preview.simulated_bbox) : (object?.bbox ? cloneJson(object.bbox) : null)
+    };
+  });
+}
+
+function adjustEnvelopeVerticalLineToBottom(shape, edgeX, originalBottomY, nextBottomY) {
+  if (!shape || shape.kind !== "line") return shape;
+  const x1 = Number(shape.x1);
+  const y1 = Number(shape.y1);
+  const x2 = Number(shape.x2);
+  const y2 = Number(shape.y2);
+  if (![x1, y1, x2, y2, edgeX, originalBottomY, nextBottomY].every(Number.isFinite)) {
+    return shape;
+  }
+  if (Math.abs(x1 - x2) > 0.5) return shape;
+  if (Math.abs(x1 - edgeX) > 2 && Math.abs(x2 - edgeX) > 2) return shape;
+  const startTouchesBottom = Math.abs(y1 - originalBottomY) <= 2;
+  const endTouchesBottom = Math.abs(y2 - originalBottomY) <= 2;
+  if (!startTouchesBottom && !endTouchesBottom) return shape;
+  if (startTouchesBottom) {
+    return {
+      kind: "line",
+      x1,
+      y1: nextBottomY,
+      x2,
+      y2
+    };
+  }
+  return {
+    kind: "line",
+    x1,
+    y1,
+    x2,
+    y2: nextBottomY
+  };
+}
+
+function applyBottomOffsetEnvelopeVerticalPostPass(objectMap, objects, preRuleShapeSnapshot, offsetY) {
+  const preRuleObjects = (Array.isArray(objects) ? objects : []).map((object) => ({
+    id: object.id,
+    primary_layer: object.primary_layer,
+    shapes: cloneShapes(preRuleShapeSnapshot.get(object.id) || object?.shapes),
+    bbox: object?.bbox ? cloneJson(object.bbox) : null
+  }));
+  const envelope = buildTopoPreviewEnvelope(preRuleObjects);
+  if (!envelope) return;
+  const originalBottomY = Number(envelope.minY);
+  const nextBottomY = originalBottomY + Number(offsetY || 0);
+  const height = Number(envelope.maxY) - Number(envelope.minY);
+
+  for (const object of Array.isArray(objects) ? objects : []) {
+    const preview = objectMap.get(object.id);
+    if (!preview || (preview.applied_offset?.dy || 0) !== 0) continue;
+    const originalShapes = preRuleShapeSnapshot.get(object.id) || cloneShapes(object?.shapes);
+    const currentShapes = Array.isArray(preview.simulated_shapes) ? preview.simulated_shapes : [];
+    preview.simulated_shapes = currentShapes.map((shape, index) => {
+      const originalShape = originalShapes[index];
+      const originalBBox = bboxFromShapes(originalShape ? [originalShape] : []);
+      if (!originalShape || !originalBBox) return shape;
+      const isTallVertical = originalShape.kind === "line"
+        && Math.abs(Number(originalShape.x1) - Number(originalShape.x2)) <= 0.5
+        && (Number(originalBBox.maxY) - Number(originalBBox.minY)) >= height * 0.4;
+      if (!isTallVertical) return shape;
+      let nextShape = adjustEnvelopeVerticalLineToBottom(shape, Number(envelope.minX), originalBottomY, nextBottomY);
+      nextShape = adjustEnvelopeVerticalLineToBottom(nextShape, Number(envelope.maxX), originalBottomY, nextBottomY);
+      return nextShape;
+    });
+    preview.simulated_bbox = preview.simulated_shapes.length
+      ? bboxFromShapes(preview.simulated_shapes)
+      : (object?.bbox ? cloneJson(object.bbox) : null);
+  }
+}
+
+function applyDocumentRulesToSimulationMap(session, objects, parameters, objectMap, topologyMode) {
+  if (!objectMap || !Array.isArray(objects) || !objects.length) {
+    return { applied_rules: [] };
+  }
+  const executableRules = resolveExecutableDocumentRules(session, parameters);
+  if (!executableRules.length) {
+    return { applied_rules: [] };
+  }
+
+  const appliedRules = [];
+
+  for (const rule of executableRules) {
+    const action = rule && typeof rule.action === "object" ? rule.action : {};
+    const targetScope = rule && typeof rule.target_scope === "object" ? rule.target_scope : {};
+    const targetLayer = String(targetScope.layer || "").trim().toUpperCase();
+    const geometry = String(action.geometry || "").trim().toLowerCase();
+    const axis = String(action.axis || "").trim().toUpperCase();
+    const valueMm = Number(action.value_mm);
+    const postRepair = String(action.post_repair || "").trim().toLowerCase();
+
+    if (geometry !== "offset" || !targetLayer || !Number.isFinite(valueMm)) continue;
+
+    const affectedObjects = objects.filter((object) => {
+      if (String(object?.primary_layer || "").trim().toUpperCase() !== targetLayer) return false;
+      return evaluateChildEntityInclusion(object, parameters)?.included !== false;
+    });
+    if (!affectedObjects.length) continue;
+
+    const dx = axis === "X" ? valueMm : 0;
+    const dy = axis === "Y" ? valueMm : 0;
+    const preRuleShapeSnapshot = new Map();
+
+    for (const object of objects) {
+      const preview = objectMap.get(object.id);
+      preRuleShapeSnapshot.set(
+        object.id,
+        cloneShapes(Array.isArray(preview?.simulated_shapes) ? preview.simulated_shapes : object?.shapes)
+      );
+    }
+
+    for (const object of affectedObjects) {
+      const preview = objectMap.get(object.id);
+      if (!preview) continue;
+      const currentShapes = Array.isArray(preview.simulated_shapes) ? preview.simulated_shapes : cloneShapes(object?.shapes);
+      preview.simulated_shapes = currentShapes.map((shape) => translateShape(shape, dx, dy));
+      const priorOffset = preview.applied_offset && typeof preview.applied_offset === "object"
+        ? preview.applied_offset
+        : { dx: 0, dy: 0 };
+      preview.applied_offset = {
+        dx: Number(priorOffset.dx || 0) + dx,
+        dy: Number(priorOffset.dy || 0) + dy
+      };
+      preview.document_rule_actions = Array.isArray(preview.document_rule_actions)
+        ? preview.document_rule_actions
+        : [];
+      preview.document_rule_actions.push({
+        rule_id: String(rule.rule_id || "").trim() || null,
+        axis,
+        value_mm: valueMm
+      });
+      preview.geometry_simulation_mode = `${preview.geometry_simulation_mode || (topologyMode ? `topology_mode:${topologyMode}` : "none_topology_identity")}|document_rules`;
+    }
+
+    if (postRepair === "bounded_trim_rejoin") {
+      const baseObjects = buildObjectsFromSimulationMap(objects, objectMap);
+      const includedObjects = baseObjects.filter((object) => evaluateChildEntityInclusion(object, parameters)?.included !== false);
+      const lineCandidates = collectLineCandidates(includedObjects);
+      const simulatedShapeMap = new Map();
+      for (const object of includedObjects) {
+        const preview = objectMap.get(object.id);
+        const shapes = Array.isArray(preview?.simulated_shapes) ? preview.simulated_shapes : [];
+        for (let index = 0; index < shapes.length; index += 1) {
+          simulatedShapeMap.set(`${object.id}:${index}`, shapes[index]);
+        }
+      }
+      const repairEnvelope = buildTopoPreviewEnvelope(includedObjects);
+      const repairOptions = {
+        bounds: repairEnvelope,
+        maxExtension: 30
+      };
+
+      for (const object of affectedObjects) {
+        const preview = objectMap.get(object.id);
+        if (!preview) continue;
+        preview.line_pairing = Array.isArray(preview.line_pairing) ? preview.line_pairing : [];
+        const preRuleShapes = preRuleShapeSnapshot.get(object.id) || cloneShapes(object?.shapes);
+        for (let index = 0; index < preview.simulated_shapes.length; index += 1) {
+          const originalShape = preRuleShapes[index];
+          const translatedShape = preview.simulated_shapes[index];
+          if (!originalShape || originalShape.kind !== "line") continue;
+          const resolved = applyTrimRejoinToTranslatedLine(
+            originalShape,
+            translatedShape,
+            lineCandidates,
+            { object_id: object.id, shape_index: index },
+            simulatedShapeMap,
+            repairOptions
+          );
+          for (const pairing of resolved.pairings || []) {
+            preview.line_pairing.push({
+              status: pairing.status,
+              paired_vertex: pairing.paired_vertex || null,
+              anchor_object_id: pairing.candidate ? pairing.candidate.object_id : null,
+              anchor_shape_index: pairing.candidate ? pairing.candidate.shape_index : null,
+              anchor_vertex: pairing.candidate_vertex || null,
+              intersection: pairing.intersection || null,
+              document_rule_id: String(rule.rule_id || "").trim() || null
+            });
+          }
+          preview.simulated_shapes[index] = resolved.shape;
+          simulatedShapeMap.set(`${object.id}:${index}`, resolved.shape);
+          for (const reciprocal of resolved.reciprocals || []) {
+            const reciprocalPreview = objectMap.get(reciprocal.object_id);
+            if (reciprocalPreview && reciprocalPreview.simulated_shapes[reciprocal.shape_index]) {
+              reciprocalPreview.simulated_shapes[reciprocal.shape_index] = reciprocal.shape;
+              simulatedShapeMap.set(`${reciprocal.object_id}:${reciprocal.shape_index}`, reciprocal.shape);
+            }
+          }
+        }
+      }
+    }
+
+    if (axis === "Y" && dy > 0 && targetLayer === "B") {
+      applyBottomOffsetEnvelopeVerticalPostPass(objectMap, objects, preRuleShapeSnapshot, dy);
+    }
+
+    for (const object of objects) {
+      const preview = objectMap.get(object.id);
+      if (!preview) continue;
+      preview.simulated_bbox = Array.isArray(preview.simulated_shapes) && preview.simulated_shapes.length
+        ? bboxFromShapes(preview.simulated_shapes)
+        : (object?.bbox ? cloneJson(object.bbox) : null);
+    }
+
+    appliedRules.push({
+      rule_id: String(rule.rule_id || "").trim() || null,
+      target_layer: targetLayer,
+      axis,
+      value_mm: valueMm,
+      affected_count: affectedObjects.length
+    });
+  }
+
+  return {
+    applied_rules: appliedRules
   };
 }
 
@@ -1071,6 +1550,7 @@ function projectViewModel(session) {
   const state = buildRelevantState(session.document, session.bands, session.assignments);
   session.assignments = state.assignments;
   session.document_bbox = state.document_bbox;
+  session.xdata_assignments = normalizeXdataAssignments(session.document, session.xdata_assignments);
 
   const objects = state.relevant_objects.map((item) => {
     const assignment = session.assignments[item.id] || {
@@ -1096,7 +1576,8 @@ function projectViewModel(session) {
       assignment_origin: assignment.origin,
       suggested_layer: assignment.suggested_layer,
       semantic_color: assignment.layer ? SEMANTIC_COLORS[assignment.layer] : SEMANTIC_COLORS.UNCLASSIFIED,
-      semantic_metadata
+      semantic_metadata,
+      xdata_metadata: collectEntityXdataMetadata(session, item.entityId)
     };
   });
   const topo_metadata = projectTopoMetadata(session);
@@ -1111,8 +1592,8 @@ function projectViewModel(session) {
     bands: session.bands,
     document_bbox: session.document_bbox,
     config_parameter_set: session.config_parameter_set || cloneJson(DEFAULT_CONFIG_PARAMETER_SET),
-    parameter_catalog: cloneJson(session.parameter_catalog || DEFAULT_PARAMETER_CATALOG),
-    rule_catalog: cloneJson(session.rule_catalog || DEFAULT_RULE_CATALOG),
+    parameter_catalog: normalizeParameterCatalogSnapshot(session.parameter_catalog),
+    rule_catalog: normalizeRuleCatalogSnapshot(session.rule_catalog),
     document_sem,
     topo_metadata,
     objects,
@@ -1173,7 +1654,16 @@ function materializeDocumentForExport(session) {
       applyPrimaryLayer(document, entityId, assignment.layer);
     }
   }
+  const xdataAssignments = normalizeXdataAssignments(document, session.xdata_assignments);
+  for (const entity of Array.isArray(document.entities) ? document.entities : []) {
+    const assignment = xdataAssignments[entity.id] || null;
+    entity.pairs = applyMotherXdataToPairs(entity.pairs, assignment ? assignment.value : "");
+  }
   return document;
+}
+
+function serializeCurrentMotherDraft(session) {
+  return serializeDocument(materializeDocumentForExport(session));
 }
 
 function buildEntityExecutionSummary(object, parameters) {
@@ -1466,6 +1956,7 @@ function materializeChildDocumentTopoPoc(session, config) {
   const includedEntities = [];
   const movedEntities = [];
   const skippedTopoEntities = [];
+  let matchingTopoMoverCount = 0;
 
   for (const object of Array.isArray(view.objects) ? view.objects : []) {
     const decision = evaluateChildEntityInclusion(object, parameters);
@@ -1497,6 +1988,7 @@ function materializeChildDocumentTopoPoc(session, config) {
       });
       continue;
     }
+    matchingTopoMoverCount += 1;
     const zone = String(topoRole.keys?.zone || "").trim().toUpperCase();
     const zoneInput = resolveTopoZoneInput(topoKeys, parameters, zone);
     if (!zoneInput.parameter) {
@@ -1564,6 +2056,10 @@ function materializeChildDocumentTopoPoc(session, config) {
       dx,
       dy: 0
     });
+  }
+
+  if (!matchingTopoMoverCount) {
+    throw new Error(`TOPO group ${String(topoKeys.group || "").trim() || "(missing group)"} has no entity-level mover annotations in the current session.`);
   }
 
   outputDocument.entities = (Array.isArray(outputDocument.entities) ? outputDocument.entities : [])
@@ -2086,6 +2582,14 @@ function simulateChildPreview(session) {
   const topoSimulationMap = topologyMode !== "none"
     ? buildTopoGeometrySimulationMap(session, view.objects, config.parameters, topologyMode)
     : null;
+  const activeSimulationMap = topologyMode === "none" ? standardSimulationMap : topoSimulationMap;
+  const documentRuleExecution = applyDocumentRulesToSimulationMap(
+    session,
+    view.objects,
+    config.parameters,
+    activeSimulationMap,
+    topologyMode
+  );
   const limitator = normalizeBooleanLike(config.parameters.LIMITATOR);
   const brava = config.parameters.BRAVA == null ? null : String(config.parameters.BRAVA);
   const items = view.objects.map((object) => {
@@ -2166,6 +2670,7 @@ function simulateChildPreview(session) {
         reference_deltas: geometryPreview.reference_deltas || null,
         render_visible: geometryPreview.render_visible !== false,
         line_pairing: geometryPreview.line_pairing || [],
+        document_rule_actions: geometryPreview.document_rule_actions || [],
         preview_actions,
         ready_for_child_planning: object.classification_state === "classified" && Boolean(object.primary_layer)
       }
@@ -2182,7 +2687,8 @@ function simulateChildPreview(session) {
     summary: {
       object_count: items.length,
       classified_count: items.filter((item) => item.classification_state === "classified").length,
-      sem_bound_count: items.filter((item) => (item.semantic_metadata?.raw_comments || []).length > 0).length
+      sem_bound_count: items.filter((item) => (item.semantic_metadata?.raw_comments || []).length > 0).length,
+      document_rules_applied: documentRuleExecution.applied_rules || []
     }
   };
 }
@@ -2203,32 +2709,81 @@ function runExecutionCheck(session, configParameterSet) {
 }
 
 async function createSession({ dxfText, sourceName, bands, storeRoot }) {
+  const normalizedSourceName = String(sourceName || "mother_dxf_input.dxf");
+  const nowIso = new Date().toISOString();
+  const existingSessions = await listSessions({ rootDir: storeRoot || defaultRoot() });
+  const matchingSessions = existingSessions
+    .filter((item) => String(item?.source_name || "").trim() === normalizedSourceName)
+    .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+  const currentSession = matchingSessions[0] || null;
+  const preserveCustomTitle = currentSession && !titleLooksLikeDefault(currentSession.title, currentSession.source_name);
+  if (currentSession && sessionHasAuthoringState(currentSession)) {
+    currentSession.bands = normalizeBands(bands);
+    currentSession.updated_at = nowIso;
+    currentSession.title = preserveCustomTitle
+      ? normalizeSessionTitle(currentSession.title, defaultSessionTitleForSource(normalizedSourceName))
+      : defaultSessionTitleForSource(normalizedSourceName);
+    currentSession.source_name = normalizedSourceName;
+    currentSession.status = normalizeSessionStatus(currentSession.status || "draft");
+    currentSession.parameter_catalog = normalizeParameterCatalogSnapshot(currentSession.parameter_catalog);
+    currentSession.rule_catalog = normalizeRuleCatalogSnapshot(currentSession.rule_catalog);
+    currentSession.xdata_assignments = normalizeXdataAssignments(currentSession.document, currentSession.xdata_assignments);
+    projectViewModel(currentSession);
+    await saveSession({ rootDir: storeRoot || defaultRoot(), session: currentSession });
+    for (const duplicate of matchingSessions.slice(1)) {
+      await deleteSession({ rootDir: storeRoot || defaultRoot(), sessionId: duplicate.session_id });
+    }
+    return {
+      session: currentSession,
+      action: "reused_existing_preserved"
+    };
+  }
+
   const document = sanitizeDocument(dxfText);
+  const importedXdataAssignments = hoistMotherXdataFromDocument(document);
   const session = {
-    session_id: crypto.randomUUID(),
+    session_id: currentSession?.session_id || crypto.randomUUID(),
     use_case: "mother_dxf_v1",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    title: normalizeSessionTitle(sourceName, "Untitled Mother DXF Session"),
+    created_at: currentSession?.created_at || nowIso,
+    updated_at: nowIso,
+    title: preserveCustomTitle
+      ? normalizeSessionTitle(currentSession.title, defaultSessionTitleForSource(normalizedSourceName))
+      : defaultSessionTitleForSource(normalizedSourceName),
     status: "draft",
     artifact_state: "sanitized",
-    source_name: String(sourceName || "mother_dxf_input.dxf"),
+    source_name: normalizedSourceName,
     bands: normalizeBands(bands),
     config_parameter_set: cloneJson(DEFAULT_CONFIG_PARAMETER_SET),
+    parameter_catalog: cloneJson(DEFAULT_PARAMETER_CATALOG),
+    rule_catalog: cloneJson(DEFAULT_RULE_CATALOG),
     topo_comments: extractTopoCommentsFromDxfText(dxfText),
     assignments: {},
+    xdata_assignments: normalizeXdataAssignments(document, importedXdataAssignments),
     document
   };
   projectViewModel(session);
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-  return session;
+  for (const duplicate of matchingSessions.slice(1)) {
+    await deleteSession({ rootDir: storeRoot || defaultRoot(), sessionId: duplicate.session_id });
+  }
+  return {
+    session,
+    action: currentSession ? "refreshed_existing" : "created_new"
+  };
 }
 
 async function getSession({ sessionId, storeRoot }) {
   const session = await loadSession({ rootDir: storeRoot || defaultRoot(), sessionId });
-  session.title = normalizeSessionTitle(session.title, session.source_name);
+  const importedXdataAssignments = hoistMotherXdataFromDocument(session.document);
+  session.title = normalizeSessionTitle(session.title, defaultSessionTitleForSource(session.source_name));
   session.status = normalizeSessionStatus(session.status || "draft");
   session.topo_comments = normalizeTopoCommentsInput(session.topo_comments);
+  session.parameter_catalog = normalizeParameterCatalogSnapshot(session.parameter_catalog);
+  session.rule_catalog = normalizeRuleCatalogSnapshot(session.rule_catalog);
+  session.xdata_assignments = normalizeXdataAssignments(session.document, {
+    ...importedXdataAssignments,
+    ...(session.xdata_assignments || {})
+  });
   projectViewModel(session);
   return session;
 }
@@ -2280,16 +2835,21 @@ async function updateConfigParameterSet({ sessionId, configParameterSet, storeRo
 
 async function updateDocumentSemMetadata({ sessionId, payload, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
-  const rawComment = buildDocumentSemComment(payload);
+  const rawComment = buildDocumentSemIdentityComment(payload);
+  const ruleRefs = normalizeDocumentSemRuleRefs(payload?.rule_refs);
+  const ruleComments = ruleRefs.map((ruleRef) => buildDocumentSemRuleComment(ruleRef));
   const documentComments = Array.isArray(session.document?.preComments) ? session.document.preComments : [];
   const nextDocumentComments = documentComments
     .filter((pair) => !(String(pair?.code) === "999" && isDocumentSemanticComment(pair.value)));
   const firstTopoIndex = nextDocumentComments.findIndex((pair) => String(pair?.code) === "999" && isFileLevelTopoComment(pair.value));
-  const semPair = { code: "999", value: rawComment };
+  const semPairs = [
+    { code: "999", value: rawComment },
+    ...ruleComments.map((value) => ({ code: "999", value }))
+  ];
   if (firstTopoIndex >= 0) {
-    nextDocumentComments.splice(firstTopoIndex, 0, semPair);
+    nextDocumentComments.splice(firstTopoIndex, 0, ...semPairs);
   } else {
-    nextDocumentComments.unshift(semPair);
+    nextDocumentComments.unshift(...semPairs);
   }
   session.document.preComments = nextDocumentComments;
 
@@ -2336,7 +2896,7 @@ async function updateEntityTopoRoleMetadata({ sessionId, entityId, role, group, 
 async function updateSessionMeta({ sessionId, title, status, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   if (title !== undefined) {
-    session.title = normalizeSessionTitle(title, session.source_name);
+    session.title = normalizeSessionTitle(title, defaultSessionTitleForSource(session.source_name));
   }
   if (status !== undefined) {
     session.status = normalizeSessionStatus(status);
@@ -2373,6 +2933,48 @@ async function clearSemanticMetadata({ sessionId, entityId, storeRoot }) {
   return session;
 }
 
+async function updateEntityXdataMetadata({ sessionId, entityIds, value, previousValue, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const normalizedIds = Array.from(new Set((Array.isArray(entityIds) ? entityIds : []).map((entityId) => String(entityId || "").trim()).filter(Boolean)));
+  if (!normalizedIds.length) {
+    throw new Error("Select one or more entities before assigning XDATA.");
+  }
+  for (const entityId of normalizedIds) {
+    if (!findEntity(session.document, entityId)) {
+      throw new Error(`Unknown entity id: ${entityId}`);
+    }
+  }
+  session.xdata_assignments = normalizeXdataAssignments(session.document, session.xdata_assignments);
+  const nextValue = normalizeXdataValue(value);
+  const previousGroupValue = normalizeXdataValue(previousValue);
+  if (previousGroupValue) {
+    for (const [entityId, assignment] of Object.entries(session.xdata_assignments || {})) {
+      if (normalizeXdataValue(assignment?.value) !== previousGroupValue) continue;
+      if (normalizedIds.includes(entityId)) continue;
+      delete session.xdata_assignments[entityId];
+    }
+  }
+  for (const entityId of normalizedIds) {
+    if (nextValue) {
+      session.xdata_assignments[entityId] = {
+        app: MOTHER_XDATA_APP_NAME,
+        value: nextValue
+      };
+    } else {
+      delete session.xdata_assignments[entityId];
+    }
+  }
+  session.updated_at = new Date().toISOString();
+  session.artifact_state = "mother_draft";
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return {
+    session,
+    xdata_value: nextValue || null,
+    previous_value: previousGroupValue || null,
+    affected_entity_ids: normalizedIds
+  };
+}
+
 async function simulateSession({ sessionId, configParameterSet, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   if (configParameterSet) {
@@ -2387,7 +2989,9 @@ async function simulateSession({ sessionId, configParameterSet, storeRoot }) {
 }
 
 async function persistSessionConfigParameterSet(session, parameterSet, storeRoot) {
-  if (!parameterSet) return normalizeConfigParameterSet(session.config_parameter_set);
+  if (!parameterSet || isEmptyConfigParameterSetInput(parameterSet)) {
+    return normalizeConfigParameterSet(session.config_parameter_set);
+  }
   const config = normalizeConfigParameterSet(parameterSet);
   session.config_parameter_set = config;
   session.updated_at = new Date().toISOString();
@@ -2492,6 +3096,7 @@ module.exports = {
   updateSessionMeta,
   authorSemanticMetadata,
   clearSemanticMetadata,
+  updateEntityXdataMetadata,
   simulateSession,
   runKskrExecutionCheck,
   generateChildDxfNoTopo,
@@ -2501,6 +3106,7 @@ module.exports = {
   validateMotherDraft,
   exportMotherDraft,
   projectViewModel,
+  serializeCurrentMotherDraft,
   serializeDocument,
   parseDocumentSem,
   collectDocumentSemMetadata,
