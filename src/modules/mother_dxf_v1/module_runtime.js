@@ -8,19 +8,28 @@ const {
   reindexDocumentSources,
   serializeDocument,
   listRelevantObjects,
-  applyPrimaryLayer
+  applyPrimaryLayer,
+  pairValue
 } = require("../../core_shell/dxf");
 const {
   roundNumber,
   bboxUnion,
   bboxCenter,
   translateShape,
-  bboxFromShapes
+  bboxFromShapes,
+  transformPoint,
+  arcEndpoints
 } = require("../../core_shell/geometry");
 const {
   collectLineCandidates,
   applyTrimRejoinToTranslatedLine
 } = require("../../core_shell/services/dxf_line_repair_service");
+const {
+  runResolverPreview
+} = require("../../core_shell/services/dxf_resolver_service");
+const {
+  buildSanitizeReview
+} = require("../../core_shell/services/dxf_geometry_hygiene_service");
 const {
   defaultRoot,
   saveSession,
@@ -216,19 +225,41 @@ function normalizeXdataValue(value) {
   return normalized || "";
 }
 
+function parseMotherXdataAttributes(value) {
+  const normalized = normalizeXdataValue(value);
+  if (!normalized) return {};
+  const attributes = {};
+  const tokens = normalized
+    .split(/[;\n]+/)
+    .map((token) => String(token || "").trim())
+    .filter(Boolean);
+  for (const token of tokens) {
+    const separatorIndex = token.indexOf("=");
+    if (separatorIndex <= 0) continue;
+    const key = String(token.slice(0, separatorIndex) || "").trim().toUpperCase();
+    const attributeValue = String(token.slice(separatorIndex + 1) || "").trim();
+    if (!key || !attributeValue) continue;
+    attributes[key] = attributeValue;
+  }
+  return attributes;
+}
+
 function extractMotherXdataValue(entity) {
   const pairs = Array.isArray(entity?.pairs) ? entity.pairs : [];
   for (let index = 0; index < pairs.length; index += 1) {
     const pair = pairs[index];
     if (String(pair?.code) !== "1001") continue;
     if (String(pair?.value || "").trim() !== MOTHER_XDATA_APP_NAME) continue;
+    const values = [];
     for (let nextIndex = index + 1; nextIndex < pairs.length; nextIndex += 1) {
       const nextPair = pairs[nextIndex];
       if (String(nextPair?.code) === "1001") break;
       if (String(nextPair?.code) === "1000") {
-        return normalizeXdataValue(nextPair.value);
+        const value = normalizeXdataValue(nextPair.value);
+        if (value) values.push(value);
       }
     }
+    return normalizeXdataValue(values.join(";"));
   }
   return "";
 }
@@ -278,9 +309,14 @@ function collectEntityXdataMetadata(session, entityId) {
     ? session.xdata_assignments[entityId]
     : null;
   if (!assignment || !normalizeXdataValue(assignment.value)) return null;
+  const value = normalizeXdataValue(assignment.value);
+  const attributes = parseMotherXdataAttributes(value);
   return {
     app: MOTHER_XDATA_APP_NAME,
-    value: normalizeXdataValue(assignment.value)
+    value,
+    attributes,
+    feature_family: String(attributes.FEATURE_FAMILY || "").trim() || null,
+    variant_key: String(attributes.VARIANT_KEY || "").trim() || null
   };
 }
 
@@ -716,6 +752,108 @@ function adjustEnvelopeVerticalLineToBottom(shape, edgeX, originalBottomY, nextB
   };
 }
 
+function trimVerticalLineEndpointToPoint(shape, vertexName, point) {
+  if (!shape || shape.kind !== "line") return shape;
+  const x1 = Number(shape.x1);
+  const y1 = Number(shape.y1);
+  const x2 = Number(shape.x2);
+  const y2 = Number(shape.y2);
+  const px = Number(point?.x);
+  const py = Number(point?.y);
+  if (![x1, y1, x2, y2, px, py].every(Number.isFinite)) return shape;
+  if (Math.abs(x1 - x2) > 0.5) return shape;
+  if (vertexName === "start") {
+    return { kind: "line", x1: px, y1: py, x2, y2 };
+  }
+  return { kind: "line", x1, y1, x2: px, y2: py };
+}
+
+function applyBottomOffsetArcEndpointVerticalTrimPostPass(objectMap, objects, preRuleShapeSnapshot, offsetY) {
+  const movedArcEndpoints = [];
+  for (const object of Array.isArray(objects) ? objects : []) {
+    if (String(object?.primary_layer || "").trim().toUpperCase() !== "B") continue;
+    const preview = objectMap.get(object.id);
+    if (!preview || Math.abs(Number(preview.applied_offset?.dy || 0)) <= 0) continue;
+    const originalShapes = preRuleShapeSnapshot.get(object.id) || cloneShapes(object?.shapes);
+    const currentShapes = Array.isArray(preview.simulated_shapes) ? preview.simulated_shapes : [];
+    const limit = Math.min(originalShapes.length, currentShapes.length);
+    for (let index = 0; index < limit; index += 1) {
+      const originalShape = originalShapes[index];
+      const currentShape = currentShapes[index];
+      if (!originalShape || !currentShape) continue;
+      if (originalShape.kind !== "arc" || currentShape.kind !== "arc") continue;
+      const originalEndpoints = arcEndpoints(originalShape);
+      const currentEndpoints = arcEndpoints(currentShape);
+      if (!originalEndpoints?.start || !originalEndpoints?.end || !currentEndpoints?.start || !currentEndpoints?.end) continue;
+      movedArcEndpoints.push({
+        object_id: object.id,
+        shape_index: index,
+        original_bbox: object?.bbox ? cloneJson(object.bbox) : null,
+        current_bbox: preview?.simulated_bbox ? cloneJson(preview.simulated_bbox) : (object?.bbox ? cloneJson(object.bbox) : null),
+        start: { original: originalEndpoints.start, current: currentEndpoints.start },
+        end: { original: originalEndpoints.end, current: currentEndpoints.end }
+      });
+    }
+  }
+
+  if (!movedArcEndpoints.length) return;
+  const gapLimit = Math.abs(Number(offsetY || 0)) + 2;
+  const originalEndpointTolerance = 1.5;
+
+  for (const object of Array.isArray(objects) ? objects : []) {
+    const preview = objectMap.get(object.id);
+    if (!preview || Math.abs(Number(preview.applied_offset?.dy || 0)) > 0) continue;
+    const originalShapes = preRuleShapeSnapshot.get(object.id) || cloneShapes(object?.shapes);
+    const currentShapes = Array.isArray(preview.simulated_shapes) ? preview.simulated_shapes : [];
+    preview.simulated_shapes = currentShapes.map((shape, index) => {
+      const originalShape = originalShapes[index];
+      if (!shape || shape.kind !== "line" || !originalShape || originalShape.kind !== "line") return shape;
+      const originalShapeBBox = bboxFromShapes([originalShape]);
+      const ox1 = Number(originalShape.x1);
+      const oy1 = Number(originalShape.y1);
+      const ox2 = Number(originalShape.x2);
+      const oy2 = Number(originalShape.y2);
+      if (![ox1, oy1, ox2, oy2].every(Number.isFinite)) return shape;
+      if (Math.abs(ox1 - ox2) > 0.5) return shape;
+
+      const originalVertices = [
+        { vertex: "start", point: { x: ox1, y: oy1 } },
+        { vertex: "end", point: { x: ox2, y: oy2 } }
+      ];
+
+      for (const originalVertex of originalVertices) {
+        const matches = [];
+        for (const candidate of movedArcEndpoints) {
+          const localNeighbor = bboxIntersects(originalShapeBBox, candidate.original_bbox || candidate.current_bbox, 12)
+            || bboxIntersects(originalShapeBBox, candidate.current_bbox || candidate.original_bbox, 12);
+          if (!localNeighbor) continue;
+          for (const endpointName of ["start", "end"]) {
+            const endpoint = candidate[endpointName];
+            if (!endpoint?.original || !endpoint?.current) continue;
+            const sameOriginalColumn = Math.abs(originalVertex.point.x - endpoint.original.x) <= originalEndpointTolerance;
+            if (!sameOriginalColumn) continue;
+            const currentVertex = originalVertex.vertex === "start"
+              ? { x: Number(shape.x1), y: Number(shape.y1) }
+              : { x: Number(shape.x2), y: Number(shape.y2) };
+            const dx = Math.abs(currentVertex.x - endpoint.current.x);
+            const dy = Math.abs(currentVertex.y - endpoint.current.y);
+            if (dx > 2 || dy > gapLimit) continue;
+            matches.push(endpoint.current);
+          }
+        }
+        const unique = Array.from(new Map(matches.map((point) => [`${roundNumber(point.x, 3)}:${roundNumber(point.y, 3)}`, point])).values());
+        if (unique.length === 1) {
+          return trimVerticalLineEndpointToPoint(shape, originalVertex.vertex, unique[0]);
+        }
+      }
+      return shape;
+    });
+    preview.simulated_bbox = preview.simulated_shapes.length
+      ? bboxFromShapes(preview.simulated_shapes)
+      : (object?.bbox ? cloneJson(object.bbox) : null);
+  }
+}
+
 function applyBottomOffsetEnvelopeVerticalPostPass(objectMap, objects, preRuleShapeSnapshot, offsetY) {
   const preRuleObjects = (Array.isArray(objects) ? objects : []).map((object) => ({
     id: object.id,
@@ -872,10 +1010,12 @@ function applyDocumentRulesToSimulationMap(session, objects, parameters, objectM
           }
         }
       }
+
     }
 
     if (axis === "Y" && dy > 0 && targetLayer === "B") {
       applyBottomOffsetEnvelopeVerticalPostPass(objectMap, objects, preRuleShapeSnapshot, dy);
+      applyBottomOffsetArcEndpointVerticalTrimPostPass(objectMap, objects, preRuleShapeSnapshot, dy);
     }
 
     for (const object of objects) {
@@ -1545,6 +1685,217 @@ function buildRelevantState(document, bands, priorAssignments) {
   };
 }
 
+function lineGeometrySummary(object) {
+  if (String(object?.type || "").toUpperCase() !== "LINE") return null;
+  const shape = Array.isArray(object?.shapes) ? object.shapes.find((item) => item?.kind === "line") : null;
+  if (!shape) return null;
+  const x1 = Number(shape.x1);
+  const y1 = Number(shape.y1);
+  const x2 = Number(shape.x2);
+  const y2 = Number(shape.y2);
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.hypot(dx, dy);
+  const orientation = Math.abs(dx) <= 0.001
+    ? "vertical"
+    : Math.abs(dy) <= 0.001
+      ? "horizontal"
+      : "other";
+  return { x1, y1, x2, y2, dx, dy, length, orientation };
+}
+
+function lineBBox(summary) {
+  if (!summary) return null;
+  return {
+    minX: Math.min(summary.x1, summary.x2),
+    minY: Math.min(summary.y1, summary.y2),
+    maxX: Math.max(summary.x1, summary.x2),
+    maxY: Math.max(summary.y1, summary.y2)
+  };
+}
+
+function collectBlockInternalLineObjects(document) {
+  const blockMap = new Map((Array.isArray(document?.blocks) ? document.blocks : []).map((block) => [String(block?.name || ""), block]));
+  const topEntities = Array.isArray(document?.entities) ? document.entities : [];
+  const out = [];
+  for (const entity of topEntities) {
+    if (String(entity?.type || "").toUpperCase() !== "INSERT") continue;
+    const blockName = String(pairValue(entity, "2", "") || "").trim();
+    const block = blockMap.get(blockName);
+    if (!block) continue;
+    const tx = Number(pairValue(entity, "10", "0"));
+    const ty = Number(pairValue(entity, "20", "0"));
+    const scaleX = Number(pairValue(entity, "41", "1"));
+    const scaleY = Number(pairValue(entity, "42", "1"));
+    const rotationDeg = Number(pairValue(entity, "50", "0"));
+    for (const child of Array.isArray(block.entities) ? block.entities : []) {
+      if (String(child?.type || "").toUpperCase() !== "LINE") continue;
+      const x1 = Number(pairValue(child, "10", "NaN"));
+      const y1 = Number(pairValue(child, "20", "NaN"));
+      const x2 = Number(pairValue(child, "11", "NaN"));
+      const y2 = Number(pairValue(child, "21", "NaN"));
+      if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+      const p1 = transformPoint({ x: x1, y: y1 }, { tx, ty, scaleX, scaleY, rotationDeg });
+      const p2 = transformPoint({ x: x2, y: y2 }, { tx, ty, scaleX, scaleY, rotationDeg });
+      out.push({
+        id: `${entity.id}::${child.id}`,
+        entity_id: child.id,
+        parent_insert_id: entity.id,
+        block_name: blockName || null,
+        type: "LINE",
+        source: child.source || null,
+        primary_layer: String(pairValue(child, "8", "") || "").trim() || null,
+        shapes: [{ kind: "line", x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }],
+        hygiene_context: "block_child"
+      });
+    }
+  }
+  return out;
+}
+
+function analyzeGeometryHygiene(document, objects) {
+  const sourceObjects = [
+    ...(Array.isArray(objects) ? objects : []),
+    ...collectBlockInternalLineObjects(document)
+  ];
+  const issues = [];
+  const microLines = [];
+  const degenerateLines = [];
+  const overlapGroups = [];
+  const lineObjects = [];
+
+  for (const object of sourceObjects) {
+    const summary = lineGeometrySummary(object);
+    if (!summary) continue;
+    lineObjects.push({ object, summary });
+    if (summary.length <= 0.001) {
+      degenerateLines.push({
+        object_id: object.id,
+        entity_id: object.entity_id,
+        parent_insert_id: object.parent_insert_id || null,
+        block_name: object.block_name || null,
+        source_line: object?.source?.line_start || null,
+        layer: object?.primary_layer || null,
+        issue_type: "degenerate_line",
+        length_mm: roundNumber(summary.length, 3),
+        bbox: lineBBox(summary),
+        suggestion: "Inspect and likely remove from TOPO mover selection."
+      });
+    } else if (summary.length <= 2) {
+      microLines.push({
+        object_id: object.id,
+        entity_id: object.entity_id,
+        parent_insert_id: object.parent_insert_id || null,
+        block_name: object.block_name || null,
+        source_line: object?.source?.line_start || null,
+        layer: object?.primary_layer || null,
+        issue_type: "micro_line",
+        length_mm: roundNumber(summary.length, 3),
+        orientation: summary.orientation,
+        bbox: lineBBox(summary),
+        suggestion: "Inspect whether this is a bridge fragment; likely exclude from TOPO mover selection."
+      });
+    }
+  }
+
+  const buckets = new Map();
+  for (const entry of lineObjects) {
+    const { object, summary } = entry;
+    if (summary.orientation === "vertical") {
+      const key = `vertical:${roundNumber(summary.x1, 3)}`;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push({ object, summary });
+    } else if (summary.orientation === "horizontal") {
+      const key = `horizontal:${roundNumber(summary.y1, 3)}`;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push({ object, summary });
+    }
+  }
+
+  for (const group of buckets.values()) {
+    if (group.length < 2) continue;
+    const sorted = group.slice().sort((a, b) => {
+      if (a.summary.orientation === "vertical") return a.summary.y2 - b.summary.y2;
+      return a.summary.x1 - b.summary.x1;
+    });
+    const clustered = [];
+    for (const entry of sorted) {
+      if (!clustered.length) {
+        clustered.push([entry]);
+        continue;
+      }
+      const currentCluster = clustered[clustered.length - 1];
+      const previous = currentCluster[currentCluster.length - 1];
+      const overlap = entry.summary.orientation === "vertical"
+        ? Math.min(previous.summary.y1, previous.summary.y2, entry.summary.y1, entry.summary.y2) !== undefined
+          && Math.max(Math.min(previous.summary.y1, previous.summary.y2), Math.min(entry.summary.y1, entry.summary.y2))
+            <= Math.min(Math.max(previous.summary.y1, previous.summary.y2), Math.max(entry.summary.y1, entry.summary.y2)) + 1.5
+        : Math.max(Math.min(previous.summary.x1, previous.summary.x2), Math.min(entry.summary.x1, entry.summary.x2))
+            <= Math.min(Math.max(previous.summary.x1, previous.summary.x2), Math.max(entry.summary.x1, entry.summary.x2)) + 1.5;
+      if (overlap) {
+        currentCluster.push(entry);
+      } else {
+        clustered.push([entry]);
+      }
+    }
+    for (const cluster of clustered) {
+      if (cluster.length < 2) continue;
+      const hasMicro = cluster.some((entry) => entry.summary.length <= 2);
+      const issue = {
+        issue_type: "collinear_overlap_cluster",
+        orientation: cluster[0].summary.orientation,
+        block_name: cluster.every((entry) => String(entry.object?.block_name || "") === String(cluster[0].object?.block_name || ""))
+          ? (cluster[0].object?.block_name || null)
+          : null,
+        members: cluster.map((entry) => ({
+          object_id: entry.object.id,
+          entity_id: entry.object.entity_id,
+          parent_insert_id: entry.object?.parent_insert_id || null,
+          block_name: entry.object?.block_name || null,
+          source_line: entry.object?.source?.line_start || null,
+          layer: entry.object?.primary_layer || null,
+          length_mm: roundNumber(entry.summary.length, 3),
+          bbox: lineBBox(entry.summary)
+        })),
+        suggestion: hasMicro
+          ? "Inspect cluster and remove micro fragments from TOPO mover selection."
+          : "Inspect duplicated/overlapping line cluster before authoring TOPO."
+      };
+      overlapGroups.push(issue);
+    }
+  }
+
+  issues.push(...degenerateLines, ...microLines, ...overlapGroups);
+  return {
+    ok: issues.length === 0,
+    counts: {
+      degenerate_lines: degenerateLines.length,
+      micro_lines: microLines.length,
+      collinear_overlap_clusters: overlapGroups.length,
+      total_issues: issues.length
+    },
+    issues
+  };
+}
+
+function collectXdataContext(objects) {
+  const sourceObjects = Array.isArray(objects) ? objects : [];
+  const featureFamilies = new Set();
+  const variantKeys = new Set();
+  for (const object of sourceObjects) {
+    const metadata = object?.xdata_metadata;
+    const featureFamily = String(metadata?.feature_family || "").trim();
+    const variantKey = String(metadata?.variant_key || "").trim();
+    if (featureFamily) featureFamilies.add(featureFamily);
+    if (variantKey) variantKeys.add(variantKey);
+  }
+  return {
+    feature_families: Array.from(featureFamilies.values()).sort(),
+    variant_keys: Array.from(variantKeys.values()).sort()
+  };
+}
+
 function projectViewModel(session) {
   reindexDocumentSources(session.document);
   const state = buildRelevantState(session.document, session.bands, session.assignments);
@@ -1582,6 +1933,9 @@ function projectViewModel(session) {
   });
   const topo_metadata = projectTopoMetadata(session);
   const document_sem = collectDocumentSemMetadata(session.document);
+  const sanitizeReview = buildSanitizeReview(session.document);
+  const geometry_hygiene = sanitizeReview.geometry_hygiene;
+  const xdata_context = sanitizeReview.xdata_context;
 
   return {
     session_id: session.session_id,
@@ -1596,6 +1950,8 @@ function projectViewModel(session) {
     rule_catalog: normalizeRuleCatalogSnapshot(session.rule_catalog),
     document_sem,
     topo_metadata,
+    geometry_hygiene,
+    xdata_context,
     objects,
     allowed_layers: Array.from(ALLOWED_PRIMARY_LAYERS.values()),
     semantic_colors: SEMANTIC_COLORS
@@ -1886,6 +2242,211 @@ function translateEntityPairs(entity, dx, dy) {
   });
 }
 
+function setRuntimePairValue(entity, code, value) {
+  const codeText = String(code);
+  const nextValue = String(value);
+  const pairs = Array.isArray(entity?.pairs) ? entity.pairs : [];
+  const idx = pairs.findIndex((pair) => String(pair?.code) === codeText);
+  if (idx >= 0) {
+    pairs[idx] = { ...pairs[idx], code: codeText, value: nextValue };
+    return;
+  }
+  pairs.splice(1, 0, { code: codeText, value: nextValue });
+}
+
+function clonePairsForRuntime(pairs) {
+  return (Array.isArray(pairs) ? pairs : []).map((pair) => ({
+    code: String(pair?.code || ""),
+    value: String(pair?.value || "")
+  }));
+}
+
+function collectUsedHandles(document) {
+  const handles = new Set();
+  const collectFrom = (entity) => {
+    const handle = String(pairValue(entity || {}, "5", "") || "").trim().toUpperCase();
+    if (handle) handles.add(handle);
+  };
+  for (const entity of Array.isArray(document?.entities) ? document.entities : []) {
+    collectFrom(entity);
+  }
+  for (const block of Array.isArray(document?.blocks) ? document.blocks : []) {
+    for (const entity of Array.isArray(block?.entities) ? block.entities : []) {
+      collectFrom(entity);
+    }
+  }
+  return handles;
+}
+
+function nextExplodedHandle(usedHandles) {
+  let nextHandle = "";
+  do {
+    nextHandle = crypto.randomBytes(4).toString("hex").toUpperCase();
+  } while (usedHandles.has(nextHandle));
+  usedHandles.add(nextHandle);
+  return nextHandle;
+}
+
+function nextExplodedEntityCounter(document) {
+  let maxId = 0;
+  const inspect = (entity) => {
+    const raw = String(entity?.id || "");
+    const match = raw.match(/(?:^|_)(\d+)$/);
+    if (!match) return;
+    const numeric = Number(match[1]);
+    if (Number.isFinite(numeric) && numeric > maxId) maxId = numeric;
+  };
+  for (const entity of Array.isArray(document?.entities) ? document.entities : []) inspect(entity);
+  for (const block of Array.isArray(document?.blocks) ? document.blocks : []) {
+    for (const entity of Array.isArray(block?.entities) ? block.entities : []) inspect(entity);
+  }
+  return maxId + 1;
+}
+
+function normalizeInsertTransform(entity) {
+  return {
+    tx: Number(pairValue(entity || {}, "10", "0")) || 0,
+    ty: Number(pairValue(entity || {}, "20", "0")) || 0,
+    scaleX: Number(pairValue(entity || {}, "41", "1")) || 1,
+    scaleY: Number(pairValue(entity || {}, "42", "1")) || 1,
+    rotationDeg: Number(pairValue(entity || {}, "50", "0")) || 0
+  };
+}
+
+function applyTransformChain(point, chain) {
+  let next = { x: Number(point?.x || 0), y: Number(point?.y || 0) };
+  for (const transform of Array.isArray(chain) ? chain : []) {
+    next = transformPoint(next, transform);
+  }
+  return next;
+}
+
+function chainScaleX(chain) {
+  return (Array.isArray(chain) ? chain : []).reduce((acc, transform) => acc * (Number(transform?.scaleX || 1) || 1), 1);
+}
+
+function chainRotation(chain) {
+  return (Array.isArray(chain) ? chain : []).reduce((acc, transform) => acc + (Number(transform?.rotationDeg || 0) || 0), 0);
+}
+
+function transformExplodedEntity(entity, chain, nextIdRef, usedHandles) {
+  const type = String(entity?.type || "").toUpperCase();
+  if (!["LINE", "ARC", "CIRCLE"].includes(type)) return null;
+  const next = {
+    id: `ent_${nextIdRef.value}`,
+    type,
+    pairs: clonePairsForRuntime(entity?.pairs),
+    preComments: clonePairsForRuntime(entity?.preComments),
+    section: "ENTITIES",
+    blockName: null,
+    source: null
+  };
+  nextIdRef.value += 1;
+  setRuntimePairValue(next, "5", nextExplodedHandle(usedHandles));
+
+  if (type === "LINE") {
+    const p1 = applyTransformChain({
+      x: Number(pairValue(entity, "10", "0")) || 0,
+      y: Number(pairValue(entity, "20", "0")) || 0
+    }, chain);
+    const p2 = applyTransformChain({
+      x: Number(pairValue(entity, "11", "0")) || 0,
+      y: Number(pairValue(entity, "21", "0")) || 0
+    }, chain);
+    setRuntimePairValue(next, "10", String(roundNumber(p1.x, 3)));
+    setRuntimePairValue(next, "20", String(roundNumber(p1.y, 3)));
+    setRuntimePairValue(next, "11", String(roundNumber(p2.x, 3)));
+    setRuntimePairValue(next, "21", String(roundNumber(p2.y, 3)));
+    return next;
+  }
+
+  const center = applyTransformChain({
+    x: Number(pairValue(entity, "10", "0")) || 0,
+    y: Number(pairValue(entity, "20", "0")) || 0
+  }, chain);
+  setRuntimePairValue(next, "10", String(roundNumber(center.x, 3)));
+  setRuntimePairValue(next, "20", String(roundNumber(center.y, 3)));
+  const radius = Math.abs((Number(pairValue(entity, "40", "0")) || 0) * chainScaleX(chain));
+  setRuntimePairValue(next, "40", String(roundNumber(radius, 3)));
+
+  if (type === "ARC") {
+    const rotation = chainRotation(chain);
+    const startAngle = (Number(pairValue(entity, "50", "0")) || 0) + rotation;
+    const endAngle = (Number(pairValue(entity, "51", "0")) || 0) + rotation;
+    setRuntimePairValue(next, "50", String(roundNumber(startAngle, 3)));
+    setRuntimePairValue(next, "51", String(roundNumber(endAngle, 3)));
+  }
+  return next;
+}
+
+function explodeInsertChildren(document, entity, chain, nextIdRef, usedHandles) {
+  const type = String(entity?.type || "").toUpperCase();
+  if (type === "INSERT") {
+    const blockName = String(pairValue(entity || {}, "2", "") || "").trim();
+    const block = (Array.isArray(document?.blocks) ? document.blocks : []).find((item) => String(item?.name || "").trim() === blockName);
+    if (!block) {
+      throw new Error(`Missing block definition for INSERT ${entity?.id || "(unknown)"}: ${blockName || "(unnamed block)"}`);
+    }
+    const nextChain = [...chain, normalizeInsertTransform(entity)];
+    return (Array.isArray(block.entities) ? block.entities : []).flatMap((child) =>
+      explodeInsertChildren(document, child, nextChain, nextIdRef, usedHandles)
+    );
+  }
+  const transformed = transformExplodedEntity(entity, chain, nextIdRef, usedHandles);
+  return transformed ? [transformed] : [];
+}
+
+async function explodeBlockInsert({ sessionId, entityId, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const sourceEntity = findEntity(session.document, entityId);
+  if (!sourceEntity) {
+    throw new Error(`Unknown entity id: ${entityId}`);
+  }
+  if (String(sourceEntity.type || "").toUpperCase() !== "INSERT") {
+    throw new Error(`Entity ${entityId} is not an INSERT and cannot be exploded.`);
+  }
+
+  const existingIndex = (Array.isArray(session.document.entities) ? session.document.entities : []).findIndex((entity) => entity.id === entityId);
+  if (existingIndex < 0) {
+    throw new Error(`Only top-level INSERT entities can be exploded. Missing entity: ${entityId}`);
+  }
+
+  const usedHandles = collectUsedHandles(session.document);
+  const nextIdRef = { value: nextExplodedEntityCounter(session.document) };
+  const explodedEntities = explodeInsertChildren(session.document, sourceEntity, [], nextIdRef, usedHandles);
+  if (!explodedEntities.length) {
+    throw new Error(`INSERT ${entityId} did not produce any explodable child entities.`);
+  }
+
+  const originalAssignment = session.assignments?.[entityId] ? { ...session.assignments[entityId] } : null;
+  const originalXdata = session.xdata_assignments?.[entityId] ? { ...session.xdata_assignments[entityId] } : null;
+  session.document.entities.splice(existingIndex, 1, ...explodedEntities);
+  pruneUnusedBlocks(session.document);
+
+  delete session.assignments[entityId];
+  delete session.xdata_assignments[entityId];
+  for (const entity of explodedEntities) {
+    if (originalAssignment) {
+      session.assignments[entity.id] = { ...originalAssignment };
+    }
+    if (originalXdata) {
+      session.xdata_assignments[entity.id] = { ...originalXdata };
+    }
+  }
+
+  reindexDocumentSources(session.document);
+  projectViewModel(session);
+  session.updated_at = new Date().toISOString();
+  session.artifact_state = "mother_draft";
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return {
+    session,
+    removed_entity_id: entityId,
+    exploded_entity_ids: explodedEntities.map((entity) => entity.id),
+    block_name: String(pairValue(sourceEntity, "2", "") || "").trim() || null
+  };
+}
+
 function entityMapById(document) {
   const out = new Map();
   for (const entity of Array.isArray(document?.entities) ? document.entities : []) {
@@ -2112,238 +2673,6 @@ function generateChildDxfTopoPoc(session, parameterSet) {
 
 function cloneShapes(shapes) {
   return JSON.parse(JSON.stringify(Array.isArray(shapes) ? shapes : []));
-}
-
-function shapeAnchorPoint(shape) {
-  if (!shape || typeof shape !== "object") return null;
-  if (shape.kind === "circle" || shape.kind === "arc") {
-    const x = Number(shape.centerX);
-    const y = Number(shape.centerY);
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
-  }
-  if (shape.kind === "insert") {
-    const x = Number(shape.x);
-    const y = Number(shape.y);
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
-  }
-  return null;
-}
-
-function buildHorizontalBandContext(objects) {
-  const context = {
-    T: { minX: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY },
-    B: { minX: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY }
-  };
-  for (const object of Array.isArray(objects) ? objects : []) {
-    const layer = String(object?.primary_layer || "").trim().toUpperCase();
-    const bucket = layer === "T" || layer === "TL" || layer === "TR"
-      ? context.T
-      : layer === "B" || layer === "BL" || layer === "BR"
-        ? context.B
-        : null;
-    if (!bucket) continue;
-    for (const shape of Array.isArray(object.shapes) ? object.shapes : []) {
-      const shapeBBox = bboxFromShapes([shape]);
-      if (!shapeBBox) continue;
-      bucket.minX = Math.min(bucket.minX, shapeBBox.minX);
-      bucket.maxX = Math.max(bucket.maxX, shapeBBox.maxX);
-    }
-  }
-  for (const key of Object.keys(context)) {
-    if (!Number.isFinite(context[key].minX) || !Number.isFinite(context[key].maxX)) {
-      context[key] = null;
-    }
-  }
-  return context;
-}
-
-function buildVerticalBandContext(objects) {
-  const context = {
-    L: { minY: Number.POSITIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY },
-    R: { minY: Number.POSITIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY }
-  };
-  for (const object of Array.isArray(objects) ? objects : []) {
-    const layer = String(object?.primary_layer || "").trim().toUpperCase();
-    const bucket = layer === "L" || layer === "TL" || layer === "BL"
-      ? context.L
-      : layer === "R" || layer === "TR" || layer === "BR"
-        ? context.R
-        : null;
-    if (!bucket) continue;
-    for (const shape of Array.isArray(object.shapes) ? object.shapes : []) {
-      const shapeBBox = bboxFromShapes([shape]);
-      if (!shapeBBox) continue;
-      bucket.minY = Math.min(bucket.minY, shapeBBox.minY);
-      bucket.maxY = Math.max(bucket.maxY, shapeBBox.maxY);
-    }
-  }
-  for (const key of Object.keys(context)) {
-    if (!Number.isFinite(context[key].minY) || !Number.isFinite(context[key].maxY)) {
-      context[key] = null;
-    }
-  }
-  return context;
-}
-
-function inferredRigidXOffsetForHorizontalBand(shape, layer, offset, bandContext) {
-  const normalizedLayer = String(layer || "").trim().toUpperCase();
-  if (normalizedLayer !== "T" && normalizedLayer !== "B") return 0;
-  if (!shape || shape.kind === "line") return 0;
-  const context = bandContext ? bandContext[normalizedLayer] : null;
-  const anchor = shapeAnchorPoint(shape);
-  if (!context || !anchor) return 0;
-  const leftDistance = Math.abs(Number(anchor.x) - Number(context.minX));
-  const rightDistance = Math.abs(Number(context.maxX) - Number(anchor.x));
-  if (leftDistance < rightDistance) return Number(offset?.dx_left || 0);
-  if (rightDistance < leftDistance) return Number(offset?.dx_right || 0);
-  return 0;
-}
-
-function inferredRigidYOffsetForVerticalBand(shape, layer, offset, bandContext) {
-  const normalizedLayer = String(layer || "").trim().toUpperCase();
-  if (normalizedLayer !== "L" && normalizedLayer !== "R") return 0;
-  if (!shape || shape.kind === "line") return 0;
-  const context = bandContext ? bandContext[normalizedLayer] : null;
-  const anchor = shapeAnchorPoint(shape);
-  if (!context || !anchor) return 0;
-  const bottomDistance = Math.abs(Number(anchor.y) - Number(context.minY));
-  const topDistance = Math.abs(Number(context.maxY) - Number(anchor.y));
-  if (topDistance < bottomDistance) return Number(offset?.dy_top || 0);
-  if (bottomDistance < topDistance) return Number(offset?.dy_bottom || 0);
-  return 0;
-}
-
-function readNumericParameter(parameters, keys, fallback) {
-  for (const key of Array.isArray(keys) ? keys : []) {
-    const value = parameters ? parameters[key] : undefined;
-    const num = Number(value);
-    if (Number.isFinite(num)) return num;
-  }
-  return fallback;
-}
-
-function standardParametricDeltas(parameters) {
-  const height = readNumericParameter(parameters, ["VISINA", "VISINA_VRATA"], 2100);
-  const width = readNumericParameter(parameters, ["SIRINA", "SIRINA_VRATA"], 900);
-  const shortening = readNumericParameter(parameters, ["SKRACENJE"], 0);
-  return {
-    height_delta: height - 2100,
-    width_half_delta: (width - 900) / 2,
-    shortening_delta: shortening
-  };
-}
-
-function standardLayerOffset(layer, deltas) {
-  const normalizedLayer = String(layer || "").trim().toUpperCase();
-  const dxHeight = -Number(deltas?.height_delta || 0);
-  const dxShortening = Number(deltas?.shortening_delta || 0);
-  const dyWidth = Number(deltas?.width_half_delta || 0);
-
-  switch (normalizedLayer) {
-    case "L":
-      return { dx: dxHeight, dy: 0 };
-    case "R":
-      return { dx: dxShortening, dy: 0 };
-    case "T":
-      return { dx: 0, dy: dyWidth };
-    case "B":
-      return { dx: 0, dy: -dyWidth };
-    case "TL":
-      return { dx: dxHeight, dy: dyWidth };
-    case "TR":
-      return { dx: dxShortening, dy: dyWidth };
-    case "BL":
-      return { dx: dxHeight, dy: -dyWidth };
-    case "BR":
-      return { dx: dxShortening, dy: -dyWidth };
-    default:
-      return { dx: 0, dy: 0 };
-  }
-}
-
-function buildStandardGeometrySimulationMap(objects, parameters) {
-  const deltas = standardParametricDeltas(parameters);
-  const bandContext = buildHorizontalBandContext(objects);
-  const verticalBandContext = buildVerticalBandContext(objects);
-  const lineCandidates = collectLineCandidates(objects);
-  const objectMap = new Map();
-  const simulatedShapeMap = new Map();
-
-  for (const object of Array.isArray(objects) ? objects : []) {
-    const baseOffset = standardLayerOffset(object?.primary_layer, deltas);
-    const objectLinePairing = [];
-    const originalShapes = cloneShapes(object?.shapes);
-    const simulatedShapes = originalShapes.map((shape, shapeIndex) => {
-      const inferredX = inferredRigidXOffsetForHorizontalBand(shape, object?.primary_layer, {
-        dx_left: -Number(deltas?.height_delta || 0),
-        dx_right: Number(deltas?.shortening_delta || 0)
-      }, bandContext);
-      const inferredY = inferredRigidYOffsetForVerticalBand(shape, object?.primary_layer, {
-        dy_top: Number(deltas?.width_half_delta || 0),
-        dy_bottom: -Number(deltas?.width_half_delta || 0)
-      }, verticalBandContext);
-      const translatedShape = translateShape(shape, baseOffset.dx + inferredX, baseOffset.dy + inferredY);
-      simulatedShapeMap.set(`${object.id}:${shapeIndex}`, translatedShape);
-      return translatedShape;
-    });
-    objectMap.set(object.id, {
-      geometry_simulation_mode: "none_topology_standard_parametric_v0",
-      simulated_shapes: simulatedShapes,
-      simulated_bbox: simulatedShapes.length ? bboxFromShapes(simulatedShapes) : (object?.bbox ? cloneJson(object.bbox) : null),
-      applied_offset: baseOffset,
-      reference_deltas: deltas,
-      line_pairing: objectLinePairing
-    });
-  }
-
-  for (const object of Array.isArray(objects) ? objects : []) {
-    const preview = objectMap.get(object.id);
-    if (!preview) continue;
-    for (let index = 0; index < preview.simulated_shapes.length; index += 1) {
-      const originalShape = object?.shapes?.[index];
-      const translatedShape = preview.simulated_shapes[index];
-      if (!originalShape || originalShape.kind !== "line") continue;
-      const resolved = applyTrimRejoinToTranslatedLine(
-        originalShape,
-        translatedShape,
-        lineCandidates,
-        { object_id: object.id, shape_index: index },
-        simulatedShapeMap
-      );
-      for (const pairing of resolved.pairings || []) {
-        preview.line_pairing.push({
-          status: pairing.status,
-          paired_vertex: pairing.paired_vertex || null,
-          anchor_object_id: pairing.candidate ? pairing.candidate.object_id : null,
-          anchor_shape_index: pairing.candidate ? pairing.candidate.shape_index : null,
-          anchor_vertex: pairing.candidate_vertex || null,
-          intersection: pairing.intersection || null
-        });
-      }
-      preview.simulated_shapes[index] = resolved.shape;
-      simulatedShapeMap.set(`${object.id}:${index}`, resolved.shape);
-      for (const reciprocal of resolved.reciprocals || []) {
-        const reciprocalPreview = objectMap.get(reciprocal.object_id);
-        if (reciprocalPreview && reciprocalPreview.simulated_shapes[reciprocal.shape_index]) {
-          reciprocalPreview.simulated_shapes[reciprocal.shape_index] = reciprocal.shape;
-          simulatedShapeMap.set(
-            `${reciprocal.object_id}:${reciprocal.shape_index}`,
-            reciprocal.shape
-          );
-        }
-      }
-    }
-  }
-
-  for (const object of Array.isArray(objects) ? objects : []) {
-    const preview = objectMap.get(object.id);
-    if (!preview) continue;
-    preview.simulated_bbox = preview.simulated_shapes.length
-      ? bboxFromShapes(preview.simulated_shapes)
-      : (object?.bbox ? cloneJson(object.bbox) : null);
-  }
-
-  return objectMap;
 }
 
 function quantileFromSorted(values, p) {
@@ -2577,7 +2906,11 @@ function simulateChildPreview(session) {
     : null;
   const topologyMode = topoRuntime?.mode || "none";
   const standardSimulationMap = topologyMode === "none"
-    ? buildStandardGeometrySimulationMap(view.objects, config.parameters)
+    ? runResolverPreview({
+      profile: "standard_parametric_resize",
+      objects: view.objects,
+      configParameterSet: config
+    })
     : null;
   const topoSimulationMap = topologyMode !== "none"
     ? buildTopoGeometrySimulationMap(session, view.objects, config.parameters, topologyMode)
@@ -3094,6 +3427,7 @@ module.exports = {
   updateTopoMetadata,
   updateEntityTopoRoleMetadata,
   updateSessionMeta,
+  explodeBlockInsert,
   authorSemanticMetadata,
   clearSemanticMetadata,
   updateEntityXdataMetadata,

@@ -126,6 +126,13 @@
           <h2>Selection</h2>
           <div class="meta" style="margin-bottom:10px">Click za single select. Drag za rectangle select. Klik na prazno čisti selekciju.</div>
           <div id="selectionBox" class="selection"><div class="meta">No selection.</div></div>
+          <div id="selectionTowerMeta" class="meta" style="margin-top:10px">Selection helpers inactive.</div>
+          <div id="selectionTowerStatus" class="status" style="margin-top:10px;display:none"></div>
+          <div id="selectionTowerBox" class="selection" style="margin-top:10px;display:none"><div class="meta">No active selection issues.</div></div>
+          <div class="toolbar" style="margin-top:12px">
+            <button id="selectionExplodeBtn" class="secondary" type="button" style="display:none">Explode Selected Block</button>
+            <button id="selectionTowerDoneBtn" class="secondary" type="button" style="display:none">Done Selecting</button>
+          </div>
         </div>
 
         <div class="card" id="cardForceXdata">
@@ -146,6 +153,7 @@
               </label>
             </div>
             <div class="toolbar" style="margin-top:12px">
+              <button id="xdataSelectBtn" class="secondary" type="button">Select</button>
               <button id="assignXdataBtn" class="secondary" type="button">Assign XDATA to selection</button>
               <button id="clearSelectionBtn" class="secondary" type="button">Clear selection</button>
             </div>
@@ -156,6 +164,38 @@
           <details id="forceAssignLayerDetails">
             <summary><strong>Force Assign Layer</strong></summary>
             <div class="toolbar" id="assignToolbar" style="margin-top:12px"></div>
+          </details>
+        </div>
+
+        <div class="card" id="cardSanitizeCheck">
+          <details id="sanitizeCheckDetails">
+            <summary><strong>Sanitize Check</strong></summary>
+            <div class="meta" style="margin-top:10px">Vizualni upstream pregled problematične raw DXF geometrije. Markeri na kanvasu prate popis grešaka i pomažu iterativnom čišćenju u CAD-u prije downstream Mother DXF authoringa.</div>
+            <div class="meta" style="margin:10px 0 6px">Geometry Hygiene</div>
+            <div id="geometryHygieneMeta" class="meta" style="margin-bottom:8px">No geometry hygiene report yet.</div>
+            <div id="geometryHygieneList" class="selection" style="max-height:220px"><div class="meta">No geometry hygiene issues.</div></div>
+            <label style="margin-top:10px;display:block">Diagnostics
+              <textarea id="geometryHygieneOut" readonly style="min-height:180px" placeholder="Geometry hygiene diagnostics will appear here."></textarea>
+            </label>
+          </details>
+        </div>
+
+        <div class="card" id="cardXdataContext">
+          <details id="xdataContextDetails">
+            <summary><strong>XDATA Context</strong></summary>
+            <div class="meta" style="margin-top:10px">Session-wide variant filter za viewer, selection i authoring. Aktivni `VARIANT_KEY` skriva i isključuje iz selekcije neaktivne variant geometrije.</div>
+            <div id="xdataContextMeta" class="meta" style="margin-top:10px">No active variant filter.</div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>Active Variant Key
+                <select id="xdataContextVariantKey">
+                  <option value="">No active variant filter</option>
+                </select>
+              </label>
+              <div style="display:flex;align-items:end">
+                <button id="clearXdataContextBtn" class="secondary" type="button" style="width:100%">Clear Variant Filter</button>
+              </div>
+            </div>
+            <div id="xdataContextBox" class="selection" style="margin-top:10px"><div class="meta">No XDATA context loaded.</div></div>
           </details>
         </div>
 
@@ -462,6 +502,7 @@
             <button id="generateTopoChildBtn" class="good" style="display:none" disabled>Generate TOPO Child DXF</button>
           </div>
           <div id="childSummaryBox" class="meta" style="display:none;margin-top:10px"></div>
+          <div class="meta" style="margin:10px 0 6px">Validation</div>
           <pre id="validationOut">{"ok":false}</pre>
         </div>
 
@@ -512,6 +553,10 @@
         previousValue: "",
         ghostEnabled: true
       },
+      selectionTower: {
+        active: false,
+        mode: null
+      },
       documentSem: {
         ruleRefs: [],
         dirtyRules: false
@@ -519,6 +564,17 @@
       authoring: {
         activeStage: "topo",
         topoSkipped: false
+      },
+      geometryHygiene: {
+        report: null,
+        issues: [],
+        markers: [],
+        activeIssueIndex: -1,
+        hoverIssueIndex: -1,
+        textRanges: []
+      },
+      xdataContext: {
+        activeVariantKey: ""
       }
     };
 
@@ -526,6 +582,20 @@
     const canvas = document.getElementById("viewerCanvas");
     const ctx = canvas.getContext("2d");
     const selectionBox = document.getElementById("selectionBox");
+    const selectionTowerMeta = document.getElementById("selectionTowerMeta");
+    const selectionTowerStatus = document.getElementById("selectionTowerStatus");
+    const selectionTowerBox = document.getElementById("selectionTowerBox");
+    const selectionExplodeBtn = document.getElementById("selectionExplodeBtn");
+    const selectionTowerDoneBtn = document.getElementById("selectionTowerDoneBtn");
+    const sanitizeCheckDetails = document.getElementById("sanitizeCheckDetails");
+    const xdataContextDetails = document.getElementById("xdataContextDetails");
+    const xdataContextMeta = document.getElementById("xdataContextMeta");
+    const xdataContextVariantKey = document.getElementById("xdataContextVariantKey");
+    const clearXdataContextBtn = document.getElementById("clearXdataContextBtn");
+    const xdataContextBox = document.getElementById("xdataContextBox");
+    const geometryHygieneMeta = document.getElementById("geometryHygieneMeta");
+    const geometryHygieneList = document.getElementById("geometryHygieneList");
+    const geometryHygieneOut = document.getElementById("geometryHygieneOut");
     const validationOut = document.getElementById("validationOut");
     const statusBox = document.getElementById("statusBox");
     const sessionMeta = document.getElementById("sessionMeta");
@@ -626,6 +696,7 @@
     const xdataBreakdown = document.getElementById("xdataBreakdown");
     const xdataValueInput = document.getElementById("xdataValueInput");
     const xdataGhostToggle = document.getElementById("xdataGhostToggle");
+    const xdataSelectBtn = document.getElementById("xdataSelectBtn");
     const assignXdataBtn = document.getElementById("assignXdataBtn");
     const clearSelectionBtn = document.getElementById("clearSelectionBtn");
     const DOCUMENT_RULE_FALLBACKS = [
@@ -769,6 +840,17 @@
       `).join("");
     }
 
+    function syncSelectionToVariantContext() {
+      if (!state.session || !state.selectedIds.size) return;
+      const next = new Set(
+        Array.from(state.selectedIds).filter((id) => {
+          const object = objectById(id);
+          return object && isObjectSelectableInVariantContext(object);
+        })
+      );
+      state.selectedIds = next;
+    }
+
     function syncCanvasSize() {
       const ratio = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
@@ -813,6 +895,34 @@
       return Boolean(forceXdataDetails?.open);
     }
 
+    function sanitizeCheckOpen() {
+      return Boolean(sanitizeCheckDetails?.open);
+    }
+
+    function currentActiveVariantKey() {
+      return String(state.xdataContext?.activeVariantKey || "").trim();
+    }
+
+    function objectVariantKey(object) {
+      return String(object?.xdata_metadata?.variant_key || "").trim();
+    }
+
+    function objectFeatureFamily(object) {
+      return String(object?.xdata_metadata?.feature_family || "").trim();
+    }
+
+    function isObjectVisibleInVariantContext(object) {
+      const activeVariantKey = currentActiveVariantKey();
+      if (!activeVariantKey) return true;
+      const variantKey = objectVariantKey(object);
+      if (!variantKey) return true;
+      return variantKey === activeVariantKey;
+    }
+
+    function isObjectSelectableInVariantContext(object) {
+      return isObjectVisibleInVariantContext(object);
+    }
+
     function syncCurrentDxfText(text) {
       if (text === undefined || text === null) return;
       dxfInput.value = String(text);
@@ -853,6 +963,74 @@
         .filter(Boolean);
     }
 
+    function selectionTowerActive() {
+      return Boolean(state.selectionTower?.active);
+    }
+
+    function startSelectionTower(mode) {
+      state.selectionTower.active = true;
+      state.selectionTower.mode = mode || "generic";
+    }
+
+    function stopSelectionTower() {
+      state.selectionTower.active = false;
+      state.selectionTower.mode = null;
+    }
+
+    function currentXdataTargetValue() {
+      const explicit = String(xdataValueInput?.value || "").trim();
+      if (explicit) return explicit;
+      return String(state.xdata?.previousValue || "").trim();
+    }
+
+    function bboxSignature(bbox) {
+      if (!bbox) return "";
+      const values = [bbox.minX, bbox.minY, bbox.maxX, bbox.maxY].map((value) => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric.toFixed(3) : "?";
+      });
+      return values.join("|");
+    }
+
+    function overlappingSelectionGroups(objects) {
+      const buckets = new Map();
+      for (const object of Array.isArray(objects) ? objects : []) {
+        const bbox = effectiveBBoxForObject(object);
+        const signature = `${String(object?.type || "").toUpperCase()}|${bboxSignature(bbox)}`;
+        if (!buckets.has(signature)) buckets.set(signature, []);
+        buckets.get(signature).push(object);
+      }
+      return Array.from(buckets.values()).filter((group) => group.length > 1);
+    }
+
+    function objectConflictSummary(object) {
+      const existingXdata = String(object?.xdata_metadata?.value || "").trim();
+      const targetXdata = currentXdataTargetValue();
+      return {
+        existingXdata,
+        targetXdata,
+        xdataConflict: Boolean(existingXdata && targetXdata && existingXdata !== targetXdata)
+      };
+    }
+
+    function removeOverlapPeersFromSelection(candidateId, groupIds) {
+      const next = new Set(state.selectedIds);
+      for (const id of groupIds) {
+        if (id !== candidateId) next.delete(id);
+      }
+      next.add(candidateId);
+      state.selectedIds = next;
+      render();
+      setStatus("Selection refined to chosen overlapping candidate.", "ok");
+    }
+
+    function selectedInsertObject() {
+      const objects = currentSelectionObjects();
+      return objects.length === 1 && String(objects[0]?.type || "").toUpperCase() === "INSERT"
+        ? objects[0]
+        : null;
+    }
+
     function clearXdataEditor() {
       state.xdata.mode = "assign";
       state.xdata.previousValue = "";
@@ -891,6 +1069,9 @@
       }
       if (!state.selectedIds.size) {
         clearXdataEditor();
+        return;
+      }
+      if (selectionTowerActive() && state.selectionTower.mode === "force_xdata_add") {
         return;
       }
       if (cause === "toggle" && state.xdata.mode === "edit") {
@@ -1083,6 +1264,7 @@
       let bestDistance = Number.POSITIVE_INFINITY;
       for (const object of state.session.objects || []) {
         if (!isObjectVisibleInSimulation(object.id)) continue;
+        if (!isObjectVisibleInVariantContext(object)) continue;
         for (const snapPoint of collectSnapPointsForObject(object)) {
           const screen = worldToScreen(snapPoint);
           const distance = Math.hypot(screenPoint.x - screen.x, screenPoint.y - screen.y);
@@ -1206,6 +1388,128 @@
       selectionBox.innerHTML = rows;
     }
 
+    function renderSelectionTower() {
+      const selectedInsert = selectedInsertObject();
+      if (!selectionTowerActive()) {
+        selectionTowerMeta.textContent = selectedInsert
+          ? `Selection helpers ready. Selected block: ${selectedInsert.block_name || selectedInsert.display_label || selectedInsert.id}`
+          : "Selection helpers inactive.";
+        selectionTowerStatus.style.display = "none";
+        selectionTowerBox.style.display = "none";
+        selectionExplodeBtn.style.display = selectedInsert ? "" : "none";
+        selectionTowerDoneBtn.style.display = "none";
+        return;
+      }
+
+      const objects = currentSelectionObjects();
+      const overlapGroups = overlappingSelectionGroups(objects);
+      const targetXdata = currentXdataTargetValue();
+      const xdataConflicts = objects.filter((object) => objectConflictSummary(object).xdataConflict);
+      const issueCount = overlapGroups.length + xdataConflicts.length;
+
+      selectionTowerMeta.textContent = state.selectionTower.mode === "force_xdata_add"
+        ? `Selection Mode: Force XDATA Add${targetXdata ? ` | target=${targetXdata}` : ""}`
+        : "Selection helpers active.";
+      selectionTowerStatus.style.display = "";
+      selectionTowerStatus.textContent = issueCount
+        ? `${issueCount} selection issue(s) detected. Refine selection and continue.`
+        : `${objects.length} object(s) in sticky selection. No conflicts detected.`;
+      selectionTowerStatus.style.background = issueCount ? "#fef3c7" : "#dcfce7";
+      selectionTowerStatus.style.color = issueCount ? "#92400e" : "#166534";
+      selectionTowerBox.style.display = "";
+      selectionExplodeBtn.style.display = selectedInsert ? "" : "none";
+      selectionTowerDoneBtn.style.display = "";
+
+      const rows = [];
+      if (!objects.length) {
+        rows.push(`<div class="selection-item"><strong>No active selection.</strong> CTRL+click ili CTRL+drag dodaju kandidate bez rušenja postupka.</div>`);
+      }
+
+      overlapGroups.forEach((group, index) => {
+        rows.push(`<div class="selection-item"><strong>Overlap group ${index + 1}</strong> | ${esc(group.length)} fully overlapping candidate(s)</div>`);
+        const groupIds = group.map((item) => item.id);
+        group.forEach((object) => {
+          const conflict = objectConflictSummary(object);
+          const linePrefix = object.source && object.source.line_start ? `Ln${object.source.line_start}` : "Ln?";
+          const existing = conflict.existingXdata ? `existing XDATA=${esc(conflict.existingXdata)}` : "existing XDATA=none";
+          const conflictBadge = conflict.xdataConflict ? " | conflicts with target" : "";
+          rows.push(
+            `<div class="selection-item"><strong>${esc(linePrefix)} | ${esc(object.display_label || object.id)}</strong> | ${existing}${conflictBadge}<div class="toolbar" style="margin-top:6px"><button type="button" class="secondary" data-selection-keep-only="${esc(object.id)}" data-selection-group="${esc(groupIds.join(","))}">Keep only this</button></div></div>`
+          );
+        });
+      });
+
+      xdataConflicts.forEach((object) => {
+        const conflict = objectConflictSummary(object);
+        rows.push(
+          `<div class="selection-item"><strong>XDATA conflict</strong> | ${esc(object.display_label || object.id)} | existing=${esc(conflict.existingXdata)} | target=${esc(conflict.targetXdata)}</div>`
+        );
+      });
+
+      if (selectedInsert) {
+        rows.push(
+          `<div class="selection-item"><strong>Block obstacle</strong> | ${esc(selectedInsert.display_label || selectedInsert.id)} | block=${esc(selectedInsert.block_name || "(unnamed)")}. Use Explode Selected Block to continue entity-level work in this same session.</div>`
+        );
+      }
+
+      if (!rows.length) {
+        rows.push(`<div class="selection-item"><strong>Selection looks clean.</strong> Click Done Selecting to return to the XDATA card and finish the annotation.</div>`);
+      }
+
+      selectionTowerBox.innerHTML = rows.join("");
+      selectionTowerBox.querySelectorAll("[data-selection-keep-only]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const candidateId = String(button.dataset.selectionKeepOnly || "");
+          const groupIds = String(button.dataset.selectionGroup || "").split(",").map((item) => String(item || "").trim()).filter(Boolean);
+          removeOverlapPeersFromSelection(candidateId, groupIds);
+        });
+      });
+    }
+
+    function renderXdataContextPanel() {
+      if (!state.session) {
+        xdataContextVariantKey.innerHTML = `<option value="">No active variant filter</option>`;
+        xdataContextVariantKey.value = "";
+        xdataContextMeta.textContent = "No active variant filter.";
+        xdataContextBox.innerHTML = `<div class="meta">No XDATA context loaded.</div>`;
+        return;
+      }
+      const context = state.session?.xdata_context || { feature_families: [], variant_keys: [] };
+      const variantKeys = Array.isArray(context.variant_keys) ? context.variant_keys : [];
+      const featureFamilies = Array.isArray(context.feature_families) ? context.feature_families : [];
+      const current = currentActiveVariantKey();
+      const previousValue = String(xdataContextVariantKey.value || "");
+      xdataContextVariantKey.innerHTML = [
+        `<option value="">No active variant filter</option>`,
+        ...variantKeys.map((key) => `<option value="${esc(key)}">${esc(key)}</option>`)
+      ].join("");
+      xdataContextVariantKey.value = variantKeys.includes(current) ? current : "";
+      if (!variantKeys.includes(current) && current) {
+        state.xdataContext.activeVariantKey = "";
+      }
+      const active = currentActiveVariantKey();
+      xdataContextMeta.textContent = active
+        ? `Active variant filter: ${active}. Non-matching variant geometry is hidden and non-selectable.`
+        : "No active variant filter.";
+      const rows = [];
+      rows.push(`<div class="selection-item"><strong>Feature families:</strong> ${esc(featureFamilies.join(" | ") || "none detected")}</div>`);
+      rows.push(`<div class="selection-item"><strong>Variant keys:</strong> ${esc(variantKeys.join(" | ") || "none detected")}</div>`);
+      if (active) {
+        const matchingCount = (state.session?.objects || []).filter((object) => objectVariantKey(object) === active).length;
+        const hiddenCount = (state.session?.objects || []).filter((object) => {
+          const variantKey = objectVariantKey(object);
+          return variantKey && variantKey !== active;
+        }).length;
+        rows.push(`<div class="selection-item"><strong>Active:</strong> ${esc(active)} | matching objects=${esc(matchingCount)} | hidden variant objects=${esc(hiddenCount)}</div>`);
+      } else {
+        rows.push(`<div class="selection-item"><strong>Mode:</strong> all geometry visible and selectable.</div>`);
+      }
+      xdataContextBox.innerHTML = rows.join("");
+      if (previousValue !== xdataContextVariantKey.value) {
+        syncSelectionToVariantContext();
+      }
+    }
+
     function renderXdataPanel() {
       const objects = currentSelectionObjects();
       const breakdown = objectTypeBreakdown(objects);
@@ -1226,15 +1530,20 @@
           `<div class="selection-item"><strong>Total:</strong> ${esc(selectionCount)}</div>`,
           `<div class="selection-item"><strong>Types:</strong> ${esc(breakdownEntries.map(([type, count]) => `${type}=${count}`).join(" | ") || "-")}</div>`
         ];
+        const xdataConflicts = objects.filter((object) => objectConflictSummary(object).xdataConflict);
         if (state.xdata.mode === "edit" && state.xdata.previousValue) {
           rows.push(`<div class="selection-item"><strong>Editing group:</strong> ${esc(state.xdata.previousValue)}</div>`);
         } else if (sharedValue) {
           rows.push(`<div class="selection-item"><strong>Shared XDATA:</strong> ${esc(sharedValue)}</div>`);
         }
+        if (xdataConflicts.length) {
+          rows.push(`<div class="selection-item"><strong>XDATA conflicts:</strong> ${esc(xdataConflicts.length)}</div>`);
+        }
         xdataBreakdown.innerHTML = rows.join("");
       }
       assignXdataBtn.disabled = !state.session || !selectionCount;
       clearSelectionBtn.disabled = !selectionCount;
+      xdataSelectBtn.disabled = !state.session;
       state.xdata.ghostEnabled = Boolean(xdataGhostToggle.checked);
     }
 
@@ -1325,6 +1634,338 @@
 
     function renderValidation(validation) {
       validationOut.textContent = JSON.stringify(validation || { ok: false }, null, 2);
+    }
+
+    function geometryHygieneFallbackReport() {
+      return {
+        ok: true,
+        note: "No geometry hygiene report yet.",
+        counts: {
+          degenerate_lines: 0,
+          micro_lines: 0,
+          collinear_overlap_clusters: 0,
+          total_issues: 0
+        },
+        issues: []
+      };
+    }
+
+    function issueObjectsFromGeometryHygiene(issue) {
+      if (!issue || !state.session) return [];
+      if (issue.bbox) {
+        return [{ bbox: issue.bbox }];
+      }
+      if (issue.object_id) {
+        const direct = objectById(issue.object_id);
+        if (direct) return [direct];
+        if (issue.bbox) return [{ bbox: issue.bbox }];
+        return [];
+      }
+      if (Array.isArray(issue.members)) {
+        return issue.members
+          .map((member) => objectById(member.object_id) || (member.bbox ? { bbox: member.bbox } : null))
+          .filter(Boolean);
+      }
+      return [];
+    }
+
+    function unionBbox(bboxes) {
+      const valid = (Array.isArray(bboxes) ? bboxes : []).filter(Boolean);
+      if (!valid.length) return null;
+      return valid.reduce((acc, bbox) => ({
+        minX: Math.min(acc.minX, bbox.minX),
+        minY: Math.min(acc.minY, bbox.minY),
+        maxX: Math.max(acc.maxX, bbox.maxX),
+        maxY: Math.max(acc.maxY, bbox.maxY)
+      }));
+    }
+
+    function geometryHygieneIssueBbox(issue) {
+      const objects = issueObjectsFromGeometryHygiene(issue);
+      const bboxes = objects.map((object) => effectiveBBoxForObject(object)).filter(Boolean);
+      return unionBbox(bboxes);
+    }
+
+    function geometryHygieneIssueAnchor(issue) {
+      const objects = issueObjectsFromGeometryHygiene(issue);
+      if (!objects.length) return null;
+      if (issue?.object_id) {
+        const bbox = effectiveBBoxForObject(objects[0]);
+        if (!bbox) return null;
+        return {
+          bbox,
+          object: objects[0]
+        };
+      }
+      const members = Array.isArray(issue?.members) ? issue.members : [];
+      const ranked = members
+        .map((member) => ({
+          member,
+          object: objectById(member.object_id),
+          rank: Number(member.length_mm)
+        }))
+        .filter((entry) => entry.object)
+        .sort((a, b) => {
+          const aRank = Number.isFinite(a.rank) ? a.rank : Number.POSITIVE_INFINITY;
+          const bRank = Number.isFinite(b.rank) ? b.rank : Number.POSITIVE_INFINITY;
+          return aRank - bRank;
+        });
+      const anchorObject = ranked[0]?.object || objects[0];
+      const anchorBbox = effectiveBBoxForObject(anchorObject);
+      if (!anchorBbox) return null;
+      return {
+        bbox: anchorBbox,
+        object: anchorObject
+      };
+    }
+
+    function geometryHygieneIssueTone(issueType) {
+      if (issueType === "degenerate_line") return { color: "#b42318", shape: "circle", label: "Degenerate line" };
+      if (issueType === "micro_line") return { color: "#b45309", shape: "square", label: "Micro line" };
+      if (issueType === "collinear_overlap_cluster") return { color: "#1d4ed8", shape: "rect", label: "Overlap cluster" };
+      return { color: "#475467", shape: "circle", label: "Geometry issue" };
+    }
+
+    function geometryHygieneIssueHeadline(issue, index) {
+      const tone = geometryHygieneIssueTone(issue?.issue_type);
+      const layer = issue?.layer ? ` | layer=${issue.layer}` : "";
+      const block = issue?.block_name ? ` | block=${issue.block_name}` : "";
+      if (issue?.issue_type === "degenerate_line") {
+        return `#${index + 1} ${tone.label}${layer}${block}`;
+      }
+      if (issue?.issue_type === "micro_line") {
+        return `#${index + 1} ${tone.label}${layer}${block} | ${esc(issue.orientation || "line")}`;
+      }
+      if (issue?.issue_type === "collinear_overlap_cluster") {
+        const memberCount = Array.isArray(issue.members) ? issue.members.length : 0;
+        return `#${index + 1} ${tone.label}${block} | ${esc(issue.orientation || "mixed")} | members=${memberCount}`;
+      }
+      return `#${index + 1} ${tone.label}`;
+    }
+
+    function geometryHygieneIssueDetails(issue) {
+      if (!issue) return [];
+      if (issue.issue_type === "degenerate_line") {
+        return [
+          `Entity ${issue.entity_id || issue.object_id || "?"}${issue.block_name ? ` inside block ${issue.block_name}` : ""} at source line ${issue.source_line || "?"}.`,
+          `Diagnosis: zero-length LINE parsed into session geometry.`,
+          `Suggestion: ${issue.suggestion || "Inspect and remove upstream in raw DXF."}`
+        ];
+      }
+      if (issue.issue_type === "micro_line") {
+        return [
+          `Entity ${issue.entity_id || issue.object_id || "?"}${issue.block_name ? ` inside block ${issue.block_name}` : ""} at source line ${issue.source_line || "?"}, length ${issue.length_mm} mm.`,
+          `Diagnosis: likely bridge fragment or raw DXF parasite.`,
+          `Suggestion: ${issue.suggestion || "Inspect and likely remove upstream in raw DXF."}`
+        ];
+      }
+      if (issue.issue_type === "collinear_overlap_cluster") {
+        const members = Array.isArray(issue.members) ? issue.members : [];
+        const memberSummary = members
+          .map((member) => `${member.entity_id || member.object_id || "?"}${member.block_name ? `@${member.block_name}` : ""}@Ln${member.source_line || "?"}`)
+          .join(", ");
+        return [
+          `Members: ${memberSummary || "n/a"}.`,
+          `Diagnosis: collinear overlapping fragments can confuse selection, TOPO mover assignment, and downstream repair.`,
+          `Suggestion: ${issue.suggestion || "Inspect cluster upstream in CAD before authoring TOPO."}`
+        ];
+      }
+      return [
+        `Diagnosis: geometry issue type ${issue.issue_type || "unknown"}.`,
+        `Suggestion: ${issue.suggestion || "Inspect upstream raw DXF."}`
+      ];
+    }
+
+    function buildGeometryHygieneView(report) {
+      const normalized = report && typeof report === "object" ? report : geometryHygieneFallbackReport();
+      const issues = Array.isArray(normalized.issues) ? normalized.issues : [];
+      const textRanges = [];
+      const lines = [];
+      issues.forEach((issue, index) => {
+        const start = lines.length;
+        lines.push(geometryHygieneIssueHeadline(issue, index));
+        for (const detail of geometryHygieneIssueDetails(issue)) {
+          lines.push(`- ${detail}`);
+        }
+        lines.push("");
+        textRanges.push({ startLine: start, endLine: lines.length - 1 });
+      });
+      if (!issues.length) {
+        lines.push(normalized.note || "No geometry hygiene issues.");
+      }
+      return {
+        report: normalized,
+        issues,
+        text: lines.join("\n"),
+        textRanges
+      };
+    }
+
+    function focusGeometryHygieneIssue(index) {
+      const issues = state.geometryHygiene.issues || [];
+      if (!issues.length || index < 0 || index >= issues.length) return;
+      state.geometryHygiene.activeIssueIndex = index;
+      const range = state.geometryHygiene.textRanges[index];
+      const lineHeight = getTextareaLineHeight();
+      const startLine = range ? range.startLine : 0;
+      const lines = String(geometryHygieneOut.value || "").split("\n");
+      let charIndex = 0;
+      for (let lineIndex = 0; lineIndex < startLine; lineIndex += 1) {
+        charIndex += (lines[lineIndex] || "").length + 1;
+      }
+      const targetTop = Math.max(0, (startLine - 1) * lineHeight);
+      geometryHygieneOut.scrollTop = targetTop;
+      geometryHygieneOut.focus();
+      geometryHygieneOut.setSelectionRange(charIndex, charIndex + (lines[startLine] || "").length);
+      renderGeometryHygiene(state.geometryHygiene.report);
+      render();
+      setStatus(`Focused geometry hygiene issue #${index + 1}.`, "ok");
+    }
+
+    function previewGeometryHygieneIssue(index) {
+      const issues = state.geometryHygiene.issues || [];
+      if (!issues.length || index < 0 || index >= issues.length) return;
+      state.geometryHygiene.activeIssueIndex = index;
+      const range = state.geometryHygiene.textRanges[index];
+      const lineHeight = getTextareaLineHeight();
+      const startLine = range ? range.startLine : 0;
+      const targetTop = Math.max(0, (startLine - 1) * lineHeight);
+      geometryHygieneOut.scrollTop = targetTop;
+      renderGeometryHygiene(state.geometryHygiene.report);
+    }
+
+    function renderGeometryHygiene(report) {
+      const fallback = geometryHygieneFallbackReport();
+      const normalized = report && typeof report === "object" ? report : fallback;
+      const view = buildGeometryHygieneView(normalized);
+      state.geometryHygiene.report = view.report;
+      state.geometryHygiene.issues = view.issues;
+      state.geometryHygiene.textRanges = view.textRanges;
+      if (state.geometryHygiene.activeIssueIndex >= view.issues.length) {
+        state.geometryHygiene.activeIssueIndex = view.issues.length ? 0 : -1;
+      }
+      const counts = view.report.counts || fallback.counts;
+      geometryHygieneMeta.textContent = view.issues.length
+        ? `Detected ${counts.total_issues || view.issues.length} issue(s) | degenerate=${counts.degenerate_lines || 0} | micro=${counts.micro_lines || 0} | overlap clusters=${counts.collinear_overlap_clusters || 0}`
+        : (view.report.note || fallback.note);
+      geometryHygieneOut.value = view.text;
+      if (!view.issues.length) {
+        geometryHygieneList.innerHTML = `<div class="meta">${esc(view.report.note || fallback.note)}</div>`;
+        return;
+      }
+      geometryHygieneList.innerHTML = view.issues.map((issue, index) => {
+        const active = index === state.geometryHygiene.activeIssueIndex;
+        const tone = geometryHygieneIssueTone(issue.issue_type);
+        const details = geometryHygieneIssueDetails(issue);
+        return `
+          <div class="selection-item" data-hygiene-issue-index="${index}" style="${active ? "background:#eef6ff;border-radius:10px;padding:8px;" : ""}">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+              <div>
+                <strong style="color:${tone.color}">${esc(geometryHygieneIssueHeadline(issue, index))}</strong>
+                <div class="meta" style="margin-top:4px">${esc(details[1] || details[0] || "")}</div>
+              </div>
+              <button type="button" class="secondary" data-hygiene-focus="${index}" style="padding:6px 10px">Focus</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+      geometryHygieneList.querySelectorAll("[data-hygiene-focus]").forEach((button) => {
+        button.addEventListener("click", () => focusGeometryHygieneIssue(Number(button.dataset.hygieneFocus)));
+      });
+    }
+
+    function geometryHygieneMarkers() {
+      const issues = Array.isArray(state.geometryHygiene.issues) ? state.geometryHygiene.issues : [];
+      return issues.map((issue, index) => {
+        const bbox = geometryHygieneIssueBbox(issue);
+        if (!bbox) return null;
+        const screenBbox = objectScreenBBox({ bbox });
+        if (!screenBbox) return null;
+        const anchor = geometryHygieneIssueAnchor(issue);
+        const anchorScreenBbox = anchor?.bbox ? objectScreenBBox({ bbox: anchor.bbox }) : null;
+        const center = {
+          x: anchorScreenBbox ? (anchorScreenBbox.minX + anchorScreenBbox.maxX) / 2 : (screenBbox.minX + screenBbox.maxX) / 2,
+          y: anchorScreenBbox ? (anchorScreenBbox.minY + anchorScreenBbox.maxY) / 2 : (screenBbox.minY + screenBbox.maxY) / 2
+        };
+        return {
+          index,
+          issue,
+          bbox,
+          screenBbox,
+          anchorScreenBbox,
+          center,
+          tone: geometryHygieneIssueTone(issue.issue_type)
+        };
+      }).filter(Boolean);
+    }
+
+    function drawGeometryHygieneMarkers() {
+      state.geometryHygiene.markers = geometryHygieneMarkers();
+      for (const marker of state.geometryHygiene.markers) {
+        const isActive = marker.index === state.geometryHygiene.activeIssueIndex;
+        const isHover = marker.index === state.geometryHygiene.hoverIssueIndex;
+        const { color, shape } = marker.tone;
+        const pad = isActive ? 6 : 4;
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = isHover ? 0.28 : 0.16;
+        if (shape === "rect") {
+          ctx.fillRect(
+            marker.screenBbox.minX - pad,
+            marker.screenBbox.minY - pad,
+            (marker.screenBbox.maxX - marker.screenBbox.minX) + pad * 2,
+            (marker.screenBbox.maxY - marker.screenBbox.minY) + pad * 2
+          );
+        } else {
+          const size = isActive ? 16 : 12;
+          if (shape === "square") {
+            ctx.fillRect(marker.center.x - size / 2, marker.center.y - size / 2, size, size);
+          } else {
+            ctx.beginPath();
+            ctx.arc(marker.center.x, marker.center.y, size / 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = isActive ? 2.5 : 1.5;
+        if (shape === "rect") {
+          ctx.strokeRect(
+            marker.screenBbox.minX - pad,
+            marker.screenBbox.minY - pad,
+            (marker.screenBbox.maxX - marker.screenBbox.minX) + pad * 2,
+            (marker.screenBbox.maxY - marker.screenBbox.minY) + pad * 2
+          );
+        } else if (shape === "square") {
+          const size = isActive ? 16 : 12;
+          ctx.strokeRect(marker.center.x - size / 2, marker.center.y - size / 2, size, size);
+        } else {
+          const size = isActive ? 16 : 12;
+          ctx.beginPath();
+          ctx.arc(marker.center.x, marker.center.y, size / 2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.fillStyle = "#111827";
+        ctx.font = "12px Segoe UI";
+        ctx.fillText(String(marker.index + 1), marker.center.x + 10, marker.center.y - 10);
+        ctx.restore();
+      }
+    }
+
+    function geometryHygieneMarkerAtPoint(point) {
+      const markers = Array.isArray(state.geometryHygiene.markers) ? state.geometryHygiene.markers : [];
+      return markers.find((marker) => {
+        const dx = point.x - marker.center.x;
+        const dy = point.y - marker.center.y;
+        if ((marker.tone.shape === "circle") && Math.sqrt(dx * dx + dy * dy) <= 12) return true;
+        if (marker.tone.shape === "square" && Math.abs(dx) <= 10 && Math.abs(dy) <= 10) return true;
+        return (
+          point.x >= marker.screenBbox.minX - 8 &&
+          point.x <= marker.screenBbox.maxX + 8 &&
+          point.y >= marker.screenBbox.minY - 8 &&
+          point.y <= marker.screenBbox.maxY + 8
+        );
+      }) || null;
     }
 
     function renderSimulation(simulation) {
@@ -2180,7 +2821,9 @@
     function render() {
       syncCanvasSize();
       ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      renderXdataContextPanel();
       renderSelectionBox();
+      renderSelectionTower();
       renderXdataPanel();
       renderMeasurementBox();
       focusSelectedEntityInInput();
@@ -2194,11 +2837,21 @@
       renderMetadataPreview();
       renderLegend();
 
-      if (!state.session) return;
+      if (!state.session) {
+        state.geometryHygiene.markers = [];
+        state.geometryHygiene.hoverIssueIndex = -1;
+        renderGeometryHygiene({ ok: true, note: "No geometry hygiene report yet." });
+        return;
+      }
+      renderGeometryHygiene(state.session.geometry_hygiene || {
+        ok: true,
+        note: "No geometry hygiene report yet."
+      });
       const hasSelection = state.selectedIds.size > 0;
       drawGhostOverlay();
       for (const object of state.session.objects) {
         if (!isObjectVisibleInSimulation(object.id)) continue;
+        if (!isObjectVisibleInVariantContext(object)) continue;
         const isSelected = state.selectedIds.has(object.id);
         const isHover = state.hoverId === object.id;
         for (const shape of effectiveShapesForObject(object)) {
@@ -2232,12 +2885,19 @@
         ctx.strokeRect(rect.minX, rect.minY, rect.maxX - rect.minX, rect.maxY - rect.minY);
         ctx.setLineDash([]);
       }
+      if (sanitizeCheckOpen()) {
+        drawGeometryHygieneMarkers();
+      } else {
+        state.geometryHygiene.markers = [];
+        state.geometryHygiene.hoverIssueIndex = -1;
+      }
       drawMeasurementOverlay();
     }
 
     function objectIdsInRect(screenRect) {
       if (!state.session) return [];
       return state.session.objects
+        .filter((object) => isObjectSelectableInVariantContext(object))
         .filter((object) => {
           const bbox = objectScreenBBox(object);
           if (!bbox) return false;
@@ -2249,6 +2909,7 @@
     function objectIdAtPoint(point) {
       if (!state.session) return null;
       const candidates = state.session.objects
+        .filter((object) => isObjectSelectableInVariantContext(object))
         .map((object) => ({ object, bbox: objectScreenBBox(object) }))
         .filter((entry) => entry.bbox)
         .filter((entry) =>
@@ -2388,9 +3049,35 @@
       setStatus(value ? `Assigned XDATA ${value} to ${entityIds.length} entiteta.` : `Cleared XDATA for ${entityIds.length} entiteta.`, "ok");
     }
 
+    async function explodeSelectedBlock() {
+      if (!state.session) return;
+      const selectedInsert = selectedInsertObject();
+      if (!selectedInsert) {
+        setStatus("Select exactly one INSERT object before exploding a block.", "error");
+        return;
+      }
+      setStatus(`Exploding block ${selectedInsert.block_name || selectedInsert.id}...`);
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/explode-block`, {
+        method: "POST",
+        body: JSON.stringify({
+          entity_id: selectedInsert.entity_id
+        })
+      });
+      state.session = data.session;
+      syncCurrentDxfText(data.dxf_text);
+      state.selectedIds = new Set(
+        (Array.isArray(data.exploded_entity_ids) ? data.exploded_entity_ids : [])
+          .map((id) => String(id || ""))
+          .filter(Boolean)
+      );
+      render();
+      setStatus(`Exploded block ${data.block_name || selectedInsert.block_name || selectedInsert.id} into ${state.selectedIds.size} top-level entiteta. Selection moved to the new children.`, "ok");
+    }
+
     function clearSelection() {
       state.selectedIds.clear();
       clearXdataEditor();
+      stopSelectionTower();
       render();
       setStatus("Selection cleared.", "ok");
     }
@@ -2776,6 +3463,25 @@
         state.measure.hoverPoint = nearestSnapPointAtScreen(point);
       }
 
+      if (sanitizeCheckOpen()) {
+        const hygieneMarker = geometryHygieneMarkerAtPoint(point);
+        const nextHoverIssueIndex = hygieneMarker ? hygieneMarker.index : -1;
+        const hoverChanged = nextHoverIssueIndex !== state.geometryHygiene.hoverIssueIndex;
+        state.geometryHygiene.hoverIssueIndex = nextHoverIssueIndex;
+        if (hygieneMarker) {
+          if (hoverChanged) {
+            previewGeometryHygieneIssue(hygieneMarker.index);
+          }
+          state.hoverId = null;
+          render();
+          return;
+        }
+        if (hoverChanged && state.geometryHygiene.activeIssueIndex >= 0) {
+          renderGeometryHygiene(state.geometryHygiene.report);
+        }
+      } else {
+        state.geometryHygiene.hoverIssueIndex = -1;
+      }
       state.hoverId = objectIdAtPoint(point);
       render();
     });
@@ -2826,7 +3532,17 @@
 
       const dx = point.x - state.dragStart.x;
       const dy = point.y - state.dragStart.y;
+      if (sanitizeCheckOpen() && Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+        const hygieneMarker = geometryHygieneMarkerAtPoint(point);
+        if (hygieneMarker) {
+          state.dragStart = null;
+          state.dragRect = null;
+          focusGeometryHygieneIssue(hygieneMarker.index);
+          return;
+        }
+      }
       let selectionCause = "replace";
+      let keepExistingSelection = false;
       if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
         const hit = objectIdAtPoint(point);
         if (event.ctrlKey || event.metaKey) {
@@ -2840,8 +3556,12 @@
           }
         } else {
           selectionCause = "replace";
-          state.selectedIds.clear();
-          if (hit) state.selectedIds.add(hit);
+          if (!hit && selectionTowerActive()) {
+            keepExistingSelection = true;
+          } else {
+            state.selectedIds.clear();
+            if (hit) state.selectedIds.add(hit);
+          }
         }
       } else {
         const ids = objectIdsInRect(state.dragRect);
@@ -2852,17 +3572,26 @@
           }
         } else {
           selectionCause = "replace";
-          state.selectedIds = new Set(ids);
+          if (!ids.length && selectionTowerActive()) {
+            keepExistingSelection = true;
+          } else {
+            state.selectedIds = new Set(ids);
+          }
         }
       }
       state.dragStart = null;
       state.dragRect = null;
-      syncXdataEditorFromSelection(selectionCause);
+      if (!keepExistingSelection) {
+        syncXdataEditorFromSelection(selectionCause);
+      } else {
+        setStatus("Selection kept. Use CTRL+click/CTRL+drag to refine candidates while Selection Mode is active.", "ok");
+      }
       render();
     });
 
     canvas.addEventListener("mouseleave", () => {
       state.hoverId = null;
+      state.geometryHygiene.hoverIssueIndex = -1;
       state.dragStart = null;
       state.dragRect = null;
       state.panning = null;
@@ -2932,6 +3661,24 @@
       setSecondConditionEnabled(!secondConditionEnabled());
       renderMetadataPreview();
     });
+    xdataContextVariantKey.addEventListener("change", () => {
+      state.xdataContext.activeVariantKey = String(xdataContextVariantKey.value || "").trim();
+      syncSelectionToVariantContext();
+      render();
+      setStatus(
+        state.xdataContext.activeVariantKey
+          ? `Active variant filter set to ${state.xdataContext.activeVariantKey}.`
+          : "Variant filter cleared.",
+        "ok"
+      );
+    });
+    clearXdataContextBtn.addEventListener("click", () => {
+      state.xdataContext.activeVariantKey = "";
+      xdataContextVariantKey.value = "";
+      syncSelectionToVariantContext();
+      render();
+      setStatus("Variant filter cleared.", "ok");
+    });
     metadataLogicalOperator.addEventListener("change", renderMetadataPreview);
     metadataParameterSecondary.addEventListener("change", syncMetadataSecondaryExpectedValueFromSelection);
     metadataOperationSecondary.addEventListener("change", syncMetadataSecondaryExpectedValueFromSelection);
@@ -2947,12 +3694,33 @@
     metadataExpectedValueSecondaryMulti.addEventListener("change", renderMetadataPreview);
     metadataExpectedValueSecondaryNumber.addEventListener("input", renderMetadataPreview);
     forceXdataDetails.addEventListener("toggle", () => {
+      if (!forceXdataDetails.open && state.selectionTower.mode === "force_xdata_add") {
+        stopSelectionTower();
+      }
       syncXdataEditorFromSelection("replace");
       render();
     });
     xdataGhostToggle.addEventListener("change", () => {
       state.xdata.ghostEnabled = Boolean(xdataGhostToggle.checked);
       render();
+    });
+    xdataSelectBtn.addEventListener("click", () => {
+      if (!state.session) {
+        setStatus("Create or load a session first.", "error");
+        return;
+      }
+      forceXdataDetails.open = true;
+      startSelectionTower("force_xdata_add");
+      render();
+      setStatus("Selection Mode active for Force XDATA Add. Use CTRL+click or CTRL+drag to refine safely.", "ok");
+    });
+    selectionTowerDoneBtn.addEventListener("click", () => {
+      stopSelectionTower();
+      render();
+      setStatus("Selection Mode closed. Continue XDATA annotation.", "ok");
+    });
+    selectionExplodeBtn.addEventListener("click", () => {
+      explodeSelectedBlock().catch((error) => setStatus(error.message, "error"));
     });
     assignXdataBtn.addEventListener("click", () => {
       assignXdataToSelection().catch((error) => setStatus(error.message, "error"));
@@ -3036,6 +3804,7 @@
     arrangeWorkspaceCards();
     setSecondConditionEnabled(false);
     renderValidation({ ok: false, note: "Validation not run yet." });
+    renderGeometryHygiene({ ok: true, note: "No geometry hygiene report yet." });
     renderSimulation({ ok: false, note: "Simulation not run yet." });
     configInput.value = JSON.stringify({
       technology_profile: "OPS_S4P4",

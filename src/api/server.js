@@ -11,6 +11,7 @@ const createRoboticsTecnaRouterV1 = require("./routes/robotics_tecna_v1");
 const createDxfOpsBatchRouterV1 = require("./routes/dxf_ops_batch_v1");
 const createMotherDxfRouterV1 = require("./routes/mother_dxf_v1");
 const createDbrRouterV1 = require("./routes/dbr_v1");
+const createSanitizeDxfRouterV0 = require("./routes/sanitize_dxf_v0");
 const { resolveErpDsn } = require("../core_shell/config/erp_config");
 const { runUseCase } = require("../core/runtime");
 const { fetchEprDatasets } = require("../modules/epr_attendance_v1/adapters/db_fetch_epr");
@@ -29,6 +30,7 @@ app.use("/api/robotics/v1/tecna", createRoboticsTecnaRouterV1());
 app.use("/api/dxf-ops/v1", createDxfOpsBatchRouterV1());
 app.use("/api/mother-dxf/v1", createMotherDxfRouterV1());
 app.use("/api/dbr/v1", createDbrRouterV1());
+app.use("/api/sanitize-dxf/v0", createSanitizeDxfRouterV0());
 // ---- Idle shutdown (minutes) ----
 const IDLE_SHUTDOWN_MINUTES = Number(process.env.IDLE_SHUTDOWN_MINUTES || 10);
 const IDLE_SHUTDOWN_MS = Number.isFinite(IDLE_SHUTDOWN_MINUTES) ? IDLE_SHUTDOWN_MINUTES * 60 * 1000 : 0;
@@ -72,6 +74,7 @@ const roboticsTecnaHtmlPath = path.join(uiDir, "robotics_tecna.html");
 const dxfOpsBatchHtmlPath = path.join(uiDir, "dxf_ops_batch.html");
 const motherDxfHtmlPath = path.join(uiDir, "mother_dxf.html");
 const dbrHtmlPath = path.join(uiDir, "dbr.html");
+const sanitizeDxfHtmlPath = path.join(uiDir, "sanitize_dxf.html");
 
 app.use("/ui", express.static(uiDir, { extensions: ["html"] }));
 
@@ -94,6 +97,8 @@ app.get("/ui/mother-dxf", (req, res) => res.sendFile(motherDxfHtmlPath));
 app.get("/ui/mother_dxf.html", (req, res) => res.sendFile(motherDxfHtmlPath));
 app.get("/ui/dbr", (req, res) => res.sendFile(dbrHtmlPath));
 app.get("/ui/dbr.html", (req, res) => res.sendFile(dbrHtmlPath));
+app.get("/ui/sanitize-dxf", (req, res) => res.sendFile(sanitizeDxfHtmlPath));
+app.get("/ui/sanitize_dxf.html", (req, res) => res.sendFile(sanitizeDxfHtmlPath));
 // health check
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 

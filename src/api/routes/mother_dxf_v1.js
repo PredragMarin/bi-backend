@@ -272,6 +272,26 @@ function createMotherDxfRouterV1() {
     }
   });
 
+  router.post("/sessions/:sessionId/explode-block", async (req, res) => {
+    try {
+      const result = await motherDxfRuntime.explodeBlockInsert({
+        sessionId: String(req.params.sessionId || ""),
+        entityId: String(req.body?.entity_id || "")
+      });
+      res.json({
+        ...buildSessionResponse(result.session),
+        removed_entity_id: result.removed_entity_id,
+        exploded_entity_ids: result.exploded_entity_ids,
+        block_name: result.block_name
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_EXPLODE_BLOCK_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.post("/sessions/:sessionId/metadata", async (req, res) => {
     try {
       const result = await motherDxfRuntime.authorSemanticMetadata({

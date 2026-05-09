@@ -1,0 +1,81 @@
+{
+  "name": "sanitize-dxf-v0-electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows desktop packaging shell for sanitize_dxf_v0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:win-portable": "electron-builder --win portable",
+    "dist:win-installer": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "build": {
+    "appId": "com.marn.sanitize-dxf-v0",
+    "productName": "Sanitize DXF v0",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../src/api/sanitize_dxf_v0_server.js",
+        "to": "sanitize_app_src/api/sanitize_dxf_v0_server.js"
+      },
+      {
+        "from": "../../src/api/routes/sanitize_dxf_v0.js",
+        "to": "sanitize_app_src/api/routes/sanitize_dxf_v0.js"
+      },
+      {
+        "from": "../../src/api/ui/sanitize_dxf.html",
+        "to": "sanitize_app_src/api/ui/sanitize_dxf.html"
+      },
+      {
+        "from": "../../src/modules/sanitize_dxf_v0/module_runtime.js",
+        "to": "sanitize_app_src/modules/sanitize_dxf_v0/module_runtime.js"
+      },
+      {
+        "from": "../../src/modules/sanitize_dxf_v0/module_manifest.json",
+        "to": "sanitize_app_src/modules/sanitize_dxf_v0/module_manifest.json"
+      },
+      {
+        "from": "../../src/modules/sanitize_dxf_v0/contracts/sanitize_report_contract_v0.json",
+        "to": "sanitize_app_src/modules/sanitize_dxf_v0/contracts/sanitize_report_contract_v0.json"
+      },
+      {
+        "from": "../../src/core_shell/dxf/index.js",
+        "to": "sanitize_app_src/core_shell/dxf/index.js"
+      },
+      {
+        "from": "../../src/core_shell/geometry/index.js",
+        "to": "sanitize_app_src/core_shell/geometry/index.js"
+      },
+      {
+        "from": "../../src/core_shell/services/dxf_geometry_hygiene_service.js",
+        "to": "sanitize_app_src/core_shell/services/dxf_geometry_hygiene_service.js"
+      }
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    }
+  }
+}

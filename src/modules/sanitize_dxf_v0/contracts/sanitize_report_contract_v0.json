@@ -1,0 +1,25 @@
+{
+  "contract_id": "sanitize_dxf_report_v0",
+  "version": "0.1.0",
+  "description": "Minimal standalone DXF sanitize review output contract for upstream CAD cleanup.",
+  "top_level_fields": [
+    "ok",
+    "use_case",
+    "source_name",
+    "artifact_state",
+    "sanitized_dxf_text",
+    "review"
+  ],
+  "review_fields": [
+    "document_bbox",
+    "objects",
+    "geometry_hygiene",
+    "xdata_context"
+  ],
+  "geometry_hygiene_issue_types": [
+    "degenerate_line",
+    "micro_line",
+    "collinear_overlap_cluster",
+    "expected_variant_overlap"
+  ]
+}

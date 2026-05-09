@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SANITIZE DXF v0.1</title>
+  <style>
+    :root{
+      --bg:#e9efe8;
+      --paper:#fbfdf8;
+      --ink:#182026;
+      --muted:#5a6a73;
+      --line:#c6d2c8;
+      --accent:#264653;
+      --accent-soft:#d8e4df;
+      --bad:#b42318;
+      --warn:#b45309;
+      --info:#1d4ed8;
+      --variant:#7c3aed;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#eef4ea 0%,#e0e7dd 100%);color:var(--ink);font-family:"Segoe UI",Tahoma,sans-serif}
+    .page{display:grid;gap:14px;padding:14px}
+    .hero,.card{background:var(--paper);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px rgba(24,32,38,.08)}
+    .hero{padding:18px;background:radial-gradient(circle at top right, rgba(38,70,83,.12), transparent 30%),linear-gradient(135deg, rgba(38,70,83,.08), rgba(251,253,248,.96))}
+    .hero h1{margin:0 0 6px;font-size:30px}
+    .hero p{margin:0;color:var(--muted);max-width:1100px;line-height:1.5}
+    .layout{display:grid;grid-template-columns:390px minmax(620px,1fr);gap:14px;align-items:start}
+    .stack{display:grid;gap:14px}
+    .card{padding:16px}
+    h2{margin:0 0 10px;font-size:18px}
+    textarea,input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;color:var(--ink)}
+    textarea{min-height:220px;resize:vertical;font-family:Consolas,monospace;font-size:12px}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap}
+    button{border:0;border-radius:999px;padding:10px 14px;background:var(--ink);color:#fff;font-weight:700;cursor:pointer}
+    button.secondary{background:#dfe8e0;color:var(--ink)}
+    button[disabled]{opacity:.5;cursor:not-allowed}
+    .meta{font-size:12px;color:var(--muted)}
+    .status{padding:11px 12px;border-radius:12px;background:var(--accent-soft);color:#14323d}
+    .selection{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:10px;background:#fff}
+    .selection-item{padding:8px 0;border-bottom:1px solid #edf1ed;font-size:12px}
+    .selection-item:last-child{border-bottom:none}
+    .viewer-shell{display:grid;grid-template-rows:auto auto 1fr;gap:12px;min-height:760px}
+    .canvas-wrap{position:relative;border:1px solid var(--line);border-radius:18px;background:#f8fbf7;overflow:hidden;min-height:680px}
+    canvas{display:block;width:100%;height:100%}
+    .legend{display:flex;gap:8px;flex-wrap:wrap}
+    .legend-item{display:flex;align-items:center;gap:6px;font-size:12px}
+    .swatch{width:14px;height:14px;border-radius:4px;border:1px solid rgba(0,0,0,.2)}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid #d8e3d8;background:#eef3ef;font-size:11px;font-weight:700;color:#2f4a38}
+    @media (max-width: 1180px){
+      .layout{grid-template-columns:1fr}
+      .canvas-wrap{min-height:520px}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>SANITIZE DXF v0.1</h1>
+      <p>Autonomni preglednik za upstream CAD čišćenje. Učitaj DXF, pokreni sanitize check, pregledaj problematične zone na kanvasu i vrati se u CAD dok geometrija ne bude dovoljno čista za downstream obradu.</p>
+    </section>
+
+    <section class="layout">
+      <div class="stack">
+        <div class="card">
+          <h2>Open DXF</h2>
+          <div class="toolbar" style="margin-bottom:10px">
+            <input id="fileInput" type="file" accept=".dxf,text/plain" />
+            <input id="sourceName" type="text" placeholder="Working name / source name" />
+          </div>
+          <div class="meta" style="margin-bottom:8px">Za V0 ovdje samo učitavamo cijeli DXF i radimo vizualnu dijagnostiku. Nema session lifecyclea, nema TOPO authoringa, nema child generationa.</div>
+          <textarea id="dxfInput" placeholder="Paste raw DXF text here"></textarea>
+          <div class="toolbar" style="margin-top:12px">
+            <button id="runBtn">Run Sanitize Check</button>
+            <button id="fitBtn" class="secondary" type="button">Fit View</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Summary</h2>
+          <div id="statusBox" class="status">No sanitize run yet.</div>
+          <div id="xdataMeta" class="selection" style="margin-top:10px"><div class="meta">No XDATA context loaded.</div></div>
+        </div>
+
+        <div class="card">
+          <h2>Issue List</h2>
+          <div id="issueMeta" class="meta" style="margin-bottom:8px">No review yet.</div>
+          <div id="issueList" class="selection"><div class="meta">No issues yet.</div></div>
+          <label style="margin-top:10px;display:block">Diagnostics
+            <textarea id="diagnostics" readonly placeholder="Klik ili hover na marker ili Focus u listi za kratku dijagnozu."></textarea>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="viewer-shell">
+          <div>
+            <h2>Canvas Review</h2>
+            <div class="meta">Lijevi drag pomiče pogled, kotačić zoomira, marker i lista su sinkronizirani. Ljubičasti marker znači očekivani variant overlap, ne nužno geometrijski defekt.</div>
+          </div>
+          <div class="legend">
+            <div class="legend-item"><span class="swatch" style="background:#b42318"></span>degenerate line</div>
+            <div class="legend-item"><span class="swatch" style="background:#b45309"></span>micro line</div>
+            <div class="legend-item"><span class="swatch" style="background:#1d4ed8"></span>overlap cluster</div>
+            <div class="legend-item"><span class="swatch" style="background:#7c3aed"></span>expected variant overlap</div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="canvas"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const sourceNameInput = document.getElementById("sourceName");
+    const dxfInput = document.getElementById("dxfInput");
+    const runBtn = document.getElementById("runBtn");
+    const fitBtn = document.getElementById("fitBtn");
+    const statusBox = document.getElementById("statusBox");
+    const xdataMeta = document.getElementById("xdataMeta");
+    const issueMeta = document.getElementById("issueMeta");
+    const issueList = document.getElementById("issueList");
+    const diagnostics = document.getElementById("diagnostics");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    const state = {
+      review: null,
+      sourceName: "",
+      activeIssueIndex: -1,
+      hoverIssueIndex: -1,
+      markers: [],
+      view: {
+        scale: 1,
+        offsetX: 0,
+        offsetY: 0
+      },
+      drag: {
+        active: false,
+        lastX: 0,
+        lastY: 0
+      }
+    };
+
+    function esc(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function issueColor(issueType) {
+      if (issueType === "degenerate_line") return "#b42318";
+      if (issueType === "micro_line") return "#b45309";
+      if (issueType === "expected_variant_overlap") return "#7c3aed";
+      return "#1d4ed8";
+    }
+
+    function syncCanvasSize() {
+      const ratio = window.devicePixelRatio || 1;
+      const width = canvas.clientWidth || 800;
+      const height = canvas.clientHeight || 600;
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    function worldToScreen(point) {
+      return {
+        x: point.x * state.view.scale + state.view.offsetX,
+        y: -point.y * state.view.scale + state.view.offsetY
+      };
+    }
+
+    function screenToWorld(point) {
+      return {
+        x: (point.x - state.view.offsetX) / state.view.scale,
+        y: -(point.y - state.view.offsetY) / state.view.scale
+      };
+    }
+
+    function fitView() {
+      const bbox = state.review?.review?.document_bbox;
+      if (!bbox) return;
+      const width = Math.max(1, bbox.maxX - bbox.minX);
+      const height = Math.max(1, bbox.maxY - bbox.minY);
+      const padding = 28;
+      const scaleX = Math.max(0.0001, (canvas.clientWidth - padding * 2) / width);
+      const scaleY = Math.max(0.0001, (canvas.clientHeight - padding * 2) / height);
+      state.view.scale = Math.min(scaleX, scaleY);
+      const centerX = (bbox.minX + bbox.maxX) / 2;
+      const centerY = (bbox.minY + bbox.maxY) / 2;
+      state.view.offsetX = canvas.clientWidth / 2 - centerX * state.view.scale;
+      state.view.offsetY = canvas.clientHeight / 2 + centerY * state.view.scale;
+    }
+
+    function drawShape(shape, color, width, alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      if (shape.kind === "line") {
+        const a = worldToScreen({ x: shape.x1, y: shape.y1 });
+        const b = worldToScreen({ x: shape.x2, y: shape.y2 });
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      } else if (shape.kind === "circle") {
+        const center = worldToScreen({ x: shape.centerX, y: shape.centerY });
+        ctx.arc(center.x, center.y, Math.abs(shape.radius * state.view.scale), 0, Math.PI * 2);
+      } else if (shape.kind === "arc") {
+        const center = worldToScreen({ x: shape.centerX, y: shape.centerY });
+        const start = (-shape.startAngle * Math.PI) / 180;
+        const end = (-shape.endAngle * Math.PI) / 180;
+        ctx.arc(center.x, center.y, Math.abs(shape.radius * state.view.scale), start, end, true);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function geometryFallback() {
+      return {
+        ok: true,
+        counts: {
+          degenerate_lines: 0,
+          micro_lines: 0,
+          collinear_overlap_clusters: 0,
+          expected_variant_overlaps: 0,
+          total_issues: 0
+        },
+        issues: []
+      };
+    }
+
+    function issueObjects(issue) {
+      if (!issue) return [];
+      if (issue.bbox) return [{ bbox: issue.bbox }];
+      if (issue.object_id && state.review?.review?.objects) {
+        const direct = state.review.review.objects.find((object) => object.id === issue.object_id);
+        if (direct) return [direct];
+      }
+      if (Array.isArray(issue.members)) {
+        return issue.members.map((member) => {
+          const direct = state.review?.review?.objects?.find((object) => object.id === member.object_id);
+          return direct || (member.bbox ? { bbox: member.bbox } : null);
+        }).filter(Boolean);
+      }
+      return [];
+    }
+
+    function issueAnchor(issue) {
+      if (!issue) return null;
+      if (issue.bbox) {
+        return {
+          x: (issue.bbox.minX + issue.bbox.maxX) / 2,
+          y: (issue.bbox.minY + issue.bbox.maxY) / 2
+        };
+      }
+      const objects = issueObjects(issue);
+      if (!objects.length) return null;
+      const bbox = objects.reduce((acc, object) => {
+        const sourceBBox = object.bbox || null;
+        if (!sourceBBox) return acc;
+        return acc
+          ? {
+              minX: Math.min(acc.minX, sourceBBox.minX),
+              minY: Math.min(acc.minY, sourceBBox.minY),
+              maxX: Math.max(acc.maxX, sourceBBox.maxX),
+              maxY: Math.max(acc.maxY, sourceBBox.maxY)
+            }
+          : { ...sourceBBox };
+      }, null);
+      if (!bbox) return null;
+      return {
+        x: (bbox.minX + bbox.maxX) / 2,
+        y: (bbox.minY + bbox.maxY) / 2
+      };
+    }
+
+    function issueSummary(issue, index) {
+      const number = index + 1;
+      if (!issue) return `#${number}`;
+      const block = issue.block_name ? ` | block=${issue.block_name}` : "";
+      if (issue.issue_type === "degenerate_line") {
+        return `#${number} Degenerate line${block}`;
+      }
+      if (issue.issue_type === "micro_line") {
+        return `#${number} Micro line ${issue.length_mm} mm${block}`;
+      }
+      if (issue.issue_type === "expected_variant_overlap") {
+        return `#${number} Expected variant overlap${block}`;
+      }
+      return `#${number} Overlap cluster${block}`;
+    }
+
+    function issueDiagnostics(issue, index) {
+      if (!issue) return "";
+      const lines = [issueSummary(issue, index)];
+      if (issue.orientation) lines.push(`orientation: ${issue.orientation}`);
+      if (issue.layer) lines.push(`layer: ${issue.layer}`);
+      if (issue.block_name) lines.push(`block: ${issue.block_name}`);
+      if (issue.length_mm != null) lines.push(`length_mm: ${issue.length_mm}`);
+      if (Array.isArray(issue.members) && issue.members.length) {
+        lines.push(`members: ${issue.members.length}`);
+        issue.members.forEach((member) => {
+          const ff = member.feature_family ? ` | feature=${member.feature_family}` : "";
+          const vk = member.variant_key ? ` | variant=${member.variant_key}` : "";
+          lines.push(`- ${member.object_id}${member.source_line ? ` | Ln${member.source_line}` : ""}${ff}${vk}`);
+        });
+      }
+      if (issue.suggestion) lines.push(`suggestion: ${issue.suggestion}`);
+      return lines.join("\n");
+    }
+
+    function renderStatus() {
+      if (!state.review) {
+        statusBox.textContent = "No sanitize run yet.";
+        xdataMeta.innerHTML = `<div class="meta">No XDATA context loaded.</div>`;
+        issueMeta.textContent = "No review yet.";
+        issueList.innerHTML = `<div class="meta">No issues yet.</div>`;
+        diagnostics.value = "";
+        return;
+      }
+      const report = state.review.review.geometry_hygiene || geometryFallback();
+      const counts = report.counts || {};
+      statusBox.innerHTML = [
+        `<div><strong>${esc(state.review.source_name || "sanitize_input.dxf")}</strong></div>`,
+        `<div style="margin-top:4px">issues=${esc(counts.total_issues || 0)} | degenerate=${esc(counts.degenerate_lines || 0)} | micro=${esc(counts.micro_lines || 0)} | overlap=${esc(counts.collinear_overlap_clusters || 0)} | expected variant=${esc(counts.expected_variant_overlaps || 0)}</div>`
+      ].join("");
+      const context = state.review.review.xdata_context || { feature_families: [], variant_keys: [] };
+      xdataMeta.innerHTML = [
+        `<div class="selection-item"><strong>Feature families:</strong> ${esc((context.feature_families || []).join(" | ") || "none detected")}</div>`,
+        `<div class="selection-item"><strong>Variant keys:</strong> ${esc((context.variant_keys || []).join(" | ") || "none detected")}</div>`
+      ].join("");
+      const issues = Array.isArray(report.issues) ? report.issues : [];
+      issueMeta.textContent = issues.length
+        ? `${issues.length} issue(s) detected. Klik Focus ili marker na kanvasu za detalj.`
+        : "No hygiene issues detected.";
+      if (!issues.length) {
+        issueList.innerHTML = `<div class="meta">No issues detected.</div>`;
+        diagnostics.value = "";
+        return;
+      }
+      issueList.innerHTML = issues.map((issue, index) => {
+        const active = state.activeIssueIndex === index ? ` style="background:#f5f7f6;padding:8px;border-radius:10px"` : "";
+        return `<div class="selection-item"${active}>
+          <div><strong>${esc(issueSummary(issue, index))}</strong></div>
+          <div class="meta" style="margin-top:4px">${esc(issue.suggestion || "")}</div>
+          <div class="toolbar" style="margin-top:6px">
+            <button type="button" class="secondary" data-focus-issue="${index}">Focus</button>
+          </div>
+        </div>`;
+      }).join("");
+      issueList.querySelectorAll("[data-focus-issue]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const index = Number(button.dataset.focusIssue);
+          state.activeIssueIndex = Number.isFinite(index) ? index : -1;
+          renderStatus();
+          render();
+        });
+      });
+      const diagnosticsIndex = state.hoverIssueIndex >= 0 ? state.hoverIssueIndex : state.activeIssueIndex;
+      diagnostics.value = diagnosticsIndex >= 0 ? issueDiagnostics(issues[diagnosticsIndex], diagnosticsIndex) : issueDiagnostics(issues[0], 0);
+    }
+
+    function drawMarkers() {
+      const report = state.review?.review?.geometry_hygiene || geometryFallback();
+      const issues = Array.isArray(report.issues) ? report.issues : [];
+      state.markers = [];
+      issues.forEach((issue, index) => {
+        const anchor = issueAnchor(issue);
+        if (!anchor) return;
+        const screen = worldToScreen(anchor);
+        const color = issueColor(issue.issue_type);
+        const active = state.activeIssueIndex === index || state.hoverIssueIndex === index;
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.fillStyle = "#ffffff";
+        ctx.lineWidth = active ? 3 : 2;
+        if (issue.issue_type === "degenerate_line") {
+          ctx.beginPath();
+          ctx.arc(screen.x, screen.y, 10, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        } else if (issue.issue_type === "micro_line") {
+          ctx.beginPath();
+          ctx.rect(screen.x - 9, screen.y - 9, 18, 18);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.rect(screen.x - 12, screen.y - 9, 24, 18);
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.fillStyle = color;
+        ctx.font = "bold 11px Segoe UI";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(index + 1), screen.x, screen.y + 0.5);
+        ctx.restore();
+        state.markers.push({
+          issueIndex: index,
+          x: screen.x,
+          y: screen.y,
+          width: 28,
+          height: 22
+        });
+      });
+    }
+
+    function render() {
+      syncCanvasSize();
+      ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      if (!state.review) return;
+      for (const object of state.review.review.objects || []) {
+        for (const shape of object.shapes || []) {
+          drawShape(shape, "#2b3940", 1.25, 0.65);
+        }
+      }
+      drawMarkers();
+    }
+
+    async function runSanitizeCheck() {
+      const dxfText = String(dxfInput.value || "");
+      if (!dxfText.trim()) {
+        statusBox.textContent = "Load a DXF file or paste DXF text first.";
+        return;
+      }
+      runBtn.disabled = true;
+      statusBox.textContent = "Running sanitize check...";
+      try {
+        const response = await fetch("/api/sanitize-dxf/v0/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dxf_text: dxfText,
+            source_name: sourceNameInput.value.trim() || state.sourceName || "sanitize_input.dxf"
+          })
+        });
+        const data = await response.json();
+        if (!response.ok || data.ok === false) {
+          throw new Error(data.message || data.error || "Sanitize check failed.");
+        }
+        state.review = data;
+        state.activeIssueIndex = -1;
+        state.hoverIssueIndex = -1;
+        fitView();
+        renderStatus();
+        render();
+      } catch (err) {
+        statusBox.textContent = err && err.message ? err.message : String(err);
+      } finally {
+        runBtn.disabled = false;
+      }
+    }
+
+    fileInput.addEventListener("change", async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      sourceNameInput.value = sourceNameInput.value.trim() || file.name;
+      state.sourceName = file.name;
+      dxfInput.value = await file.text();
+    });
+
+    runBtn.addEventListener("click", runSanitizeCheck);
+    fitBtn.addEventListener("click", () => {
+      fitView();
+      render();
+    });
+
+    canvas.addEventListener("wheel", (event) => {
+      if (!state.review) return;
+      event.preventDefault();
+      const point = { x: event.offsetX, y: event.offsetY };
+      const worldBefore = screenToWorld(point);
+      const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+      state.view.scale = Math.max(0.0001, state.view.scale * factor);
+      state.view.offsetX = point.x - worldBefore.x * state.view.scale;
+      state.view.offsetY = point.y + worldBefore.y * state.view.scale;
+      render();
+    }, { passive: false });
+
+    canvas.addEventListener("mousedown", (event) => {
+      state.drag.active = true;
+      state.drag.lastX = event.clientX;
+      state.drag.lastY = event.clientY;
+    });
+
+    window.addEventListener("mouseup", () => {
+      state.drag.active = false;
+    });
+
+    window.addEventListener("mousemove", (event) => {
+      if (state.drag.active) {
+        state.view.offsetX += event.clientX - state.drag.lastX;
+        state.view.offsetY += event.clientY - state.drag.lastY;
+        state.drag.lastX = event.clientX;
+        state.drag.lastY = event.clientY;
+        render();
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const marker = state.markers.find((item) =>
+        x >= item.x - item.width / 2 &&
+        x <= item.x + item.width / 2 &&
+        y >= item.y - item.height / 2 &&
+        y <= item.y + item.height / 2
+      );
+      const nextHover = marker ? marker.issueIndex : -1;
+      if (nextHover !== state.hoverIssueIndex) {
+        state.hoverIssueIndex = nextHover;
+        renderStatus();
+        render();
+      }
+    });
+
+    canvas.addEventListener("click", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const marker = state.markers.find((item) =>
+        x >= item.x - item.width / 2 &&
+        x <= item.x + item.width / 2 &&
+        y >= item.y - item.height / 2 &&
+        y <= item.y + item.height / 2
+      );
+      if (!marker) return;
+      state.activeIssueIndex = marker.issueIndex;
+      renderStatus();
+      render();
+    });
+
+    window.addEventListener("resize", () => {
+      if (!state.review) return;
+      fitView();
+      render();
+    });
+
+    syncCanvasSize();
+    renderStatus();
+  </script>
+</body>
+</html>

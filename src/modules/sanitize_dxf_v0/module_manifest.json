@@ -1,0 +1,38 @@
+{
+  "identity": {
+    "use_case": "sanitize_dxf_v0",
+    "contract_version": "0.1.0",
+    "module_version": "0.1.0",
+    "owner": "Marn Expert d.o.o."
+  },
+  "description": "Standalone DXF sanitize review runtime for upstream CAD cleanup. No ERP, no DBR, no Mother DXF authoring workflow.",
+  "runtime": {
+    "core_contract_ref": "core_contract_v1.0.x",
+    "standalone_mode": true,
+    "durable_storage_required": false
+  },
+  "dependencies": {
+    "core_shell_services": [
+      "src/core_shell/dxf/index.js",
+      "src/core_shell/services/dxf_geometry_hygiene_service.js"
+    ]
+  },
+  "capabilities": {
+    "open_dxf": true,
+    "sanitize_structural_pass": true,
+    "geometry_hygiene_analysis": true,
+    "variant_aware_overlap_classification": true,
+    "erp_access": false,
+    "session_authoring": false
+  },
+  "boundaries": {
+    "erp_import": "not_used",
+    "mother_dxf_session_storage": "not_used",
+    "db_access": false,
+    "sql_in_module": false
+  },
+  "contracts": {
+    "sanitize_report_contract": "contracts/sanitize_report_contract_v0.json",
+    "data_contract_validation_entry": "validate_contracts.js"
+  }
+}
