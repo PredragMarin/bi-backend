@@ -2,7 +2,7 @@
 
 Status: working draft  
 Date: 2026-05-07  
-Scope: urgent implementation guidance for Mother DXF variant-aware authoring and DBR production-like batch execution
+Scope: urgent implementation guidance for Mother DXF geometry-branch authoring and DBR production-like batch execution
 
 ## 1. Purpose
 
@@ -36,8 +36,8 @@ an architectural limit:
 The chosen short-term strategy is:
 
 1. improve upstream CAD preparation
-2. annotate variant families in DXF XDATA
-3. let `mother_dxf_v1` become variant-aware
+2. annotate alternative geometry branches in DXF XDATA
+3. let `mother_dxf_v1` become geometry-branch-aware
 4. keep `DBR` focused on headless execution over already curated Mother DXF inputs
 
 ## 3. Minimal XDATA Contract
@@ -52,27 +52,25 @@ This keeps the namespace stable and aligned with the current Mother DXF implemen
 
 ### 3.2 Minimal Required Keys
 
-For variant-bearing geometry, use exactly two required keys:
+For alternative geometry branches, use exactly one required key:
 
-- `FEATURE_FAMILY`
-- `VARIANT_KEY`
+- `GEOMETRY_VARIANT`
 
 Example:
 
-- `FEATURE_FAMILY=FRIZURA`
-- `VARIANT_KEY=ECO`
+- `GEOMETRY_VARIANT=ECO`
 
 Alternative in the same zone:
 
-- `FEATURE_FAMILY=FRIZURA`
-- `VARIANT_KEY=EU_PPV`
+- `GEOMETRY_VARIANT=EU_PPV`
+
+Base geometry remains untagged.
 
 ### 3.3 Interpretation Rule
 
-If two geometries overlap and share:
+If two geometries overlap and at least one branch carries:
 
-- same `FEATURE_FAMILY`
-- different `VARIANT_KEY`
+- `GEOMETRY_VARIANT=<value>`
 
 then the overlap is treated as:
 
@@ -100,7 +98,7 @@ These are explicitly out of scope for the current urgent delivery unless a later
 The upstream CAD operator should deliver:
 
 1. cleaner raw DXF geometry
-2. variant-bearing geometry annotated with XDATA
+2. alternative geometry branch annotated with XDATA
 3. as little ambiguous overlap as possible without variant identity
 
 This work is upstream preparation, not downstream Mother DXF cleanup.
@@ -109,9 +107,9 @@ This work is upstream preparation, not downstream Mother DXF cleanup.
 
 Annotate:
 
-- variant blocks
-- variant-only cutouts
-- variant-only finishing features
+- alternative blocks
+- branch-only cutouts
+- branch-only finishing features
 - any alternative geometry set occupying the same functional zone
 
 Do not spend time annotating every trivial line in the part unless the feature is truly variant-driven.
@@ -124,13 +122,11 @@ For v0.1, use one shared APPID:
 
 Each annotated object or block instance should carry XDATA values such as:
 
-- `FEATURE_FAMILY=FRIZURA`
-- `VARIANT_KEY=ECO`
+- `GEOMETRY_VARIANT=ECO`
 
 or:
 
-- `FEATURE_FAMILY=FRIZURA`
-- `VARIANT_KEY=EU_PPV`
+- `GEOMETRY_VARIANT=EU_PPV`
 
 ## 4.4 Recommended Annotation Granularity
 
@@ -148,10 +144,9 @@ Avoid mixed practice inside one feature unless necessary.
 
 Use uppercase ASCII keys.
 
-Key names:
+Key name:
 
-- `FEATURE_FAMILY`
-- `VARIANT_KEY`
+- `GEOMETRY_VARIANT`
 
 Value naming recommendations:
 
@@ -178,10 +173,9 @@ Avoid:
 
 The CAD operator needs only a small repeatable habit:
 
-1. identify variant-bearing geometry
+1. identify alternative branch geometry
 2. attach XDATA under `MOTHERDXF`
-3. set `FEATURE_FAMILY`
-4. set `VARIANT_KEY`
+3. set `GEOMETRY_VARIANT`
 5. save DXF
 6. run sanitize check
 7. fix flagged raw defects in CAD
@@ -231,8 +225,8 @@ Examples:
 
 Condition:
 
-- same `FEATURE_FAMILY`
-- different `VARIANT_KEY`
+- one branch is untagged base geometry and the other carries `GEOMETRY_VARIANT`
+- or two overlapping branches carry different `GEOMETRY_VARIANT` values
 - same or overlapping spatial zone
 
 Meaning:
@@ -246,7 +240,7 @@ Meaning:
 Condition:
 
 - overlap detected
-- missing or incomplete XDATA identity
+- overlap exists but no branch distinction is available
 
 Meaning:
 
@@ -257,28 +251,29 @@ Meaning:
 
 ## 6.1 Objective
 
-`mother_dxf_v1` must become variant-aware without trying to become a fully generic semantic engine in this delivery window.
+`mother_dxf_v1` must become geometry-branch-aware without trying to become a fully generic semantic engine in this delivery window.
 
 The short-term role of XDATA in Mother DXF is:
 
-- variant filtering
-- variant-safe selection
-- variant-safe TOPO authoring
-- variant-safe SEM authoring
+- geometry branch filtering
+- branch-safe selection
+- branch-safe TOPO authoring
+- branch-safe SEM authoring
 
 ## 6.2 V1 Behavior Target
 
-Add an `Active Variant Key` concept to the session/UI.
+Add an `Active Geometry Variant` concept to the session/UI.
 
-When active variant is:
+When active branch is:
 
-- `VARIANT_KEY=EU_PPV`
+- `GEOMETRY_VARIANT=EU_PPV`
 
 then:
 
-- entities/blocks with `VARIANT_KEY=EU_PPV` are visible and selectable
-- entities/blocks with `VARIANT_KEY=ECO` are dimmed or hidden
-- TOPO, SEM, Force Assign Layer, and Force XDATA Add operate only on the active variant
+- untagged base geometry is suppressed
+- entities/blocks with `GEOMETRY_VARIANT=EU_PPV` are visible and selectable
+- entities/blocks with another `GEOMETRY_VARIANT` are dimmed or hidden
+- TOPO, SEM, Force Assign Layer, and Force XDATA Add operate only on the active branch
 
 ## 6.3 Required Mother DXF Changes
 
@@ -286,8 +281,7 @@ then:
 
 Extend current XDATA parsing to expose:
 
-- `FEATURE_FAMILY`
-- `VARIANT_KEY`
+- `GEOMETRY_VARIANT`
 
 per object and per block-bearing object where applicable.
 
@@ -295,7 +289,7 @@ per object and per block-bearing object where applicable.
 
 Add session/UI state:
 
-- `active_variant_key`
+- `active_geometry_variant`
 
 Possible values:
 
@@ -308,12 +302,13 @@ Possible values:
 
 Implement:
 
-- visible + selectable if object matches active variant
-- dimmed or hidden if object belongs to a different variant in the same family
+- visible + selectable if object matches active branch
+- hidden if object belongs to a different branch
+- base geometry visible only when no active branch is selected
 
 ### D. Selection Gating
 
-Selection must ignore non-active variant objects during:
+Selection must ignore non-active branch objects during:
 
 - click select
 - drag select
@@ -324,16 +319,17 @@ Selection must ignore non-active variant objects during:
 
 Sanitize must reinterpret overlaps using XDATA:
 
-- same family + different variant -> `expected_variant_overlap`
-- no XDATA -> `unknown_overlap`
+- base + tagged branch overlap -> `expected_variant_overlap`
+- different tagged branches in the same zone -> `expected_variant_overlap`
+- unexplained overlap with no branch distinction -> `unknown_overlap`
 
 ### F. Authoring Safety
 
-When variant mode is active:
+When branch mode is active:
 
-- TOPO mover assignment must not accidentally include inactive variant geometry
-- `Force Assign Layer` must not hit inactive variant geometry
-- `Metadata Authoring` must be scoped to active variant geometry only
+- TOPO mover assignment must not accidentally include inactive branch geometry
+- `Force Assign Layer` must not hit inactive branch geometry
+- `Metadata Authoring` must be scoped to active branch geometry only
 
 ## 6.4 Scope We Explicitly Avoid in This Phase
 
@@ -344,12 +340,12 @@ Do not attempt now:
 - dynamic rule-catalog driven variant activation
 - fully generic variant engine
 
-The delivery target is variant-safe authoring, not ultimate semantic completeness.
+The delivery target is branch-safe authoring, not ultimate semantic completeness.
 
 ## 6.5 Suggested Mother DXF Delivery Order
 
-1. XDATA parse exposure for `FEATURE_FAMILY` and `VARIANT_KEY`
-2. `Active Variant Key` UI control
+1. XDATA parse exposure for `GEOMETRY_VARIANT`
+2. `Active Geometry Variant` UI control
 3. viewer gating
 4. selection gating
 5. sanitize reinterpretation
@@ -475,10 +471,9 @@ DBR should execute approved inputs, not invent missing intent.
 
 ## 8.1 CAD Team
 
-Start annotating variant-bearing geometry with:
+Start annotating alternative geometry branches with:
 
-- `FEATURE_FAMILY`
-- `VARIANT_KEY`
+- `GEOMETRY_VARIANT`
 
 under XDATA app name:
 
@@ -486,10 +481,10 @@ under XDATA app name:
 
 ## 8.2 Mother DXF Team
 
-Implement variant-aware V1 behavior:
+Implement geometry-branch-aware V1 behavior:
 
 - read XDATA
-- expose active variant
+- expose active geometry branch
 - filter selection and visibility
 - reinterpret sanitize overlaps
 
@@ -508,8 +503,7 @@ Stay narrow:
 For the next-week objective, the highest-value path is:
 
 1. upstream CAD cleanup + XDATA annotation
-2. Mother DXF variant-aware V1
+2. Mother DXF geometry-branch-aware V1
 3. DBR file-drop batch runner over already curated Mother DXF inputs
 
 This is the fastest path to a production-like test run without pretending the full long-term architecture is already complete.
-

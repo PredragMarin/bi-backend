@@ -2,7 +2,7 @@
 
 Status: radni draft  
 Datum: 2026-05-07  
-Scope: hitne implementacijske smjernice za Mother DXF variant-aware authoring i DBR production-like batch execution
+Scope: hitne implementacijske smjernice za Mother DXF geometry-branch authoring i DBR production-like batch execution
 
 ## 1. Svrha
 
@@ -35,7 +35,7 @@ Odabrana kratkoročna strategija je:
 
 1. poboljšati upstream CAD pripremu
 2. anotirati variant familije u DXF XDATA
-3. učiniti `mother_dxf_v1` variant-aware
+3. učiniti `mother_dxf_v1` geometry-branch-aware
 4. zadržati `DBR` fokusiran na headless execution nad već kuriranim Mother DXF inputima
 
 ## 3. Minimalni XDATA contract
@@ -50,27 +50,25 @@ To drži namespace stabilnim i poravnanim s trenutačnom Mother DXF implementaci
 
 ### 3.2 Minimalni obavezni ključevi
 
-Za variant-bearing geometriju koristiti točno dva obavezna ključa:
+Za alternativne geometry brancheve koristiti točno jedan obavezni ključ:
 
-- `FEATURE_FAMILY`
-- `VARIANT_KEY`
+- `GEOMETRY_VARIANT`
 
 Primjer:
 
-- `FEATURE_FAMILY=FRIZURA`
-- `VARIANT_KEY=ECO`
+- `GEOMETRY_VARIANT=ECO`
 
 Alternativa u istoj zoni:
 
-- `FEATURE_FAMILY=FRIZURA`
-- `VARIANT_KEY=EU_PPV`
+- `GEOMETRY_VARIANT=EU_PPV`
+
+Osnovna geometrija ostaje bez XDATA oznake.
 
 ### 3.3 Pravilo interpretacije
 
-Ako se dvije geometrije overlapaju i dijele:
+Ako se dvije geometrije overlapaju i barem jedan branch nosi:
 
-- isti `FEATURE_FAMILY`
-- različit `VARIANT_KEY`
+- `GEOMETRY_VARIANT=<value>`
 
 tada se taj overlap tretira kao:
 
@@ -98,7 +96,7 @@ Ovi ključevi su eksplicitno izvan scopea trenutnog hitnog deliveryja osim ako k
 Upstream CAD operater treba isporučiti:
 
 1. čišću raw DXF geometriju
-2. variant-bearing geometriju anotiranu XDATA-om
+2. alternativnu branch geometriju anotiranu XDATA-om
 3. što manje ambiguoznih overlapova bez variant identity signala
 
 Ovaj posao je upstream priprema, ne downstream Mother DXF cleanup.
@@ -107,9 +105,9 @@ Ovaj posao je upstream priprema, ne downstream Mother DXF cleanup.
 
 Anotirati:
 
-- variant blockove
-- variant-only cutout elemente
-- variant-only finishing featuree
+- alternativne blockove
+- branch-only cutout elemente
+- branch-only finishing featuree
 - svaki alternativni geometry set koji zauzima istu funkcionalnu zonu
 
 Ne trošiti vrijeme na anotiranje svake trivijalne linije u partu osim ako je feature stvarno variant-driven.
@@ -122,13 +120,11 @@ Za v0.1 koristiti jedan zajednički APPID:
 
 Svaki anotirani objekt ili block instance treba nositi XDATA vrijednosti poput:
 
-- `FEATURE_FAMILY=FRIZURA`
-- `VARIANT_KEY=ECO`
+- `GEOMETRY_VARIANT=ECO`
 
 ili:
 
-- `FEATURE_FAMILY=FRIZURA`
-- `VARIANT_KEY=EU_PPV`
+- `GEOMETRY_VARIANT=EU_PPV`
 
 ## 4.4 Preporučena granularnost anotacije
 
@@ -146,10 +142,9 @@ Izbjegavati miješanu praksu unutar jednog featurea osim ako je stvarno nužno.
 
 Koristiti uppercase ASCII ključeve.
 
-Imena ključeva:
+Ime ključa:
 
-- `FEATURE_FAMILY`
-- `VARIANT_KEY`
+- `GEOMETRY_VARIANT`
 
 Preporuke za naming vrijednosti:
 
@@ -176,10 +171,9 @@ Izbjegavati:
 
 CAD operater treba usvojiti samo malu, ponovljivu naviku:
 
-1. identificirati variant-bearing geometriju
+1. identificirati alternativnu branch geometriju
 2. attachati XDATA pod `MOTHERDXF`
-3. postaviti `FEATURE_FAMILY`
-4. postaviti `VARIANT_KEY`
+3. postaviti `GEOMETRY_VARIANT`
 5. spremiti DXF
 6. pokrenuti sanitize check
 7. ispraviti flagged raw defekte u CAD-u
@@ -229,8 +223,8 @@ Primjeri:
 
 Uvjet:
 
-- isti `FEATURE_FAMILY`
-- različit `VARIANT_KEY`
+- jedan branch je neoznačena osnovna geometrija, a drugi nosi `GEOMETRY_VARIANT`
+- ili dva overlapana brancha nose različite `GEOMETRY_VARIANT` vrijednosti
 - ista ili overlapana prostorna zona
 
 Značenje:
@@ -244,7 +238,7 @@ Značenje:
 Uvjet:
 
 - overlap detektiran
-- XDATA identity nedostaje ili je nepotpun
+- overlap postoji, ali nema jasne branch distinkcije
 
 Značenje:
 
@@ -255,28 +249,29 @@ Značenje:
 
 ## 6.1 Cilj
 
-`mother_dxf_v1` mora postati variant-aware bez pokušaja da u ovom delivery windowu postane potpuno generički semantic engine.
+`mother_dxf_v1` mora postati geometry-branch-aware bez pokušaja da u ovom delivery windowu postane potpuno generički semantic engine.
 
 Kratkoročna uloga XDATA-a u Mother DXF-u je:
 
-- variant filtering
-- variant-safe selection
-- variant-safe TOPO authoring
-- variant-safe SEM authoring
+- geometry branch filtering
+- branch-safe selection
+- branch-safe TOPO authoring
+- branch-safe SEM authoring
 
 ## 6.2 Ciljano V1 ponašanje
 
-Dodati `Active Variant Key` koncept na razini sessiona/UI-a.
+Dodati `Active Geometry Variant` koncept na razini sessiona/UI-a.
 
-Kad je aktivna varijanta:
+Kad je aktivni branch:
 
-- `VARIANT_KEY=EU_PPV`
+- `GEOMETRY_VARIANT=EU_PPV`
 
 tada:
 
-- entiteti/blockovi s `VARIANT_KEY=EU_PPV` su visible i selectable
-- entiteti/blockovi s `VARIANT_KEY=ECO` su dimmed ili hidden
-- TOPO, SEM, Force Assign Layer i Force XDATA Add rade samo nad aktivnom varijantom
+- neoznačena osnovna geometrija je suppressana
+- entiteti/blockovi s `GEOMETRY_VARIANT=EU_PPV` su visible i selectable
+- entiteti/blockovi s drugim `GEOMETRY_VARIANT` su dimmed ili hidden
+- TOPO, SEM, Force Assign Layer i Force XDATA Add rade samo nad aktivnim branchom
 
 ## 6.3 Potrebne promjene u Mother DXF-u
 
@@ -284,8 +279,7 @@ tada:
 
 Proširiti postojeći XDATA parsing tako da izlaže:
 
-- `FEATURE_FAMILY`
-- `VARIANT_KEY`
+- `GEOMETRY_VARIANT`
 
 po objektu i po block-bearing objektu gdje je primjenjivo.
 
@@ -293,7 +287,7 @@ po objektu i po block-bearing objektu gdje je primjenjivo.
 
 Dodati session/UI state:
 
-- `active_variant_key`
+- `active_geometry_variant`
 
 Moguće vrijednosti:
 
@@ -306,12 +300,13 @@ Moguće vrijednosti:
 
 Implementirati:
 
-- visible + selectable ako objekt odgovara aktivnoj varijanti
-- dimmed ili hidden ako objekt pripada drugoj varijanti unutar iste familije
+- visible + selectable ako objekt odgovara aktivnom branchu
+- hidden ako objekt pripada drugom branchu
+- osnovna geometrija visible je samo kad nema aktivnog brancha
 
 ### D. Selection gating
 
-Selection mora ignorirati neaktivne variant objekte tijekom:
+Selection mora ignorirati neaktivne branch objekte tijekom:
 
 - click selecta
 - drag selecta
@@ -322,16 +317,17 @@ Selection mora ignorirati neaktivne variant objekte tijekom:
 
 Sanitize mora reinterpretirati overlapove pomoću XDATA:
 
-- ista familija + različita varijanta -> `expected_variant_overlap`
-- bez XDATA -> `unknown_overlap`
+- base + tagged branch overlap -> `expected_variant_overlap`
+- različiti tagged branchevi u istoj zoni -> `expected_variant_overlap`
+- neobjašnjen overlap bez branch distinkcije -> `unknown_overlap`
 
 ### F. Authoring safety
 
-Kad je variant mode aktivan:
+Kad je branch mode aktivan:
 
-- TOPO mover assignment ne smije slučajno uključiti neaktivnu variant geometriju
-- `Force Assign Layer` ne smije pogađati neaktivnu variant geometriju
-- `Metadata Authoring` mora biti scoped na aktivnu variant geometriju
+- TOPO mover assignment ne smije slučajno uključiti neaktivnu branch geometriju
+- `Force Assign Layer` ne smije pogađati neaktivnu branch geometriju
+- `Metadata Authoring` mora biti scoped na aktivnu branch geometriju
 
 ## 6.4 Scope koji eksplicitno izbjegavamo
 
@@ -342,12 +338,12 @@ Nemojte sada pokušavati:
 - dynamic rule-catalog driven variant activation
 - potpuno generički variant engine
 
-Delivery target je variant-safe authoring, ne ultimativna semantička potpunost.
+Delivery target je branch-safe authoring, ne ultimativna semantička potpunost.
 
 ## 6.5 Preporučeni Mother DXF delivery redoslijed
 
-1. XDATA parse exposure za `FEATURE_FAMILY` i `VARIANT_KEY`
-2. `Active Variant Key` UI control
+1. XDATA parse exposure za `GEOMETRY_VARIANT`
+2. `Active Geometry Variant` UI control
 3. viewer gating
 4. selection gating
 5. sanitize reinterpretation
@@ -473,10 +469,9 @@ DBR treba izvršavati approved inpute, a ne izmišljati nedostajuću namjeru.
 
 ## 8.1 CAD tim
 
-Početi anotirati variant-bearing geometriju s:
+Početi anotirati alternativne geometry brancheve s:
 
-- `FEATURE_FAMILY`
-- `VARIANT_KEY`
+- `GEOMETRY_VARIANT`
 
 pod XDATA app nameom:
 
@@ -484,10 +479,10 @@ pod XDATA app nameom:
 
 ## 8.2 Mother DXF tim
 
-Implementirati variant-aware V1 ponašanje:
+Implementirati geometry-branch-aware V1 ponašanje:
 
 - čitati XDATA
-- izložiti active variant
+- izložiti aktivni geometry branch
 - filtrirati selection i visibility
 - reinterpretirati sanitize overlapove
 
@@ -506,8 +501,7 @@ Ostati uzak:
 Za cilj idućeg tjedna, najvrjedniji put je:
 
 1. upstream CAD cleanup + XDATA anotacija
-2. Mother DXF variant-aware V1
+2. Mother DXF geometry-branch-aware V1
 3. DBR file-drop batch runner nad već kuriranim Mother DXF inputima
 
 To je najbrži put do production-like test runa bez pretvaranja da je dugoročna finalna arhitektura već završena.
-

@@ -146,6 +146,20 @@ function createMotherDxfRouterV1() {
     }
   });
 
+  router.delete("/sessions/:sessionId/topo", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.clearTopoMetadata({
+        sessionId: String(req.params.sessionId || "")
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_CLEAR_TOPO_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.post("/sessions/:sessionId/simulate", async (req, res) => {
     try {
       const result = await motherDxfRuntime.simulateSession({
@@ -297,6 +311,7 @@ function createMotherDxfRouterV1() {
       const result = await motherDxfRuntime.authorSemanticMetadata({
         sessionId: String(req.params.sessionId || ""),
         entityId: String(req.body?.entity_id || ""),
+        entityIds: Array.isArray(req.body?.entity_ids) ? req.body.entity_ids.map((id) => String(id || "")) : [],
         operation: String(req.body?.operation || ""),
         parameter: String(req.body?.parameter || ""),
         expectedValue: req.body?.expected_value,
@@ -304,7 +319,8 @@ function createMotherDxfRouterV1() {
       });
       res.json({
         ...buildSessionResponse(result.session),
-        semantic_comment: result.semantic_comment
+        semantic_comment: result.semantic_comment,
+        affected_entity_ids: result.affected_entity_ids
       });
     } catch (err) {
       res.status(400).json({

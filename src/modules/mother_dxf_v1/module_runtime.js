@@ -18,7 +18,9 @@ const {
   translateShape,
   bboxFromShapes,
   transformPoint,
-  arcEndpoints
+  arcEndpoints,
+  lineLineIntersection,
+  trimLineToPoint
 } = require("../../core_shell/geometry");
 const {
   collectLineCandidates,
@@ -304,6 +306,29 @@ function normalizeXdataAssignments(document, input) {
   return next;
 }
 
+function mergeImportedXdataAssignments(document, input) {
+  const derived = collectMotherXdataAssignments(document);
+  const next = {};
+  const source = input && typeof input === "object" ? input : {};
+  for (const [entityId, assignment] of Object.entries(source)) {
+    if (!findEntity(document, entityId)) continue;
+    if (Object.prototype.hasOwnProperty.call(derived, entityId)) continue;
+    const value = normalizeXdataValue(assignment && typeof assignment === "object" ? assignment.value : assignment);
+    if (!value) continue;
+    next[entityId] = {
+      app: MOTHER_XDATA_APP_NAME,
+      value
+    };
+  }
+  for (const [entityId, assignment] of Object.entries(derived)) {
+    next[entityId] = {
+      app: MOTHER_XDATA_APP_NAME,
+      value: normalizeXdataValue(assignment && typeof assignment === "object" ? assignment.value : assignment)
+    };
+  }
+  return normalizeXdataAssignments(document, next);
+}
+
 function collectEntityXdataMetadata(session, entityId) {
   const assignment = session?.xdata_assignments && session.xdata_assignments[entityId]
     ? session.xdata_assignments[entityId]
@@ -311,12 +336,22 @@ function collectEntityXdataMetadata(session, entityId) {
   if (!assignment || !normalizeXdataValue(assignment.value)) return null;
   const value = normalizeXdataValue(assignment.value);
   const attributes = parseMotherXdataAttributes(value);
+  const keys = Object.keys(attributes);
+  const rawGeometryVariant = String(attributes.GEOMETRY_VARIANT || "").trim() || null;
+  let branchIssue = null;
+  if (!rawGeometryVariant) {
+    branchIssue = "missing_geometry_variant";
+  } else if (keys.length !== 1) {
+    branchIssue = "unexpected_branch_attributes";
+  }
   return {
     app: MOTHER_XDATA_APP_NAME,
     value,
     attributes,
-    feature_family: String(attributes.FEATURE_FAMILY || "").trim() || null,
-    variant_key: String(attributes.VARIANT_KEY || "").trim() || null
+    geometry_variant: branchIssue ? null : rawGeometryVariant,
+    raw_geometry_variant: rawGeometryVariant,
+    branch_valid: !branchIssue,
+    branch_issue: branchIssue
   };
 }
 
@@ -752,6 +787,99 @@ function adjustEnvelopeVerticalLineToBottom(shape, edgeX, originalBottomY, nextB
   };
 }
 
+function lineShapeToPointsLocal(shape) {
+  if (!shape || shape.kind !== "line") return null;
+  const x1 = Number(shape.x1);
+  const y1 = Number(shape.y1);
+  const x2 = Number(shape.x2);
+  const y2 = Number(shape.y2);
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+  return {
+    startPoint: { x: x1, y: y1 },
+    endPoint: { x: x2, y: y2 }
+  };
+}
+
+function linePointsToShapeLocal(line) {
+  if (!line?.startPoint || !line?.endPoint) return null;
+  return {
+    kind: "line",
+    x1: Number(line.startPoint.x),
+    y1: Number(line.startPoint.y),
+    x2: Number(line.endPoint.x),
+    y2: Number(line.endPoint.y)
+  };
+}
+
+function lineOrientationLocal(shape, tolerance = 0.5) {
+  const line = lineShapeToPointsLocal(shape);
+  if (!line) return null;
+  const dx = Math.abs(Number(line.endPoint.x) - Number(line.startPoint.x));
+  const dy = Math.abs(Number(line.endPoint.y) - Number(line.startPoint.y));
+  if (dx <= tolerance && dy <= tolerance) return null;
+  if (dx <= tolerance) return "vertical";
+  if (dy <= tolerance) return "horizontal";
+  return dx >= dy ? "horizontal" : "vertical";
+}
+
+function pointsOverlapLocal(a, b, tolerance = 0.5) {
+  const ax = Number(a?.x);
+  const ay = Number(a?.y);
+  const bx = Number(b?.x);
+  const by = Number(b?.y);
+  if (![ax, ay, bx, by].every(Number.isFinite)) return false;
+  return Math.abs(ax - bx) <= tolerance && Math.abs(ay - by) <= tolerance;
+}
+
+function collectMovedLineJoinPairs(objects, preRuleShapeSnapshot, affectedObjectIds) {
+  const pairs = [];
+  const objectList = Array.isArray(objects) ? objects : [];
+  for (const object of objectList) {
+    if (!affectedObjectIds.has(object.id)) continue;
+    const objectShapes = preRuleShapeSnapshot.get(object.id) || cloneShapes(object?.shapes);
+    for (let shapeIndex = 0; shapeIndex < objectShapes.length; shapeIndex += 1) {
+      const shape = objectShapes[shapeIndex];
+      if (!shape || shape.kind !== "line") continue;
+      if (lineOrientationLocal(shape) !== "horizontal") continue;
+      const line = lineShapeToPointsLocal(shape);
+      if (!line) continue;
+      const movedVertices = [
+        { moved_vertex: "start", point: line.startPoint },
+        { moved_vertex: "end", point: line.endPoint }
+      ];
+      for (const candidateObject of objectList) {
+        if (candidateObject.id === object.id) continue;
+        const candidateShapes = preRuleShapeSnapshot.get(candidateObject.id) || cloneShapes(candidateObject?.shapes);
+        for (let candidateShapeIndex = 0; candidateShapeIndex < candidateShapes.length; candidateShapeIndex += 1) {
+          const candidateShape = candidateShapes[candidateShapeIndex];
+          if (!candidateShape || candidateShape.kind !== "line") continue;
+          if (lineOrientationLocal(candidateShape) !== "vertical") continue;
+          const candidateLine = lineShapeToPointsLocal(candidateShape);
+          if (!candidateLine) continue;
+          const candidateVertices = [
+            { candidate_vertex: "start", point: candidateLine.startPoint },
+            { candidate_vertex: "end", point: candidateLine.endPoint }
+          ];
+          for (const movedVertex of movedVertices) {
+            for (const candidateVertex of candidateVertices) {
+              if (!pointsOverlapLocal(movedVertex.point, candidateVertex.point)) continue;
+              pairs.push({
+                moved_object_id: object.id,
+                moved_shape_index: shapeIndex,
+                moved_vertex: movedVertex.moved_vertex,
+                candidate_object_id: candidateObject.id,
+                candidate_shape_index: candidateShapeIndex,
+                candidate_vertex: candidateVertex.candidate_vertex
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+  return pairs;
+}
+
 function trimVerticalLineEndpointToPoint(shape, vertexName, point) {
   if (!shape || shape.kind !== "line") return shape;
   const x1 = Number(shape.x1);
@@ -854,6 +982,28 @@ function applyBottomOffsetArcEndpointVerticalTrimPostPass(objectMap, objects, pr
   }
 }
 
+function applyMovedLineJoinRestorePostPass(objectMap, movedJoinPairs) {
+  for (const pair of Array.isArray(movedJoinPairs) ? movedJoinPairs : []) {
+    const movedPreview = objectMap.get(pair.moved_object_id);
+    const candidatePreview = objectMap.get(pair.candidate_object_id);
+    if (!movedPreview || !candidatePreview) continue;
+    const movedShape = Array.isArray(movedPreview.simulated_shapes) ? movedPreview.simulated_shapes[pair.moved_shape_index] : null;
+    const candidateShape = Array.isArray(candidatePreview.simulated_shapes) ? candidatePreview.simulated_shapes[pair.candidate_shape_index] : null;
+    const movedLine = lineShapeToPointsLocal(movedShape);
+    const candidateLine = lineShapeToPointsLocal(candidateShape);
+    if (!movedLine || !candidateLine) continue;
+    const intersection = lineLineIntersection(movedLine, candidateLine);
+    if (!intersection) continue;
+    const trimmedCandidate = trimLineToPoint(
+      candidateLine,
+      intersection,
+      pair.candidate_vertex === "start" ? "end" : "start"
+    );
+    if (!trimmedCandidate) continue;
+    candidatePreview.simulated_shapes[pair.candidate_shape_index] = linePointsToShapeLocal(trimmedCandidate) || candidateShape;
+  }
+}
+
 function applyBottomOffsetEnvelopeVerticalPostPass(objectMap, objects, preRuleShapeSnapshot, offsetY) {
   const preRuleObjects = (Array.isArray(objects) ? objects : []).map((object) => ({
     id: object.id,
@@ -921,6 +1071,7 @@ function applyDocumentRulesToSimulationMap(session, objects, parameters, objectM
     const dx = axis === "X" ? valueMm : 0;
     const dy = axis === "Y" ? valueMm : 0;
     const preRuleShapeSnapshot = new Map();
+    const affectedObjectIds = new Set(affectedObjects.map((object) => object.id));
 
     for (const object of objects) {
       const preview = objectMap.get(object.id);
@@ -929,6 +1080,9 @@ function applyDocumentRulesToSimulationMap(session, objects, parameters, objectM
         cloneShapes(Array.isArray(preview?.simulated_shapes) ? preview.simulated_shapes : object?.shapes)
       );
     }
+    const movedLineJoinPairs = axis === "Y" && dy > 0 && targetLayer === "B"
+      ? collectMovedLineJoinPairs(objects, preRuleShapeSnapshot, affectedObjectIds)
+      : [];
 
     for (const object of affectedObjects) {
       const preview = objectMap.get(object.id);
@@ -1016,6 +1170,7 @@ function applyDocumentRulesToSimulationMap(session, objects, parameters, objectM
     if (axis === "Y" && dy > 0 && targetLayer === "B") {
       applyBottomOffsetEnvelopeVerticalPostPass(objectMap, objects, preRuleShapeSnapshot, dy);
       applyBottomOffsetArcEndpointVerticalTrimPostPass(objectMap, objects, preRuleShapeSnapshot, dy);
+      applyMovedLineJoinRestorePostPass(objectMap, movedLineJoinPairs);
     }
 
     for (const object of objects) {
@@ -1304,6 +1459,22 @@ function findEntity(document, entityId) {
   return (document && Array.isArray(document.entities) ? document.entities : []).find((entity) => entity.id === entityId) || null;
 }
 
+function entityHandle(entity) {
+  return String(pairValue(entity || {}, "5", "") || "").trim().toUpperCase() || null;
+}
+
+function rawReferenceForEntity(entity, extra = {}) {
+  if (!entity) return null;
+  return {
+    handle: entityHandle(entity),
+    line_start: Number(entity?.source?.line_start || 0) || null,
+    line_end: Number(entity?.source?.line_end || 0) || null,
+    block_name: extra.block_name || entity?.blockName || entity?.block_name || null,
+    parent_insert_id: extra.parent_insert_id || null,
+    parent_insert_handle: extra.parent_insert_handle || null
+  };
+}
+
 function isFileLevelTopoComment(rawComment) {
   const parsed = parseTopoComment(rawComment);
   return Boolean(parsed && parsed.keys && parsed.keys.mode);
@@ -1367,6 +1538,12 @@ function upsertEntityTopoComment(session, entityId, topoRoleString) {
   }
   entity.preComments = nextPreComments;
   return rawComment;
+}
+
+function clearFileLevelTopoComment(session) {
+  const comments = Array.isArray(session?.document?.preComments) ? session.document.preComments : [];
+  session.document.preComments = comments.filter((pair) => !(String(pair?.code) === "999" && isFileLevelTopoComment(pair.value)));
+  session.topo_comments = [];
 }
 
 function upsertSemanticComment(document, entityId, rawComment) {
@@ -1715,7 +1892,7 @@ function lineBBox(summary) {
   };
 }
 
-function collectBlockInternalLineObjects(document) {
+function collectBlockInternalLineObjects(session, document) {
   const blockMap = new Map((Array.isArray(document?.blocks) ? document.blocks : []).map((block) => [String(block?.name || ""), block]));
   const topEntities = Array.isArray(document?.entities) ? document.entities : [];
   const out = [];
@@ -1729,6 +1906,8 @@ function collectBlockInternalLineObjects(document) {
     const scaleX = Number(pairValue(entity, "41", "1"));
     const scaleY = Number(pairValue(entity, "42", "1"));
     const rotationDeg = Number(pairValue(entity, "50", "0"));
+    const parentXdataMetadata = collectEntityXdataMetadata(session, entity.id);
+    const parentInsertHandle = entityHandle(entity);
     for (const child of Array.isArray(block.entities) ? block.entities : []) {
       if (String(child?.type || "").toUpperCase() !== "LINE") continue;
       const x1 = Number(pairValue(child, "10", "NaN"));
@@ -1745,24 +1924,247 @@ function collectBlockInternalLineObjects(document) {
         block_name: blockName || null,
         type: "LINE",
         source: child.source || null,
+        raw_ref: rawReferenceForEntity(child, {
+          block_name: blockName || null,
+          parent_insert_id: entity.id,
+          parent_insert_handle: parentInsertHandle
+        }),
         primary_layer: String(pairValue(child, "8", "") || "").trim() || null,
         shapes: [{ kind: "line", x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }],
-        hygiene_context: "block_child"
+        hygiene_context: "block_child",
+        xdata_metadata: collectEntityXdataMetadata(session, child.id) || parentXdataMetadata
       });
     }
   }
   return out;
 }
 
-function analyzeGeometryHygiene(document, objects) {
+function classifyOverlapIssue(clusterEntries) {
+  const members = clusterEntries.map((entry) => entry.object);
+  const geometryVariants = new Set(
+    members
+      .map((object) => String(object?.xdata_metadata?.geometry_variant || "").trim())
+      .filter(Boolean)
+  );
+  const hasBaseGeometry = members.some((object) => !String(object?.xdata_metadata?.geometry_variant || "").trim());
+  if (geometryVariants.size >= 2 || (geometryVariants.size >= 1 && hasBaseGeometry)) {
+    return {
+      issue_type: "expected_variant_overlap",
+      suggestion: "Expected branch alternative. BASE and tagged geometry branches are mutually exclusive and should stay distinguished upstream."
+    };
+  }
+  return {
+    issue_type: "collinear_overlap_cluster",
+    suggestion: clusterEntries.some((entry) => entry.summary.length <= 2)
+      ? "Inspect cluster and remove micro fragments from TOPO mover selection."
+      : "Inspect duplicated/overlapping line cluster before authoring TOPO."
+  };
+}
+
+function sameBranchContext(a, b) {
+  const aVariant = String(a?.object?.xdata_metadata?.geometry_variant || "").trim();
+  const bVariant = String(b?.object?.xdata_metadata?.geometry_variant || "").trim();
+  return aVariant === bVariant;
+}
+
+function pointDistance(a, b) {
+  if (!a || !b) return Number.POSITIVE_INFINITY;
+  return Math.hypot(Number(a.x) - Number(b.x), Number(a.y) - Number(b.y));
+}
+
+function lineEndpoints(summary) {
+  if (!summary) return [];
+  return [
+    { x: summary.x1, y: summary.y1, role: "start" },
+    { x: summary.x2, y: summary.y2, role: "end" }
+  ];
+}
+
+function geometryVariantKey(object) {
+  return String(object?.xdata_metadata?.geometry_variant || "").trim();
+}
+
+function connectionPointsForObject(object, summaryOverride = null) {
+  const lineSummary = summaryOverride || lineGeometrySummary(object);
+  if (lineSummary) return lineEndpoints(lineSummary);
+  const shapes = Array.isArray(object?.shapes) ? object.shapes : [];
+  const points = [];
+  for (const shape of shapes) {
+    if (shape?.kind === "arc") {
+      const endpoints = arcEndpoints(shape);
+      if (endpoints?.start) points.push(endpoints.start);
+      if (endpoints?.end) points.push(endpoints.end);
+    }
+  }
+  return points.filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y));
+}
+
+function pointHasSameBranchConnection(point, sourceObjects, variantKey, excludedObjectIds, tolerance) {
+  const excluded = excludedObjectIds instanceof Set ? excludedObjectIds : new Set(excludedObjectIds || []);
+  for (const object of Array.isArray(sourceObjects) ? sourceObjects : []) {
+    if (!object || excluded.has(String(object.id || ""))) continue;
+    if (geometryVariantKey(object) !== variantKey) continue;
+    const connectionPoints = connectionPointsForObject(object);
+    if (connectionPoints.some((candidatePoint) => pointDistance(point, candidatePoint) <= tolerance)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function nearestObjectEndpoint(object, projected, summaryOverride = null, tolerance = Number.POSITIVE_INFINITY) {
+  if (!projected || !object) return null;
+  const endpoints = connectionPointsForObject(object, summaryOverride);
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const point of endpoints) {
+    const distance = pointDistance(projected, point);
+    if (distance < bestDistance) {
+      best = point;
+      bestDistance = distance;
+    }
+  }
+  if (!best || bestDistance > tolerance) return null;
+  return best;
+}
+
+function collectOpenContourGapCandidates(lineObjects, sourceObjects) {
+  const issues = [];
+  const seen = new Set();
+  const axisTolerance = 1.5;
+  const connectedEndpointTolerance = 0.75;
+  const notchAllowanceMm = 5;
+  const gapToleranceMax = 12;
+  for (const entry of Array.isArray(lineObjects) ? lineObjects : []) {
+    const { object, summary } = entry;
+    if (!summary || !["horizontal", "vertical"].includes(summary.orientation)) continue;
+    const variantKey = geometryVariantKey(object);
+    const endpoints = lineEndpoints(summary);
+    for (const endpoint of endpoints) {
+      if (pointHasSameBranchConnection(endpoint, sourceObjects, variantKey, new Set([String(object.id || "")]), connectedEndpointTolerance)) {
+        continue;
+      }
+      for (const candidate of lineObjects) {
+        if (candidate === entry) continue;
+        if (!sameBranchContext(entry, candidate)) continue;
+        const other = candidate.summary;
+        if (!other || other.orientation === summary.orientation) continue;
+        let projected = null;
+        let gap = null;
+        if (summary.orientation === "horizontal" && other.orientation === "vertical") {
+          const minY = Math.min(other.y1, other.y2) - axisTolerance;
+          const maxY = Math.max(other.y1, other.y2) + axisTolerance;
+          if (endpoint.y < minY || endpoint.y > maxY) continue;
+          gap = Math.abs(endpoint.x - other.x1);
+          if (!(gap > notchAllowanceMm && gap <= gapToleranceMax)) continue;
+          projected = { x: other.x1, y: endpoint.y };
+        } else if (summary.orientation === "vertical" && other.orientation === "horizontal") {
+          const minX = Math.min(other.x1, other.x2) - axisTolerance;
+          const maxX = Math.max(other.x1, other.x2) + axisTolerance;
+          if (endpoint.x < minX || endpoint.x > maxX) continue;
+          gap = Math.abs(endpoint.y - other.y1);
+          if (!(gap > notchAllowanceMm && gap <= gapToleranceMax)) continue;
+          projected = { x: endpoint.x, y: other.y1 };
+        }
+        if (!projected) continue;
+        const candidateEndpoint = nearestObjectEndpoint(candidate.object, projected, other, connectedEndpointTolerance);
+        if (!candidateEndpoint) continue;
+        if (pointHasSameBranchConnection(candidateEndpoint, sourceObjects, variantKey, new Set([String(object.id || ""), String(candidate.object?.id || "")]), connectedEndpointTolerance)) {
+          continue;
+        }
+        const key = [
+          String(object.id || ""),
+          String(candidate.object?.id || ""),
+          roundNumber(endpoint.x, 3),
+          roundNumber(endpoint.y, 3),
+          roundNumber(projected.x, 3),
+          roundNumber(projected.y, 3)
+        ].sort().join("|");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        issues.push({
+          issue_type: "open_contour_gap_candidate",
+          orientation: summary.orientation,
+          object_id: object.id,
+          entity_id: object.entity_id,
+          parent_insert_id: object.parent_insert_id || null,
+          block_name: object.block_name || null,
+          source_line: object?.source?.line_start || null,
+          raw_handle: object?.raw_ref?.handle || null,
+          parent_insert_handle: object?.raw_ref?.parent_insert_handle || null,
+          gap_mm: roundNumber(gap, 3),
+          bbox: {
+            minX: Math.min(endpoint.x, projected.x),
+            minY: Math.min(endpoint.y, projected.y),
+            maxX: Math.max(endpoint.x, projected.x),
+            maxY: Math.max(endpoint.y, projected.y)
+          },
+          members: [
+            {
+              object_id: object.id,
+              entity_id: object.entity_id,
+              parent_insert_id: object.parent_insert_id || null,
+              block_name: object.block_name || null,
+              source_line: object?.source?.line_start || null,
+              raw_handle: object?.raw_ref?.handle || null,
+              parent_insert_handle: object?.raw_ref?.parent_insert_handle || null,
+              geometry_variant: String(object?.xdata_metadata?.geometry_variant || "").trim() || null
+            },
+            {
+              object_id: candidate.object?.id || null,
+              entity_id: candidate.object?.entity_id || null,
+              parent_insert_id: candidate.object?.parent_insert_id || null,
+              block_name: candidate.object?.block_name || null,
+              source_line: candidate.object?.source?.line_start || null,
+              raw_handle: candidate.object?.raw_ref?.handle || null,
+              parent_insert_handle: candidate.object?.raw_ref?.parent_insert_handle || null,
+              geometry_variant: String(candidate.object?.xdata_metadata?.geometry_variant || "").trim() || null
+            }
+          ],
+          suggestion: "Likely open contour near-miss. Inspect whether these orthogonal lines should meet in the same geometry branch."
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+function collectInvalidBranchXdataIssues(objects) {
+  const issues = [];
+  for (const object of Array.isArray(objects) ? objects : []) {
+    const metadata = object?.xdata_metadata;
+    if (!metadata || metadata.branch_valid !== false) continue;
+    issues.push({
+      object_id: object.id,
+      entity_id: object.entity_id,
+      parent_insert_id: object.parent_insert_id || null,
+      block_name: object.block_name || null,
+      source_line: object?.source?.line_start || null,
+      raw_handle: object?.raw_ref?.handle || null,
+      parent_insert_handle: object?.raw_ref?.parent_insert_handle || null,
+      issue_type: "invalid_branch_xdata",
+      raw_value: metadata.value,
+      branch_issue: metadata.branch_issue,
+      bbox: object.bbox || null,
+      suggestion: "Fix upstream XDATA to the strict syntax GEOMETRY_VARIANT=<VALUE>. Invalid branch XDATA is ignored by branch filtering."
+    });
+  }
+  return issues;
+}
+
+function analyzeGeometryHygiene(session, document, objects) {
+  const blockInternalObjects = collectBlockInternalLineObjects(session, document);
   const sourceObjects = [
     ...(Array.isArray(objects) ? objects : []),
-    ...collectBlockInternalLineObjects(document)
+    ...blockInternalObjects
   ];
   const issues = [];
+  const invalidBranchXdata = collectInvalidBranchXdataIssues(sourceObjects);
   const microLines = [];
   const degenerateLines = [];
   const overlapGroups = [];
+  const expectedVariantOverlaps = [];
+  const openContourGaps = [];
   const lineObjects = [];
 
   for (const object of sourceObjects) {
@@ -1776,6 +2178,8 @@ function analyzeGeometryHygiene(document, objects) {
         parent_insert_id: object.parent_insert_id || null,
         block_name: object.block_name || null,
         source_line: object?.source?.line_start || null,
+        raw_handle: object?.raw_ref?.handle || null,
+        parent_insert_handle: object?.raw_ref?.parent_insert_handle || null,
         layer: object?.primary_layer || null,
         issue_type: "degenerate_line",
         length_mm: roundNumber(summary.length, 3),
@@ -1789,6 +2193,8 @@ function analyzeGeometryHygiene(document, objects) {
         parent_insert_id: object.parent_insert_id || null,
         block_name: object.block_name || null,
         source_line: object?.source?.line_start || null,
+        raw_handle: object?.raw_ref?.handle || null,
+        parent_insert_handle: object?.raw_ref?.parent_insert_handle || null,
         layer: object?.primary_layer || null,
         issue_type: "micro_line",
         length_mm: roundNumber(summary.length, 3),
@@ -1841,9 +2247,9 @@ function analyzeGeometryHygiene(document, objects) {
     }
     for (const cluster of clustered) {
       if (cluster.length < 2) continue;
-      const hasMicro = cluster.some((entry) => entry.summary.length <= 2);
+      const classification = classifyOverlapIssue(cluster);
       const issue = {
-        issue_type: "collinear_overlap_cluster",
+        issue_type: classification.issue_type,
         orientation: cluster[0].summary.orientation,
         block_name: cluster.every((entry) => String(entry.object?.block_name || "") === String(cluster[0].object?.block_name || ""))
           ? (cluster[0].object?.block_name || null)
@@ -1854,45 +2260,81 @@ function analyzeGeometryHygiene(document, objects) {
           parent_insert_id: entry.object?.parent_insert_id || null,
           block_name: entry.object?.block_name || null,
           source_line: entry.object?.source?.line_start || null,
+          raw_handle: entry.object?.raw_ref?.handle || null,
+          parent_insert_handle: entry.object?.raw_ref?.parent_insert_handle || null,
           layer: entry.object?.primary_layer || null,
           length_mm: roundNumber(entry.summary.length, 3),
-          bbox: lineBBox(entry.summary)
+          bbox: lineBBox(entry.summary),
+          geometry_variant: String(entry.object?.xdata_metadata?.geometry_variant || "").trim() || null
         })),
-        suggestion: hasMicro
-          ? "Inspect cluster and remove micro fragments from TOPO mover selection."
-          : "Inspect duplicated/overlapping line cluster before authoring TOPO."
+        suggestion: classification.suggestion
       };
-      overlapGroups.push(issue);
+      if (classification.issue_type === "expected_variant_overlap") {
+        expectedVariantOverlaps.push(issue);
+      } else {
+        overlapGroups.push(issue);
+      }
     }
   }
 
-  issues.push(...degenerateLines, ...microLines, ...overlapGroups);
+  openContourGaps.push(...collectOpenContourGapCandidates(lineObjects, sourceObjects));
+
+  issues.push(...invalidBranchXdata, ...degenerateLines, ...microLines, ...overlapGroups, ...expectedVariantOverlaps, ...openContourGaps);
   return {
     ok: issues.length === 0,
     counts: {
+      invalid_branch_xdata: invalidBranchXdata.length,
       degenerate_lines: degenerateLines.length,
       micro_lines: microLines.length,
       collinear_overlap_clusters: overlapGroups.length,
+      expected_variant_overlaps: expectedVariantOverlaps.length,
+      open_contour_gaps: openContourGaps.length,
       total_issues: issues.length
     },
     issues
   };
 }
 
-function collectXdataContext(objects) {
-  const sourceObjects = Array.isArray(objects) ? objects : [];
-  const featureFamilies = new Set();
-  const variantKeys = new Set();
+function collectXdataContext(objects, extraObjects = []) {
+  const topLevelObjects = Array.isArray(objects) ? objects : [];
+  const sourceObjects = [...topLevelObjects, ...(Array.isArray(extraObjects) ? extraObjects : [])];
+  const geometryVariants = new Set();
+  const blockInternalGeometryVariants = new Set();
+  let taggedObjectCount = 0;
+  let baseObjectCount = 0;
+  let invalidBranchXdataCount = 0;
+  for (const object of topLevelObjects) {
+    const metadata = object?.xdata_metadata;
+    const geometryVariant = String(metadata?.geometry_variant || "").trim();
+    if (geometryVariant) {
+      geometryVariants.add(geometryVariant);
+      taggedObjectCount += 1;
+      continue;
+    }
+    if (metadata?.branch_valid === false) {
+      invalidBranchXdataCount += 1;
+      continue;
+    }
+    baseObjectCount += 1;
+  }
   for (const object of sourceObjects) {
     const metadata = object?.xdata_metadata;
-    const featureFamily = String(metadata?.feature_family || "").trim();
-    const variantKey = String(metadata?.variant_key || "").trim();
-    if (featureFamily) featureFamilies.add(featureFamily);
-    if (variantKey) variantKeys.add(variantKey);
+    const geometryVariant = String(metadata?.geometry_variant || "").trim();
+    if (geometryVariant && String(object?.hygiene_context || "") === "block_child") {
+      blockInternalGeometryVariants.add(geometryVariant);
+    }
+    if (metadata?.branch_valid === false) {
+      invalidBranchXdataCount += 1;
+    }
   }
   return {
-    feature_families: Array.from(featureFamilies.values()).sort(),
-    variant_keys: Array.from(variantKeys.values()).sort()
+    geometry_variants: Array.from(geometryVariants.values()).sort(),
+    block_internal_geometry_variants: Array.from(blockInternalGeometryVariants.values()).sort(),
+    tagged_object_count: taggedObjectCount,
+    base_object_count: baseObjectCount,
+    invalid_branch_xdata_count: invalidBranchXdataCount,
+    branch_filtering_ready: geometryVariants.size > 0,
+    branch_filtering_block_limited: geometryVariants.size === 0 && blockInternalGeometryVariants.size > 0
   };
 }
 
@@ -1911,6 +2353,7 @@ function projectViewModel(session) {
       suggested_layer: null
     };
     const semantic_metadata = collectSemanticMetadata(session.document, item.entityId);
+    const sourceEntity = findEntity(session.document, item.entityId);
     return {
       id: item.id,
       display_label: item.type === "INSERT" && item.blockName
@@ -1922,20 +2365,24 @@ function projectViewModel(session) {
       shapes: item.shapes,
       block_name: item.blockName || null,
       source: item.source || null,
+      raw_ref: rawReferenceForEntity(sourceEntity, {
+        block_name: item.blockName || null
+      }),
       classification_state: assignment.state,
       primary_layer: assignment.layer,
       assignment_origin: assignment.origin,
       suggested_layer: assignment.suggested_layer,
       semantic_color: assignment.layer ? SEMANTIC_COLORS[assignment.layer] : SEMANTIC_COLORS.UNCLASSIFIED,
       semantic_metadata,
+      topo_role_metadata: entityTopoRoleMetadata(sourceEntity),
       xdata_metadata: collectEntityXdataMetadata(session, item.entityId)
     };
   });
   const topo_metadata = projectTopoMetadata(session);
   const document_sem = collectDocumentSemMetadata(session.document);
-  const sanitizeReview = buildSanitizeReview(session.document);
-  const geometry_hygiene = sanitizeReview.geometry_hygiene;
-  const xdata_context = sanitizeReview.xdata_context;
+  const blockInternalObjects = collectBlockInternalLineObjects(session, session.document);
+  const geometry_hygiene = analyzeGeometryHygiene(session, session.document, objects);
+  const xdata_context = collectXdataContext(objects, blockInternalObjects);
 
   return {
     session_id: session.session_id,
@@ -2717,15 +3164,6 @@ function normalizeLineForEnvelope(shape, originalBBox, envelope, width, height) 
     }
   }
 
-  if (vertical && lineHeight >= heightThreshold) {
-    if (Math.abs(Number(originalBBox.maxX) - minX) <= 2 && Math.abs(Number(originalBBox.minX) - minX) <= 2) {
-      return { kind: "line", x1: minX, y1: minY, x2: minX, y2: maxY };
-    }
-    if (Math.abs(Number(originalBBox.maxX) - maxX) <= 15 && Math.abs(Number(originalBBox.minX) - maxX) <= 15) {
-      return { kind: "line", x1: maxX, y1: minY, x2: maxX, y2: maxY };
-    }
-  }
-
   return shape;
 }
 
@@ -2767,7 +3205,7 @@ function sustainFixedEnvelopeBoundaries(objectMap, objects, envelope) {
   }
 }
 
-function buildTopoGeometrySimulationMap(session, objects, parameters, topologyMode) {
+function buildTopoGeometrySimulationMap(session, objects, parameters, topologyMode, baseSimulationMap = null) {
   const topo = firstExecutableTopoComment(session);
   if (!topo) {
     return null;
@@ -2779,23 +3217,34 @@ function buildTopoGeometrySimulationMap(session, objects, parameters, topologyMo
   }
 
   const objectsList = Array.isArray(objects) ? objects : [];
+  const workingObjects = objectsList.map((object) => {
+    const basePreview = baseSimulationMap instanceof Map ? baseSimulationMap.get(object.id) : null;
+    const baseShapes = Array.isArray(basePreview?.simulated_shapes) ? cloneShapes(basePreview.simulated_shapes) : cloneShapes(object?.shapes);
+    const baseBBox = basePreview?.simulated_bbox ? cloneJson(basePreview.simulated_bbox) : (object?.bbox ? cloneJson(object.bbox) : null);
+    return {
+      ...object,
+      shapes: baseShapes,
+      bbox: baseBBox
+    };
+  });
+  const workingObjectMap = new Map(workingObjects.map((object) => [object.id, object]));
   const objectDecisions = new Map();
   const objectMap = new Map();
   const simulatedShapeMap = new Map();
-  const repairEnvelope = buildTopoPreviewEnvelope(objectsList);
+  const repairEnvelope = buildTopoPreviewEnvelope(workingObjects);
   const repairOptions = {
     bounds: repairEnvelope,
     maxExtension: 30
   };
 
-  for (const object of objectsList) {
+  for (const object of workingObjects) {
     objectDecisions.set(object.id, evaluateChildEntityInclusion(object, parameters));
   }
 
-  const includedObjects = objectsList.filter((object) => objectDecisions.get(object.id)?.included);
+  const includedObjects = workingObjects.filter((object) => objectDecisions.get(object.id)?.included);
   const lineCandidates = collectLineCandidates(includedObjects);
 
-  for (const object of objectsList) {
+  for (const object of workingObjects) {
     const decision = objectDecisions.get(object.id);
     const originalShapes = cloneShapes(object?.shapes);
     const sourceEntity = findEntity(session.document, object.entity_id);
@@ -2877,9 +3326,13 @@ function buildTopoGeometrySimulationMap(session, objects, parameters, topologyMo
     }
   }
 
-  sustainFixedEnvelopeBoundaries(objectMap, objectsList, repairEnvelope);
+  // Do not silently stretch untouched horizontals to the preview envelope.
+  // In production-minded WYSIWYG preview this created false top/bottom lines
+  // that could grow by hundreds of millimeters even when the source line was
+  // only participating as an anchored segment. Keep the actual repaired shape
+  // ownership instead of normalizing whole-width boundaries here.
 
-  for (const object of objectsList) {
+  for (const object of workingObjects) {
     const preview = objectMap.get(object.id);
     if (!preview) continue;
     preview.simulated_bbox = preview.simulated_shapes.length
@@ -2898,6 +3351,236 @@ function buildIdentityGeometrySimulation(object, topologyMode) {
   };
 }
 
+function buildIdentitySimulationMap(objects, topologyMode) {
+  const map = new Map();
+  for (const object of Array.isArray(objects) ? objects : []) {
+    map.set(object.id, buildIdentityGeometrySimulation(object, topologyMode));
+  }
+  return map;
+}
+
+function shapeEndpointPairs(shape) {
+  if (!shape || typeof shape !== "object") return [];
+  if (shape.kind === "line") {
+    const x1 = Number(shape.x1);
+    const y1 = Number(shape.y1);
+    const x2 = Number(shape.x2);
+    const y2 = Number(shape.y2);
+    if (![x1, y1, x2, y2].every(Number.isFinite)) return [];
+    return [
+      { point: { x: x1, y: y1 }, vertex: "start" },
+      { point: { x: x2, y: y2 }, vertex: "end" }
+    ];
+  }
+  if (shape.kind === "arc") {
+    const endpoints = arcEndpoints(shape);
+    if (!endpoints?.start || !endpoints?.end) return [];
+    return [
+      { point: { x: Number(endpoints.start.x), y: Number(endpoints.start.y) }, vertex: "start" },
+      { point: { x: Number(endpoints.end.x), y: Number(endpoints.end.y) }, vertex: "end" }
+    ].filter((entry) => Number.isFinite(entry.point.x) && Number.isFinite(entry.point.y));
+  }
+  return [];
+}
+
+function shapeLineLength(shape) {
+  if (!shape || shape.kind !== "line") return null;
+  const x1 = Number(shape.x1);
+  const y1 = Number(shape.y1);
+  const x2 = Number(shape.x2);
+  const y2 = Number(shape.y2);
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+  return Math.hypot(x2 - x1, y2 - y1);
+}
+
+function pointDistanceLocal(a, b) {
+  const ax = Number(a?.x);
+  const ay = Number(a?.y);
+  const bx = Number(b?.x);
+  const by = Number(b?.y);
+  if (![ax, ay, bx, by].every(Number.isFinite)) return Number.POSITIVE_INFINITY;
+  return Math.hypot(ax - bx, ay - by);
+}
+
+function pointNearBoundary(point, bbox, tolerance = 1.5) {
+  if (!point || !bbox) return null;
+  const x = Number(point.x);
+  const y = Number(point.y);
+  const minX = Number(bbox.minX);
+  const maxX = Number(bbox.maxX);
+  const minY = Number(bbox.minY);
+  const maxY = Number(bbox.maxY);
+  if (![x, y, minX, maxX, minY, maxY].every(Number.isFinite)) return null;
+  if (Math.abs(x - minX) <= tolerance) return "LEFT";
+  if (Math.abs(x - maxX) <= tolerance) return "RIGHT";
+  if (Math.abs(y - minY) <= tolerance) return "BOTTOM";
+  if (Math.abs(y - maxY) <= tolerance) return "TOP";
+  return null;
+}
+
+function validateCombinedPreviewGeometry(objects, items, topologyMode) {
+  const objectList = Array.isArray(objects) ? objects : [];
+  const itemList = Array.isArray(items) ? items : [];
+  const objectMap = new Map(objectList.map((object) => [object.id, object]));
+  const visibleItems = itemList.filter((item) => item?.preview?.visible !== false);
+  const visibleShapes = [];
+
+  for (const item of visibleItems) {
+    const previewShapes = Array.isArray(item?.preview?.simulated_shapes) ? item.preview.simulated_shapes : [];
+    for (let index = 0; index < previewShapes.length; index += 1) {
+      visibleShapes.push({
+        object_id: item.object_id,
+        entity_id: item.entity_id,
+        display_label: item.display_label,
+        shape_index: index,
+        shape: previewShapes[index]
+      });
+    }
+  }
+
+  const overallBBox = bboxFromShapes(visibleShapes.map((entry) => entry.shape).filter(Boolean));
+  const errors = [];
+  const warnings = [];
+
+  for (const item of visibleItems) {
+    const originalObject = objectMap.get(item.object_id);
+    const originalShapes = Array.isArray(originalObject?.shapes) ? originalObject.shapes : [];
+    const simulatedShapes = Array.isArray(item?.preview?.simulated_shapes) ? item.preview.simulated_shapes : [];
+    const appliedOffset = item?.preview?.applied_offset || { dx: 0, dy: 0 };
+    const offsetMagnitude = Math.abs(Number(appliedOffset.dx || 0)) + Math.abs(Number(appliedOffset.dy || 0));
+    const linePairing = Array.isArray(item?.preview?.line_pairing) ? item.preview.line_pairing : [];
+
+    for (let index = 0; index < Math.min(originalShapes.length, simulatedShapes.length); index += 1) {
+      const originalShape = originalShapes[index];
+      const simulatedShape = simulatedShapes[index];
+      if (!originalShape || !simulatedShape) continue;
+      if (originalShape.kind !== "line" || simulatedShape.kind !== "line") continue;
+      const originalLength = shapeLineLength(originalShape);
+      const simulatedLength = shapeLineLength(simulatedShape);
+      if (!Number.isFinite(originalLength) || !Number.isFinite(simulatedLength)) continue;
+      const deltaLength = Math.abs(simulatedLength - originalLength);
+      const allowedChange = Math.max(40, offsetMagnitude + 12);
+      if (deltaLength > allowedChange) {
+        errors.push({
+          code: "EXCESSIVE_LINE_RESIZE",
+          severity: "error",
+          message: `${item.display_label} changed line length by ${roundNumber(deltaLength, 3)} mm, above allowed ${roundNumber(allowedChange, 3)} mm.`,
+          object_id: item.object_id,
+          entity_id: item.entity_id,
+          display_label: item.display_label,
+          details: {
+            shape_index: index,
+            original_length: roundNumber(originalLength, 3),
+            simulated_length: roundNumber(simulatedLength, 3),
+            delta_length: roundNumber(deltaLength, 3),
+            allowed_change: roundNumber(allowedChange, 3),
+            applied_offset: cloneJson(appliedOffset)
+          }
+        });
+      }
+    }
+
+    const unresolvedPairings = linePairing.filter((entry) => entry && entry.status && entry.status !== "paired");
+    if (unresolvedPairings.length && (Math.abs(Number(appliedOffset.dx || 0)) > 0 || Math.abs(Number(appliedOffset.dy || 0)) > 0)) {
+      warnings.push({
+        code: "UNRESOLVED_REJOIN",
+        severity: "warning",
+        message: `${item.display_label} has ${unresolvedPairings.length} unresolved line rejoin candidate(s) after movement.`,
+        object_id: item.object_id,
+        entity_id: item.entity_id,
+        display_label: item.display_label,
+        details: {
+          unresolved_pairings: unresolvedPairings.length,
+          applied_offset: cloneJson(appliedOffset)
+        }
+      });
+    }
+
+    if (topologyMode !== "none" && String(item.type || "").trim().toUpperCase() === "INSERT"
+      && (Math.abs(Number(appliedOffset.dx || 0)) > 0 || Math.abs(Number(appliedOffset.dy || 0)) > 0)) {
+      warnings.push({
+        code: "UNVERIFIED_BLOCK_TOPO_MOVER",
+        severity: "warning",
+        message: `${item.display_label} is a moved block insert; V1 validation cannot yet prove cutout relocation correctness inside block geometry.`,
+        object_id: item.object_id,
+        entity_id: item.entity_id,
+        display_label: item.display_label,
+        details: {
+          applied_offset: cloneJson(appliedOffset)
+        }
+      });
+    }
+  }
+
+  if (overallBBox) {
+    const tolerance = 1.5;
+    const endpointEntries = [];
+    for (const entry of visibleShapes) {
+      const endpoints = shapeEndpointPairs(entry.shape);
+      for (const endpoint of endpoints) {
+        endpointEntries.push({
+          ...entry,
+          vertex: endpoint.vertex,
+          point: endpoint.point,
+          boundary: pointNearBoundary(endpoint.point, overallBBox, tolerance)
+        });
+      }
+    }
+    for (const endpoint of endpointEntries) {
+      if (!endpoint.boundary) continue;
+      const hasMate = endpointEntries.some((candidate) => {
+        if (candidate === endpoint) return false;
+        return pointDistanceLocal(endpoint.point, candidate.point) <= tolerance;
+      });
+      if (!hasMate) {
+        warnings.push({
+          code: "OPEN_BOUNDARY_CONTOUR",
+          severity: "warning",
+          message: `${endpoint.display_label} leaves an unmatched endpoint on the ${endpoint.boundary} boundary.`,
+          object_id: endpoint.object_id,
+          entity_id: endpoint.entity_id,
+          display_label: endpoint.display_label,
+          details: {
+            shape_index: endpoint.shape_index,
+            vertex: endpoint.vertex,
+            boundary: endpoint.boundary,
+            point: {
+              x: roundNumber(endpoint.point.x, 3),
+              y: roundNumber(endpoint.point.y, 3)
+            }
+          }
+        });
+      }
+    }
+  }
+
+  const dedupe = new Map();
+  for (const issue of errors.concat(warnings)) {
+    const key = [
+      issue.code,
+      issue.object_id || "",
+      issue.entity_id || "",
+      issue.details?.shape_index ?? "",
+      issue.details?.vertex ?? "",
+      issue.details?.boundary ?? ""
+    ].join(":");
+    if (!dedupe.has(key)) dedupe.set(key, issue);
+  }
+  const dedupedIssues = Array.from(dedupe.values());
+  const dedupedErrors = dedupedIssues.filter((issue) => issue.severity === "error");
+  const dedupedWarnings = dedupedIssues.filter((issue) => issue.severity !== "error");
+
+  return {
+    ok: dedupedErrors.length === 0,
+    errors: dedupedErrors,
+    warnings: dedupedWarnings,
+    counts: {
+      errors: dedupedErrors.length,
+      warnings: dedupedWarnings.length
+    }
+  };
+}
+
 function simulateChildPreview(session) {
   const view = projectViewModel(session);
   const config = normalizeConfigParameterSet(session.config_parameter_set);
@@ -2911,18 +3594,36 @@ function simulateChildPreview(session) {
       objects: view.objects,
       configParameterSet: config
     })
-    : null;
-  const topoSimulationMap = topologyMode !== "none"
-    ? buildTopoGeometrySimulationMap(session, view.objects, config.parameters, topologyMode)
-    : null;
-  const activeSimulationMap = topologyMode === "none" ? standardSimulationMap : topoSimulationMap;
-  const documentRuleExecution = applyDocumentRulesToSimulationMap(
-    session,
-    view.objects,
-    config.parameters,
-    activeSimulationMap,
-    topologyMode
-  );
+    : buildIdentitySimulationMap(view.objects, topologyMode);
+  let documentRuleExecution = { applied_rules: [] };
+  let topoSimulationMap = null;
+  let activeSimulationMap = standardSimulationMap;
+
+  if (topologyMode === "none") {
+    documentRuleExecution = applyDocumentRulesToSimulationMap(
+      session,
+      view.objects,
+      config.parameters,
+      activeSimulationMap,
+      topologyMode
+    );
+  } else {
+    documentRuleExecution = applyDocumentRulesToSimulationMap(
+      session,
+      view.objects,
+      config.parameters,
+      standardSimulationMap,
+      topologyMode
+    );
+    topoSimulationMap = buildTopoGeometrySimulationMap(
+      session,
+      view.objects,
+      config.parameters,
+      topologyMode,
+      standardSimulationMap
+    );
+    activeSimulationMap = topoSimulationMap || standardSimulationMap;
+  }
   const limitator = normalizeBooleanLike(config.parameters.LIMITATOR);
   const brava = config.parameters.BRAVA == null ? null : String(config.parameters.BRAVA);
   const items = view.objects.map((object) => {
@@ -3010,6 +3711,8 @@ function simulateChildPreview(session) {
     };
   });
 
+  const validation = validateCombinedPreviewGeometry(view.objects, items, topologyMode);
+
   return {
     session_id: session.session_id,
     technology_profile: config.technology_profile,
@@ -3017,11 +3720,13 @@ function simulateChildPreview(session) {
     topology_mode: topologyMode,
     config_parameter_set: config,
     items,
+    validation,
     summary: {
       object_count: items.length,
       classified_count: items.filter((item) => item.classification_state === "classified").length,
       sem_bound_count: items.filter((item) => (item.semantic_metadata?.raw_comments || []).length > 0).length,
-      document_rules_applied: documentRuleExecution.applied_rules || []
+      document_rules_applied: documentRuleExecution.applied_rules || [],
+      validation_counts: validation.counts
     }
   };
 }
@@ -3044,6 +3749,8 @@ function runExecutionCheck(session, configParameterSet) {
 async function createSession({ dxfText, sourceName, bands, storeRoot }) {
   const normalizedSourceName = String(sourceName || "mother_dxf_input.dxf");
   const nowIso = new Date().toISOString();
+  const document = sanitizeDocument(dxfText);
+  const importedXdataAssignments = hoistMotherXdataFromDocument(document);
   const existingSessions = await listSessions({ rootDir: storeRoot || defaultRoot() });
   const matchingSessions = existingSessions
     .filter((item) => String(item?.source_name || "").trim() === normalizedSourceName)
@@ -3051,16 +3758,21 @@ async function createSession({ dxfText, sourceName, bands, storeRoot }) {
   const currentSession = matchingSessions[0] || null;
   const preserveCustomTitle = currentSession && !titleLooksLikeDefault(currentSession.title, currentSession.source_name);
   if (currentSession && sessionHasAuthoringState(currentSession)) {
+    currentSession.document = document;
     currentSession.bands = normalizeBands(bands);
     currentSession.updated_at = nowIso;
     currentSession.title = preserveCustomTitle
       ? normalizeSessionTitle(currentSession.title, defaultSessionTitleForSource(normalizedSourceName))
       : defaultSessionTitleForSource(normalizedSourceName);
     currentSession.source_name = normalizedSourceName;
-    currentSession.status = normalizeSessionStatus(currentSession.status || "draft");
-    currentSession.parameter_catalog = normalizeParameterCatalogSnapshot(currentSession.parameter_catalog);
-    currentSession.rule_catalog = normalizeRuleCatalogSnapshot(currentSession.rule_catalog);
-    currentSession.xdata_assignments = normalizeXdataAssignments(currentSession.document, currentSession.xdata_assignments);
+    currentSession.status = "draft";
+    currentSession.artifact_state = "sanitized";
+    currentSession.topo_comments = extractTopoCommentsFromDxfText(dxfText);
+    currentSession.assignments = {};
+    currentSession.parameter_catalog = normalizeParameterCatalogSnapshot(currentSession.parameter_catalog || DEFAULT_PARAMETER_CATALOG);
+    currentSession.rule_catalog = normalizeRuleCatalogSnapshot(currentSession.rule_catalog || DEFAULT_RULE_CATALOG);
+    currentSession.config_parameter_set = cloneJson(currentSession.config_parameter_set || DEFAULT_CONFIG_PARAMETER_SET);
+    currentSession.xdata_assignments = mergeImportedXdataAssignments(currentSession.document, importedXdataAssignments);
     projectViewModel(currentSession);
     await saveSession({ rootDir: storeRoot || defaultRoot(), session: currentSession });
     for (const duplicate of matchingSessions.slice(1)) {
@@ -3068,12 +3780,9 @@ async function createSession({ dxfText, sourceName, bands, storeRoot }) {
     }
     return {
       session: currentSession,
-      action: "reused_existing_preserved"
+      action: "refreshed_existing_from_source"
     };
   }
-
-  const document = sanitizeDocument(dxfText);
-  const importedXdataAssignments = hoistMotherXdataFromDocument(document);
   const session = {
     session_id: currentSession?.session_id || crypto.randomUUID(),
     use_case: "mother_dxf_v1",
@@ -3113,10 +3822,7 @@ async function getSession({ sessionId, storeRoot }) {
   session.topo_comments = normalizeTopoCommentsInput(session.topo_comments);
   session.parameter_catalog = normalizeParameterCatalogSnapshot(session.parameter_catalog);
   session.rule_catalog = normalizeRuleCatalogSnapshot(session.rule_catalog);
-  session.xdata_assignments = normalizeXdataAssignments(session.document, {
-    ...importedXdataAssignments,
-    ...(session.xdata_assignments || {})
-  });
+  session.xdata_assignments = mergeImportedXdataAssignments(session.document, session.xdata_assignments || importedXdataAssignments);
   projectViewModel(session);
   return session;
 }
@@ -3213,6 +3919,15 @@ async function updateTopoMetadata({ sessionId, topoText, storeRoot }) {
   return session;
 }
 
+async function clearTopoMetadata({ sessionId, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  clearFileLevelTopoComment(session);
+  session.updated_at = new Date().toISOString();
+  session.artifact_state = "mother_draft";
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return session;
+}
+
 async function updateEntityTopoRoleMetadata({ sessionId, entityId, role, group, zone, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   const rawComment = buildEntityTopoRoleComment({ role, group, zone });
@@ -3239,7 +3954,7 @@ async function updateSessionMeta({ sessionId, title, status, storeRoot }) {
   return session;
 }
 
-async function authorSemanticMetadata({ sessionId, entityId, operation, parameter, expectedValue, semanticComment, storeRoot }) {
+async function authorSemanticMetadata({ sessionId, entityId, entityIds, operation, parameter, expectedValue, semanticComment, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   const rawComment = buildSemanticCommentFromRule({
     operation,
@@ -3247,13 +3962,23 @@ async function authorSemanticMetadata({ sessionId, entityId, operation, paramete
     expected_value: expectedValue,
     semantic_comment: semanticComment
   });
-  upsertSemanticComment(session.document, entityId, rawComment);
+  const normalizedIds = Array.from(new Set([
+    ...((Array.isArray(entityIds) ? entityIds : []).map((id) => String(id || "").trim()).filter(Boolean)),
+    String(entityId || "").trim()
+  ].filter(Boolean)));
+  if (!normalizedIds.length) {
+    throw new Error("Select one or more entities before applying semantic metadata.");
+  }
+  for (const targetEntityId of normalizedIds) {
+    upsertSemanticComment(session.document, targetEntityId, rawComment);
+  }
   session.updated_at = new Date().toISOString();
   session.artifact_state = "mother_draft";
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
   return {
     session,
-    semantic_comment: rawComment
+    semantic_comment: rawComment,
+    affected_entity_ids: normalizedIds
   };
 }
 
@@ -3425,6 +4150,7 @@ module.exports = {
   updateConfigParameterSet,
   updateDocumentSemMetadata,
   updateTopoMetadata,
+  clearTopoMetadata,
   updateEntityTopoRoleMetadata,
   updateSessionMeta,
   explodeBlockInsert,

@@ -530,6 +530,25 @@ function shapeBBox(shape) {
   return null;
 }
 
+function normalizeAngleDeg(angle) {
+  let out = Number(angle) % 360;
+  if (out < 0) out += 360;
+  return out;
+}
+
+function pointFromPolar(centerX, centerY, radius, angleDeg) {
+  const angleRad = (Number(angleDeg) * Math.PI) / 180;
+  return {
+    x: Number(centerX) + Math.cos(angleRad) * Number(radius),
+    y: Number(centerY) + Math.sin(angleRad) * Number(radius)
+  };
+}
+
+function angleDegFromPoint(center, point) {
+  const angleRad = Math.atan2(Number(point.y) - Number(center.y), Number(point.x) - Number(center.x));
+  return normalizeAngleDeg((angleRad * 180) / Math.PI);
+}
+
 function transformShape(shape, transform) {
   if (shape.kind === "line") {
     const p1 = transformPoint({ x: shape.x1, y: shape.y1 }, transform);
@@ -544,13 +563,20 @@ function transformShape(shape, transform) {
   if (shape.kind === "arc") {
     const center = transformPoint({ x: shape.centerX, y: shape.centerY }, transform);
     const radius = Math.abs(shape.radius * Number(transform?.scaleX || 1));
+    const rawStartPoint = pointFromPolar(shape.centerX, shape.centerY, shape.radius, shape.startAngle);
+    const rawEndPoint = pointFromPolar(shape.centerX, shape.centerY, shape.radius, shape.endAngle);
+    const startPoint = transformPoint(rawStartPoint, transform);
+    const endPoint = transformPoint(rawEndPoint, transform);
+    const mappedStartAngle = angleDegFromPoint(center, startPoint);
+    const mappedEndAngle = angleDegFromPoint(center, endPoint);
+    const orientationFlipped = Number(transform?.scaleX || 1) * Number(transform?.scaleY || 1) < 0;
     return {
       kind: "arc",
       centerX: center.x,
       centerY: center.y,
       radius,
-      startAngle: shape.startAngle + Number(transform?.rotationDeg || 0),
-      endAngle: shape.endAngle + Number(transform?.rotationDeg || 0)
+      startAngle: orientationFlipped ? mappedEndAngle : mappedStartAngle,
+      endAngle: orientationFlipped ? mappedStartAngle : mappedEndAngle
     };
   }
   return shape;

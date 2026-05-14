@@ -80,7 +80,7 @@
         <div class="card">
           <h2>Summary</h2>
           <div id="statusBox" class="status">No sanitize run yet.</div>
-          <div id="xdataMeta" class="selection" style="margin-top:10px"><div class="meta">No XDATA context loaded.</div></div>
+          <div id="xdataMeta" class="selection" style="margin-top:10px"><div class="meta">No branch context loaded.</div></div>
         </div>
 
         <div class="card">
@@ -97,13 +97,14 @@
         <div class="viewer-shell">
           <div>
             <h2>Canvas Review</h2>
-            <div class="meta">Lijevi drag pomiče pogled, kotačić zoomira, marker i lista su sinkronizirani. Ljubičasti marker znači očekivani variant overlap, ne nužno geometrijski defekt.</div>
+            <div class="meta">Lijevi drag pomiče pogled, kotačić zoomira, marker i lista su sinkronizirani. Tirkizni marker znači očekivani branch overlap, a ljubičasti invalid branch XDATA.</div>
           </div>
           <div class="legend">
+            <div class="legend-item"><span class="swatch" style="background:#9333ea"></span>invalid branch xdata</div>
             <div class="legend-item"><span class="swatch" style="background:#b42318"></span>degenerate line</div>
             <div class="legend-item"><span class="swatch" style="background:#b45309"></span>micro line</div>
             <div class="legend-item"><span class="swatch" style="background:#1d4ed8"></span>overlap cluster</div>
-            <div class="legend-item"><span class="swatch" style="background:#7c3aed"></span>expected variant overlap</div>
+            <div class="legend-item"><span class="swatch" style="background:#0f766e"></span>expected branch overlap</div>
           </div>
           <div class="canvas-wrap">
             <canvas id="canvas"></canvas>
@@ -154,9 +155,10 @@
     }
 
     function issueColor(issueType) {
+      if (issueType === "invalid_branch_xdata") return "#9333ea";
       if (issueType === "degenerate_line") return "#b42318";
       if (issueType === "micro_line") return "#b45309";
-      if (issueType === "expected_variant_overlap") return "#7c3aed";
+      if (issueType === "expected_variant_overlap") return "#0f766e";
       return "#1d4ed8";
     }
 
@@ -291,8 +293,11 @@
       if (issue.issue_type === "micro_line") {
         return `#${number} Micro line ${issue.length_mm} mm${block}`;
       }
+      if (issue.issue_type === "invalid_branch_xdata") {
+        return `#${number} Invalid branch XDATA${block}`;
+      }
       if (issue.issue_type === "expected_variant_overlap") {
-        return `#${number} Expected variant overlap${block}`;
+        return `#${number} Expected branch overlap${block}`;
       }
       return `#${number} Overlap cluster${block}`;
     }
@@ -304,12 +309,12 @@
       if (issue.layer) lines.push(`layer: ${issue.layer}`);
       if (issue.block_name) lines.push(`block: ${issue.block_name}`);
       if (issue.length_mm != null) lines.push(`length_mm: ${issue.length_mm}`);
+      if (issue.raw_value) lines.push(`raw_value: ${issue.raw_value}`);
       if (Array.isArray(issue.members) && issue.members.length) {
         lines.push(`members: ${issue.members.length}`);
         issue.members.forEach((member) => {
-          const ff = member.feature_family ? ` | feature=${member.feature_family}` : "";
-          const vk = member.variant_key ? ` | variant=${member.variant_key}` : "";
-          lines.push(`- ${member.object_id}${member.source_line ? ` | Ln${member.source_line}` : ""}${ff}${vk}`);
+          const gv = member.geometry_variant ? ` | branch=${member.geometry_variant}` : " | branch=BASE";
+          lines.push(`- ${member.object_id}${member.source_line ? ` | Ln${member.source_line}` : ""}${gv}`);
         });
       }
       if (issue.suggestion) lines.push(`suggestion: ${issue.suggestion}`);
@@ -319,7 +324,7 @@
     function renderStatus() {
       if (!state.review) {
         statusBox.textContent = "No sanitize run yet.";
-        xdataMeta.innerHTML = `<div class="meta">No XDATA context loaded.</div>`;
+        xdataMeta.innerHTML = `<div class="meta">No branch context loaded.</div>`;
         issueMeta.textContent = "No review yet.";
         issueList.innerHTML = `<div class="meta">No issues yet.</div>`;
         diagnostics.value = "";
@@ -329,12 +334,13 @@
       const counts = report.counts || {};
       statusBox.innerHTML = [
         `<div><strong>${esc(state.review.source_name || "sanitize_input.dxf")}</strong></div>`,
-        `<div style="margin-top:4px">issues=${esc(counts.total_issues || 0)} | degenerate=${esc(counts.degenerate_lines || 0)} | micro=${esc(counts.micro_lines || 0)} | overlap=${esc(counts.collinear_overlap_clusters || 0)} | expected variant=${esc(counts.expected_variant_overlaps || 0)}</div>`
+        `<div style="margin-top:4px">issues=${esc(counts.total_issues || 0)} | invalid branch=${esc(counts.invalid_branch_xdata || 0)} | degenerate=${esc(counts.degenerate_lines || 0)} | micro=${esc(counts.micro_lines || 0)} | overlap=${esc(counts.collinear_overlap_clusters || 0)} | expected branch=${esc(counts.expected_variant_overlaps || 0)}</div>`
       ].join("");
-      const context = state.review.review.xdata_context || { feature_families: [], variant_keys: [] };
+      const context = state.review.review.xdata_context || { geometry_variants: [], base_object_count: 0, tagged_object_count: 0, invalid_branch_xdata_count: 0 };
       xdataMeta.innerHTML = [
-        `<div class="selection-item"><strong>Feature families:</strong> ${esc((context.feature_families || []).join(" | ") || "none detected")}</div>`,
-        `<div class="selection-item"><strong>Variant keys:</strong> ${esc((context.variant_keys || []).join(" | ") || "none detected")}</div>`
+        `<div class="selection-item"><strong>Geometry variants:</strong> ${esc((context.geometry_variants || []).join(" | ") || "none detected")}</div>`,
+        `<div class="selection-item"><strong>Base objects:</strong> ${esc(context.base_object_count || 0)} | <strong>tagged objects:</strong> ${esc(context.tagged_object_count || 0)}</div>`,
+        `<div class="selection-item"><strong>Invalid branch XDATA:</strong> ${esc(context.invalid_branch_xdata_count || 0)}</div>`
       ].join("");
       const issues = Array.isArray(report.issues) ? report.issues : [];
       issueMeta.textContent = issues.length

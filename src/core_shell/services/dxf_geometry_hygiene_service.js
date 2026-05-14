@@ -6,6 +6,7 @@ const {
 } = require("../dxf");
 const {
   bboxUnion,
+  arcEndpoints,
   roundNumber,
   transformPoint
 } = require("../geometry");
@@ -58,12 +59,22 @@ function collectEntityXdataMetadata(entity) {
   const value = extractMotherXdataValue(entity);
   if (!value) return null;
   const attributes = parseMotherXdataAttributes(value);
+  const keys = Object.keys(attributes);
+  const rawGeometryVariant = String(attributes.GEOMETRY_VARIANT || "").trim() || null;
+  let branchIssue = null;
+  if (!rawGeometryVariant) {
+    branchIssue = "missing_geometry_variant";
+  } else if (keys.length !== 1) {
+    branchIssue = "unexpected_branch_attributes";
+  }
   return {
     app: MOTHER_XDATA_APP_NAME,
     value,
     attributes,
-    feature_family: String(attributes.FEATURE_FAMILY || "").trim() || null,
-    variant_key: String(attributes.VARIANT_KEY || "").trim() || null
+    geometry_variant: branchIssue ? null : rawGeometryVariant,
+    raw_geometry_variant: rawGeometryVariant,
+    branch_valid: !branchIssue,
+    branch_issue: branchIssue
   };
 }
 
@@ -168,20 +179,16 @@ function collectBlockInternalLineObjects(document) {
 
 function classifyOverlapIssue(clusterEntries) {
   const members = clusterEntries.map((entry) => entry.object);
-  const families = new Set(
+  const geometryVariants = new Set(
     members
-      .map((object) => String(object?.xdata_metadata?.feature_family || "").trim())
+      .map((object) => String(object?.xdata_metadata?.geometry_variant || "").trim())
       .filter(Boolean)
   );
-  const variantKeys = new Set(
-    members
-      .map((object) => String(object?.xdata_metadata?.variant_key || "").trim())
-      .filter(Boolean)
-  );
-  if (families.size === 1 && variantKeys.size >= 2) {
+  const hasBaseGeometry = members.some((object) => !String(object?.xdata_metadata?.geometry_variant || "").trim());
+  if (geometryVariants.size >= 2 || (geometryVariants.size >= 1 && hasBaseGeometry)) {
     return {
       issue_type: "expected_variant_overlap",
-      suggestion: "Expected variant overlap. Keep upstream XDATA distinction and resolve later through variant selection."
+      suggestion: "Expected branch alternative. BASE and tagged geometry branches are mutually exclusive and should stay distinguished upstream."
     };
   }
   return {
@@ -192,16 +199,199 @@ function classifyOverlapIssue(clusterEntries) {
   };
 }
 
+function sameBranchContext(a, b) {
+  const aVariant = String(a?.object?.xdata_metadata?.geometry_variant || "").trim();
+  const bVariant = String(b?.object?.xdata_metadata?.geometry_variant || "").trim();
+  return aVariant === bVariant;
+}
+
+function pointDistance(a, b) {
+  if (!a || !b) return Number.POSITIVE_INFINITY;
+  return Math.hypot(Number(a.x) - Number(b.x), Number(a.y) - Number(b.y));
+}
+
+function lineEndpoints(summary) {
+  if (!summary) return [];
+  return [
+    { x: summary.x1, y: summary.y1, role: "start" },
+    { x: summary.x2, y: summary.y2, role: "end" }
+  ];
+}
+
+function geometryVariantKey(object) {
+  return String(object?.xdata_metadata?.geometry_variant || "").trim();
+}
+
+function connectionPointsForObject(object, summaryOverride = null) {
+  const lineSummary = summaryOverride || lineGeometrySummary(object);
+  if (lineSummary) {
+    return lineEndpoints(lineSummary);
+  }
+  const shapes = Array.isArray(object?.shapes) ? object.shapes : [];
+  const points = [];
+  for (const shape of shapes) {
+    if (shape?.kind === "arc") {
+      const endpoints = arcEndpoints(shape);
+      if (endpoints?.start) points.push(endpoints.start);
+      if (endpoints?.end) points.push(endpoints.end);
+    }
+  }
+  return points.filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y));
+}
+
+function pointHasSameBranchConnection(point, sourceObjects, variantKey, excludedObjectIds, tolerance) {
+  const excluded = excludedObjectIds instanceof Set ? excludedObjectIds : new Set(excludedObjectIds || []);
+  for (const object of Array.isArray(sourceObjects) ? sourceObjects : []) {
+    if (!object || excluded.has(String(object.id || ""))) continue;
+    if (geometryVariantKey(object) !== variantKey) continue;
+    const connectionPoints = connectionPointsForObject(object);
+    if (connectionPoints.some((candidatePoint) => pointDistance(point, candidatePoint) <= tolerance)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function nearestObjectEndpoint(object, projected, summaryOverride = null, tolerance = Number.POSITIVE_INFINITY) {
+  if (!projected || !object) return null;
+  const endpoints = connectionPointsForObject(object, summaryOverride);
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const point of endpoints) {
+    const distance = pointDistance(projected, point);
+    if (distance < bestDistance) {
+      best = point;
+      bestDistance = distance;
+    }
+  }
+  if (!best || bestDistance > tolerance) return null;
+  return best;
+}
+
+function collectOpenContourGapCandidates(lineObjects, sourceObjects) {
+  const issues = [];
+  const seen = new Set();
+  const axisTolerance = 1.5;
+  const connectedEndpointTolerance = 0.75;
+  const notchAllowanceMm = 5;
+  const gapToleranceMax = 12;
+  for (const entry of Array.isArray(lineObjects) ? lineObjects : []) {
+    const { object, summary } = entry;
+    if (!summary || !["horizontal", "vertical"].includes(summary.orientation)) continue;
+    const variantKey = geometryVariantKey(object);
+    const endpoints = lineEndpoints(summary);
+    for (const endpoint of endpoints) {
+      if (pointHasSameBranchConnection(endpoint, sourceObjects, variantKey, new Set([String(object.id || "")]), connectedEndpointTolerance)) {
+        continue;
+      }
+      for (const candidate of lineObjects) {
+        if (candidate === entry) continue;
+        if (!sameBranchContext(entry, candidate)) continue;
+        const other = candidate.summary;
+        if (!other || other.orientation === summary.orientation) continue;
+        let projected = null;
+        let gap = null;
+        if (summary.orientation === "horizontal" && other.orientation === "vertical") {
+          const minY = Math.min(other.y1, other.y2) - axisTolerance;
+          const maxY = Math.max(other.y1, other.y2) + axisTolerance;
+          if (endpoint.y < minY || endpoint.y > maxY) continue;
+          gap = Math.abs(endpoint.x - other.x1);
+          if (!(gap > notchAllowanceMm && gap <= gapToleranceMax)) continue;
+          projected = { x: other.x1, y: endpoint.y };
+        } else if (summary.orientation === "vertical" && other.orientation === "horizontal") {
+          const minX = Math.min(other.x1, other.x2) - axisTolerance;
+          const maxX = Math.max(other.x1, other.x2) + axisTolerance;
+          if (endpoint.x < minX || endpoint.x > maxX) continue;
+          gap = Math.abs(endpoint.y - other.y1);
+          if (!(gap > notchAllowanceMm && gap <= gapToleranceMax)) continue;
+          projected = { x: endpoint.x, y: other.y1 };
+        }
+        if (!projected) continue;
+        const candidateEndpoint = nearestObjectEndpoint(candidate.object, projected, other, connectedEndpointTolerance);
+        if (!candidateEndpoint) continue;
+        if (pointHasSameBranchConnection(candidateEndpoint, sourceObjects, variantKey, new Set([String(object.id || ""), String(candidate.object?.id || "")]), connectedEndpointTolerance)) {
+          continue;
+        }
+        const key = [
+          String(object.id || ""),
+          String(candidate.object?.id || ""),
+          roundNumber(endpoint.x, 3),
+          roundNumber(endpoint.y, 3),
+          roundNumber(projected.x, 3),
+          roundNumber(projected.y, 3)
+        ].sort().join("|");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        issues.push({
+          issue_type: "open_contour_gap_candidate",
+          orientation: summary.orientation,
+          object_id: object.id,
+          entity_id: object.entity_id,
+          block_name: object.block_name || null,
+          source_line: object?.source?.line_start || null,
+          gap_mm: roundNumber(gap, 3),
+          bbox: {
+            minX: Math.min(endpoint.x, projected.x),
+            minY: Math.min(endpoint.y, projected.y),
+            maxX: Math.max(endpoint.x, projected.x),
+            maxY: Math.max(endpoint.y, projected.y)
+          },
+          members: [
+            {
+              object_id: object.id,
+              entity_id: object.entity_id,
+              block_name: object.block_name || null,
+              source_line: object?.source?.line_start || null,
+              geometry_variant: String(object?.xdata_metadata?.geometry_variant || "").trim() || null
+            },
+            {
+              object_id: candidate.object?.id || null,
+              entity_id: candidate.object?.entity_id || null,
+              block_name: candidate.object?.block_name || null,
+              source_line: candidate.object?.source?.line_start || null,
+              geometry_variant: String(candidate.object?.xdata_metadata?.geometry_variant || "").trim() || null
+            }
+          ],
+          suggestion: "Likely open contour near-miss. Inspect whether these orthogonal lines should meet in the same geometry branch."
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+function collectInvalidBranchXdataIssues(objects) {
+  const issues = [];
+  for (const object of Array.isArray(objects) ? objects : []) {
+    const metadata = object?.xdata_metadata;
+    if (!metadata || metadata.branch_valid !== false) continue;
+    issues.push({
+      object_id: object.id,
+      entity_id: object.entity_id,
+      block_name: object.block_name || null,
+      source_line: object?.source?.line_start || null,
+      issue_type: "invalid_branch_xdata",
+      raw_value: metadata.value,
+      branch_issue: metadata.branch_issue,
+      bbox: object.bbox || null,
+      suggestion: "Fix upstream XDATA to the strict syntax GEOMETRY_VARIANT=<VALUE>. Invalid branch XDATA is ignored by branch filtering."
+    });
+  }
+  return issues;
+}
+
 function analyzeGeometryHygiene(document, objects) {
   const sourceObjects = [
     ...(Array.isArray(objects) ? objects : []),
     ...collectBlockInternalLineObjects(document)
   ];
   const issues = [];
+  const invalidBranchXdata = collectInvalidBranchXdataIssues(objects);
   const microLines = [];
   const degenerateLines = [];
   const overlapGroups = [];
   const expectedVariantOverlaps = [];
+  const openContourGaps = [];
   const lineObjects = [];
 
   for (const object of sourceObjects) {
@@ -295,8 +485,7 @@ function analyzeGeometryHygiene(document, objects) {
           layer: entry.object?.primary_layer || null,
           length_mm: roundNumber(entry.summary.length, 3),
           bbox: lineBBox(entry.summary),
-          feature_family: String(entry.object?.xdata_metadata?.feature_family || "").trim() || null,
-          variant_key: String(entry.object?.xdata_metadata?.variant_key || "").trim() || null
+          geometry_variant: String(entry.object?.xdata_metadata?.geometry_variant || "").trim() || null
         })),
         suggestion: classification.suggestion
       };
@@ -308,14 +497,18 @@ function analyzeGeometryHygiene(document, objects) {
     }
   }
 
-  issues.push(...degenerateLines, ...microLines, ...overlapGroups, ...expectedVariantOverlaps);
+  openContourGaps.push(...collectOpenContourGapCandidates(lineObjects, sourceObjects));
+
+  issues.push(...invalidBranchXdata, ...degenerateLines, ...microLines, ...overlapGroups, ...expectedVariantOverlaps, ...openContourGaps);
   return {
     ok: issues.length === 0,
     counts: {
+      invalid_branch_xdata: invalidBranchXdata.length,
       degenerate_lines: degenerateLines.length,
       micro_lines: microLines.length,
       collinear_overlap_clusters: overlapGroups.length,
       expected_variant_overlaps: expectedVariantOverlaps.length,
+      open_contour_gaps: openContourGaps.length,
       total_issues: issues.length
     },
     issues
@@ -324,18 +517,29 @@ function analyzeGeometryHygiene(document, objects) {
 
 function collectXdataContext(objects) {
   const sourceObjects = Array.isArray(objects) ? objects : [];
-  const featureFamilies = new Set();
-  const variantKeys = new Set();
+  const geometryVariants = new Set();
+  let taggedObjectCount = 0;
+  let baseObjectCount = 0;
+  let invalidBranchXdataCount = 0;
   for (const object of sourceObjects) {
     const metadata = object?.xdata_metadata;
-    const featureFamily = String(metadata?.feature_family || "").trim();
-    const variantKey = String(metadata?.variant_key || "").trim();
-    if (featureFamily) featureFamilies.add(featureFamily);
-    if (variantKey) variantKeys.add(variantKey);
+    const geometryVariant = String(metadata?.geometry_variant || "").trim();
+    if (geometryVariant) {
+      geometryVariants.add(geometryVariant);
+      taggedObjectCount += 1;
+      continue;
+    }
+    if (metadata?.branch_valid === false) {
+      invalidBranchXdataCount += 1;
+      continue;
+    }
+    baseObjectCount += 1;
   }
   return {
-    feature_families: Array.from(featureFamilies.values()).sort(),
-    variant_keys: Array.from(variantKeys.values()).sort()
+    geometry_variants: Array.from(geometryVariants.values()).sort(),
+    tagged_object_count: taggedObjectCount,
+    base_object_count: baseObjectCount,
+    invalid_branch_xdata_count: invalidBranchXdataCount
   };
 }
 
