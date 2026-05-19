@@ -66,14 +66,96 @@ const SEMANTIC_COLORS = {
   UNCLASSIFIED: "#94a3b8"
 };
 
-const DEFAULT_CONFIG_PARAMETER_SET = {
-  technology_profile: "OPS_S4P4",
-  product_code: "KSKR",
-  parameters: {
-    BRAVA: "TIP1",
-    LIMITATOR: false
-  }
+const DEFAULT_CONFIG_CONTEXT = {
+  family: "VRATA",
+  product: "PPV",
+  part: "",
+  technology_profile: "OPS_S4P4"
 };
+
+function inferPartFromSourceName(sourceName) {
+  const baseName = String(sourceName || "")
+    .trim()
+    .replace(/\.[^.]+$/, "")
+    .split(/[\s_-]+/)[0]
+    .trim()
+    .toUpperCase();
+  return /^[A-Z]+$/.test(baseName) ? baseName : "";
+}
+
+function defaultConfigContextForSource(sourceName, overrides = {}) {
+  const sourcePart = inferPartFromSourceName(sourceName);
+  const source = overrides && typeof overrides === "object" ? overrides : {};
+  return {
+    ...DEFAULT_CONFIG_CONTEXT,
+    ...source,
+    part: String(source.part || sourcePart || DEFAULT_CONFIG_CONTEXT.part || "").trim()
+  };
+}
+
+function scopeListIncludes(value, expected) {
+  const normalizedExpected = String(expected || "").trim().toUpperCase();
+  if (!normalizedExpected) return true;
+  if (value == null) return true;
+  const list = Array.isArray(value) ? value : [value];
+  return list.some((item) => {
+    const normalized = String(item || "").trim().toUpperCase();
+    return normalized === "*" || normalized === normalizedExpected;
+  });
+}
+
+function catalogParameterAppliesToContext(parameter, context = {}) {
+  const scope = parameter && typeof parameter.scope === "object" ? parameter.scope : null;
+  if (!scope) return true;
+  const family = scope.family ?? scope.families;
+  return scopeListIncludes(family, context.family)
+    && scopeListIncludes(scope.products, context.product)
+    && scopeListIncludes(scope.parts, context.part);
+}
+
+function catalogParameterDefaultValue(parameter) {
+  if (!parameter || typeof parameter !== "object") return undefined;
+  if (Object.prototype.hasOwnProperty.call(parameter, "default")) return cloneJson(parameter.default);
+  if (String(parameter.type || "").trim().toLowerCase() === "number") {
+    const min = Number(parameter.min);
+    const max = Number(parameter.max);
+    if (Number.isFinite(min) && Number.isFinite(max)) return roundNumber((min + max) / 2, 3);
+    if (Number.isFinite(min)) return min;
+    return 0;
+  }
+  if (Array.isArray(parameter.values) && parameter.values.length) return parameter.values[0];
+  return undefined;
+}
+
+function buildDefaultConfigFromParameterCatalog(catalogInput, context = {}) {
+  const catalog = normalizeParameterCatalogSnapshot(catalogInput || DEFAULT_PARAMETER_CATALOG);
+  const effectiveContext = {
+    ...DEFAULT_CONFIG_CONTEXT,
+    ...(context && typeof context === "object" ? context : {})
+  };
+  const parameters = {};
+  for (const [key, parameter] of Object.entries(catalog.parameters || {})) {
+    if (!catalogParameterAppliesToContext(parameter, effectiveContext)) continue;
+    const value = catalogParameterDefaultValue(parameter);
+    if (value !== undefined) parameters[key] = value;
+  }
+  return {
+    technology_profile: String(effectiveContext.technology_profile || DEFAULT_CONFIG_CONTEXT.technology_profile),
+    family: String(effectiveContext.family || DEFAULT_CONFIG_CONTEXT.family),
+    product: String(effectiveContext.product || DEFAULT_CONFIG_CONTEXT.product),
+    part: String(effectiveContext.part || ""),
+    product_code: String(effectiveContext.product_code || effectiveContext.product || ""),
+    parameter_catalog_id: catalog.catalog_id || null,
+    parameter_scope: {
+      family: String(effectiveContext.family || DEFAULT_CONFIG_CONTEXT.family),
+      product: String(effectiveContext.product || DEFAULT_CONFIG_CONTEXT.product),
+      part: String(effectiveContext.part || "")
+    },
+    parameters
+  };
+}
+
+const DEFAULT_CONFIG_PARAMETER_SET = buildDefaultConfigFromParameterCatalog(DEFAULT_PARAMETER_CATALOG, DEFAULT_CONFIG_CONTEXT);
 
 const DEFAULT_KSKR_EXECUTION_CHECK_PARAMETER_SET = {
   technology_profile: "OPS_S4P4",
@@ -150,7 +232,7 @@ function sessionHasAuthoringState(session) {
   const hasDocumentLevelMetadata = documentComments.some((pair) => {
     if (String(pair?.code) !== "999") return false;
     const value = String(pair?.value || "").trim().toUpperCase();
-    return value.startsWith("SEM:") || value.startsWith("TOPO:");
+    return value.startsWith("SEM:") || value.startsWith("TOPO:") || value.startsWith("RULE:");
   });
   if (hasDocumentLevelMetadata) return true;
 
@@ -160,7 +242,7 @@ function sessionHasAuthoringState(session) {
     return comments.some((pair) => {
       if (String(pair?.code) !== "999") return false;
       const value = String(pair?.value || "").trim().toUpperCase();
-      return value.startsWith("SEM:") || value.startsWith("TOPO:");
+      return value.startsWith("SEM:") || value.startsWith("TOPO:") || value.startsWith("RULE:");
     });
   });
   if (hasEntityMetadata) return true;
@@ -177,7 +259,12 @@ function normalizeConfigParameterSet(input) {
       : {};
   return {
     technology_profile: String(source.technology_profile || DEFAULT_CONFIG_PARAMETER_SET.technology_profile),
-    product_code: String(source.product_code || DEFAULT_CONFIG_PARAMETER_SET.product_code),
+    family: String(source.family || DEFAULT_CONFIG_PARAMETER_SET.family || DEFAULT_CONFIG_CONTEXT.family),
+    product: String(source.product || DEFAULT_CONFIG_PARAMETER_SET.product || DEFAULT_CONFIG_CONTEXT.product),
+    part: String(source.part || DEFAULT_CONFIG_PARAMETER_SET.part || source.product_code || DEFAULT_CONFIG_CONTEXT.part),
+    product_code: String(source.product_code || source.part || DEFAULT_CONFIG_PARAMETER_SET.product_code),
+    parameter_catalog_id: source.parameter_catalog_id || DEFAULT_CONFIG_PARAMETER_SET.parameter_catalog_id || null,
+    parameter_scope: cloneJson(source.parameter_scope || DEFAULT_CONFIG_PARAMETER_SET.parameter_scope || {}),
     parameters: cloneJson({
       ...DEFAULT_CONFIG_PARAMETER_SET.parameters,
       ...parameters
@@ -185,12 +272,17 @@ function normalizeConfigParameterSet(input) {
   };
 }
 
+function isModuleOwnedParameterCatalog(source) {
+  const catalogId = String(source?.catalog_id || "").trim();
+  return !catalogId || catalogId === String(DEFAULT_PARAMETER_CATALOG.catalog_id || "").trim();
+}
+
 function normalizeParameterCatalogSnapshot(input) {
   const source = input && typeof input === "object" ? input : null;
   const parameters = source && source.parameters && typeof source.parameters === "object"
     ? source.parameters
     : null;
-  if (!source || !parameters || !Object.keys(parameters).length) {
+  if (!source || !parameters || !Object.keys(parameters).length || isModuleOwnedParameterCatalog(source)) {
     return cloneJson(DEFAULT_PARAMETER_CATALOG);
   }
   return cloneJson(source);
@@ -414,7 +506,7 @@ function normalizeTopoCommentsInput(input) {
 }
 
 function extractTopoCommentsFromDxfText(dxfText) {
-  return normalizeTopoCommentsInput(dxfText);
+  return normalizeTopoCommentsInput(dxfText).filter((value) => isFileLevelTopoComment(value));
 }
 
 function normalizeBooleanLike(value) {
@@ -585,6 +677,70 @@ function parseSemanticComment(rawValue) {
   };
 }
 
+function parseRuleComment(rawValue) {
+  const raw = String(rawValue || "").trim();
+  if (!raw.toUpperCase().startsWith("RULE:")) return null;
+  const body = raw.slice(5).trim();
+  const pairs = body ? body.split(";").map((item) => item.trim()).filter(Boolean) : [];
+  const keys = {};
+  const errors = [];
+
+  for (const pair of pairs) {
+    const idx = pair.indexOf("=");
+    if (idx <= 0 || idx === pair.length - 1) {
+      errors.push({
+        code: "INVALID_RULE_PAIR",
+        message: `Invalid RULE pair: ${pair}`
+      });
+      continue;
+    }
+    const key = pair.slice(0, idx).trim();
+    const value = pair.slice(idx + 1).trim();
+    if (!key) {
+      errors.push({
+        code: "EMPTY_RULE_KEY",
+        message: "RULE key is empty."
+      });
+      continue;
+    }
+    if (!value) {
+      errors.push({
+        code: "EMPTY_RULE_VALUE",
+        message: `RULE value for key ${key} is empty.`
+      });
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(keys, key)) {
+      errors.push({
+        code: "DUPLICATE_RULE_KEY",
+        message: `Duplicate RULE key: ${key}`
+      });
+      continue;
+    }
+    keys[key] = value;
+  }
+
+  const when_expression = keys.when ? parseWhenExpression(keys.when) : null;
+  if (keys.when && !when_expression) {
+    errors.push({
+      code: "INVALID_RULE_WHEN",
+      message: `Invalid RULE when expression: ${keys.when}`
+    });
+  }
+
+  return {
+    namespace: "RULE",
+    raw_comment: raw,
+    keys,
+    when_expression,
+    validation: {
+      ok: errors.length === 0,
+      errors,
+      warnings: []
+    }
+  };
+}
+
 function coerceDocumentSemNumber(value, fieldName) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -709,6 +865,24 @@ function collectDocumentSemMetadata(parsedDocument) {
   };
 }
 
+function collectDocumentRuleMetadata(parsedDocument) {
+  const comments = Array.isArray(parsedDocument?.preComments) ? parsedDocument.preComments : [];
+  const parsedRules = comments
+    .filter((pair) => String(pair?.code) === "999")
+    .map((pair) => parseRuleComment(pair.value))
+    .filter(Boolean);
+  const validationErrors = parsedRules.flatMap((item) => item.validation?.errors || []);
+  return {
+    raw_comments: parsedRules.map((item) => item.raw_comment),
+    parsed: parsedRules,
+    validation: {
+      ok: validationErrors.length === 0,
+      errors: validationErrors,
+      warnings: []
+    }
+  };
+}
+
 function evaluateCatalogRuleCondition(condition, parameters) {
   const source = condition && typeof condition === "object" ? condition : {};
   const parameter = String(source.parameter || "").trim();
@@ -820,6 +994,17 @@ function lineOrientationLocal(shape, tolerance = 0.5) {
   if (dx <= tolerance) return "vertical";
   if (dy <= tolerance) return "horizontal";
   return dx >= dy ? "horizontal" : "vertical";
+}
+
+function strictOrthogonalLineOrientation(shape, tolerance = 0.5) {
+  const line = lineShapeToPointsLocal(shape);
+  if (!line) return null;
+  const dx = Math.abs(Number(line.endPoint.x) - Number(line.startPoint.x));
+  const dy = Math.abs(Number(line.endPoint.y) - Number(line.startPoint.y));
+  if (dx <= tolerance && dy <= tolerance) return null;
+  if (dx <= tolerance) return "vertical";
+  if (dy <= tolerance) return "horizontal";
+  return null;
 }
 
 function pointsOverlapLocal(a, b, tolerance = 0.5) {
@@ -1195,6 +1380,267 @@ function applyDocumentRulesToSimulationMap(session, objects, parameters, objectM
   };
 }
 
+function evaluateWhenExpression(whenExpression, parameters) {
+  const clauses = Array.isArray(whenExpression?.clauses) ? whenExpression.clauses : [];
+  if (!clauses.length) return true;
+  const clauseResults = clauses.map((clause) => {
+    return compareInstructionValues(parameters?.[clause.parameter], clause.expected, clause.operator);
+  });
+  return whenExpression.logical_operator === "OR"
+    ? clauseResults.some(Boolean)
+    : clauseResults.every(Boolean);
+}
+
+function evaluateNumericValueExpression(expression, parameters, defaultValue = 0) {
+  const raw = String(expression ?? "").trim();
+  const fallback = Number(defaultValue);
+  if (!raw) return Number.isFinite(fallback) ? fallback : 0;
+  const direct = Number(raw);
+  if (Number.isFinite(direct)) return direct;
+  let missingParameter = false;
+  const substituted = raw.replace(/\b[A-Za-z_][A-Za-z0-9_]*\b/g, (name) => {
+    const value = Number(parameters?.[name]);
+    if (!Number.isFinite(value)) {
+      missingParameter = true;
+      return "NaN";
+    }
+    return String(value);
+  });
+  if (missingParameter || /[^0-9+\-*/().\s]/.test(substituted)) {
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+  try {
+    const value = Function(`"use strict"; return (${substituted});`)();
+    return Number.isFinite(Number(value)) ? Number(value) : (Number.isFinite(fallback) ? fallback : 0);
+  } catch (_err) {
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+}
+
+function executablePostTopoRules(session, parameters) {
+  const directRules = collectDocumentRuleMetadata(session?.document).parsed || [];
+  const normalizedDirectRules = directRules
+    .filter((rule) => rule.validation?.ok !== false)
+    .map((rule) => {
+      const keys = rule.keys || {};
+      const stage = String(keys.stage || "").trim().toLowerCase();
+      const geometry = String(keys.geometry || "").trim().toLowerCase();
+      const targetGroup = String(keys.target_group || "").trim();
+      const axis = String(keys.axis || "").trim().toUpperCase();
+      if (stage !== "post_topo" || geometry !== "offset" || !targetGroup || !["X", "Y"].includes(axis)) {
+        return null;
+      }
+      if (rule.when_expression && !evaluateWhenExpression(rule.when_expression, parameters)) {
+        return null;
+      }
+      const defaultValue = Number(keys.default || 0);
+      const valueMm = evaluateNumericValueExpression(
+        keys.value_expr || keys.value_mm,
+        parameters,
+        Number.isFinite(defaultValue) ? defaultValue : 0
+      );
+      return {
+        rule_id: String(keys.id || "").trim() || null,
+        raw_comment: rule.raw_comment,
+        target_group: targetGroup,
+        axis,
+        value_mm: valueMm,
+        dx: axis === "X" ? valueMm : 0,
+        dy: axis === "Y" ? valueMm : 0,
+        value_expr: keys.value_expr || null,
+        post_repair: String(keys.post_repair || "").trim().toLowerCase() || null
+      };
+    })
+    .filter(Boolean);
+  const catalogRules = resolveExecutablePostTopoCatalogRules(session, parameters);
+  return normalizedDirectRules.concat(catalogRules);
+}
+
+function resolveExecutablePostTopoCatalogRules(session, parameters) {
+  const documentSem = collectDocumentSemMetadata(session?.document);
+  const ruleRefs = Array.isArray(documentSem?.rule_refs) ? documentSem.rule_refs : [];
+  if (!ruleRefs.length) return [];
+  const catalog = normalizeRuleCatalogSnapshot(session?.rule_catalog);
+  const catalogRules = catalog && catalog.rules && typeof catalog.rules === "object" ? catalog.rules : {};
+  const activeProfile = String(catalog?.profile_id || "").trim().toUpperCase();
+  const rules = [];
+
+  for (const ruleRef of ruleRefs) {
+    const rule = catalogRules[ruleRef];
+    if (!rule || typeof rule !== "object") continue;
+    const action = rule.action && typeof rule.action === "object" ? rule.action : {};
+    const targetScope = rule.target_scope && typeof rule.target_scope === "object" ? rule.target_scope : {};
+    const profileScope = String(rule.profile_scope || "").trim().toUpperCase();
+    const stage = String(action.stage || "").trim().toLowerCase();
+    const geometry = String(action.geometry || "").trim().toLowerCase();
+    const targetGroup = String(targetScope.post_topo_group || targetScope.target_group || "").trim();
+    const axis = String(action.axis || "").trim().toUpperCase();
+    if (profileScope && activeProfile && !activeProfile.includes(profileScope)) continue;
+    if (stage !== "post_topo" || geometry !== "offset" || !targetGroup || !["X", "Y"].includes(axis)) continue;
+    if (rule.condition && !evaluateCatalogRuleCondition(rule.condition, parameters)) continue;
+    const defaultValue = Number(action.default || 0);
+    const valueMm = evaluateNumericValueExpression(
+      action.value_expr || action.value_mm,
+      parameters,
+      Number.isFinite(defaultValue) ? defaultValue : 0
+    );
+    rules.push({
+      rule_id: String(rule.rule_id || ruleRef).trim() || null,
+      raw_comment: null,
+      catalog_rule_ref: ruleRef,
+      target_group: targetGroup,
+      axis,
+      value_mm: valueMm,
+      dx: axis === "X" ? valueMm : 0,
+      dy: axis === "Y" ? valueMm : 0,
+      value_expr: action.value_expr || null,
+      post_repair: String(action.post_repair || "").trim().toLowerCase() || null
+    });
+  }
+
+  return rules;
+}
+
+function objectHasPostTopoGroup(object, targetGroup) {
+  const normalizedTarget = String(targetGroup || "").trim();
+  if (!normalizedTarget) return false;
+  const parsed = Array.isArray(object?.semantic_metadata?.parsed) ? object.semantic_metadata.parsed : [];
+  return parsed.some((record) => {
+    const group = String(record?.keys?.post_topo_group || "").trim();
+    return group === normalizedTarget;
+  });
+}
+
+function applyBoundedTrimRejoinPostPass(objectMap, objects, parameters, affectedObjects, preRuleShapeSnapshot, ruleId) {
+  const baseObjects = buildObjectsFromSimulationMap(objects, objectMap);
+  const includedObjects = baseObjects.filter((object) => evaluateChildEntityInclusion(object, parameters)?.included !== false);
+  const lineCandidates = collectLineCandidates(includedObjects);
+  const simulatedShapeMap = new Map();
+  for (const object of includedObjects) {
+    const preview = objectMap.get(object.id);
+    const shapes = Array.isArray(preview?.simulated_shapes) ? preview.simulated_shapes : [];
+    for (let index = 0; index < shapes.length; index += 1) {
+      simulatedShapeMap.set(`${object.id}:${index}`, shapes[index]);
+    }
+  }
+  const repairEnvelope = buildTopoPreviewEnvelope(includedObjects);
+  const repairOptions = {
+    bounds: repairEnvelope,
+    maxExtension: 30
+  };
+
+  for (const object of affectedObjects) {
+    const preview = objectMap.get(object.id);
+    if (!preview) continue;
+    preview.line_pairing = Array.isArray(preview.line_pairing) ? preview.line_pairing : [];
+    const preRuleShapes = preRuleShapeSnapshot.get(object.id) || cloneShapes(object?.shapes);
+    for (let index = 0; index < preview.simulated_shapes.length; index += 1) {
+      const originalShape = preRuleShapes[index];
+      const translatedShape = preview.simulated_shapes[index];
+      if (!originalShape || originalShape.kind !== "line") continue;
+      const resolved = applyTrimRejoinToTranslatedLine(
+        originalShape,
+        translatedShape,
+        lineCandidates,
+        { object_id: object.id, shape_index: index },
+        simulatedShapeMap,
+        repairOptions
+      );
+      for (const pairing of resolved.pairings || []) {
+        preview.line_pairing.push({
+          status: pairing.status,
+          paired_vertex: pairing.paired_vertex || null,
+          anchor_object_id: pairing.candidate ? pairing.candidate.object_id : null,
+          anchor_shape_index: pairing.candidate ? pairing.candidate.shape_index : null,
+          anchor_vertex: pairing.candidate_vertex || null,
+          intersection: pairing.intersection || null,
+          post_topo_rule_id: ruleId || null
+        });
+      }
+      preview.simulated_shapes[index] = resolved.shape;
+      simulatedShapeMap.set(`${object.id}:${index}`, resolved.shape);
+      for (const reciprocal of resolved.reciprocals || []) {
+        const reciprocalPreview = objectMap.get(reciprocal.object_id);
+        if (reciprocalPreview && reciprocalPreview.simulated_shapes[reciprocal.shape_index]) {
+          reciprocalPreview.simulated_shapes[reciprocal.shape_index] = reciprocal.shape;
+          simulatedShapeMap.set(`${reciprocal.object_id}:${reciprocal.shape_index}`, reciprocal.shape);
+        }
+      }
+    }
+  }
+}
+
+function applyPostTopoRulesToSimulationMap(session, objects, parameters, objectMap) {
+  if (!objectMap || !Array.isArray(objects) || !objects.length) {
+    return { applied_rules: [] };
+  }
+  const rules = executablePostTopoRules(session, parameters);
+  const appliedRules = [];
+
+  for (const rule of rules) {
+    const affectedObjects = objects.filter((object) => {
+      if (!objectHasPostTopoGroup(object, rule.target_group)) return false;
+      return evaluateChildEntityInclusion(object, parameters)?.included !== false;
+    });
+    if (!affectedObjects.length) continue;
+    const preRuleShapeSnapshot = new Map();
+    for (const object of objects) {
+      const preview = objectMap.get(object.id);
+      preRuleShapeSnapshot.set(
+        object.id,
+        cloneShapes(Array.isArray(preview?.simulated_shapes) ? preview.simulated_shapes : object?.shapes)
+      );
+    }
+    for (const object of affectedObjects) {
+      const preview = objectMap.get(object.id);
+      if (!preview) continue;
+      const currentShapes = Array.isArray(preview.simulated_shapes) ? preview.simulated_shapes : cloneShapes(object?.shapes);
+      preview.simulated_shapes = currentShapes.map((shape) => translateShape(shape, rule.dx, rule.dy));
+      const priorOffset = preview.applied_offset && typeof preview.applied_offset === "object"
+        ? preview.applied_offset
+        : { dx: 0, dy: 0 };
+      preview.applied_offset = {
+        dx: Number(priorOffset.dx || 0) + rule.dx,
+        dy: Number(priorOffset.dy || 0) + rule.dy
+      };
+      preview.post_topo_rule_actions = Array.isArray(preview.post_topo_rule_actions)
+        ? preview.post_topo_rule_actions
+        : [];
+      preview.post_topo_rule_actions.push({
+        rule_id: rule.rule_id,
+        target_group: rule.target_group,
+        axis: rule.axis,
+        value_mm: rule.value_mm,
+        value_expr: rule.value_expr
+      });
+      preview.geometry_simulation_mode = `${preview.geometry_simulation_mode || "identity"}|post_topo_rules`;
+    }
+    if (rule.post_repair === "bounded_trim_rejoin") {
+      applyBoundedTrimRejoinPostPass(objectMap, objects, parameters, affectedObjects, preRuleShapeSnapshot, rule.rule_id);
+    }
+    for (const object of objects) {
+      const preview = objectMap.get(object.id);
+      if (!preview) continue;
+      preview.simulated_bbox = Array.isArray(preview.simulated_shapes) && preview.simulated_shapes.length
+        ? bboxFromShapes(preview.simulated_shapes)
+        : (object?.bbox ? cloneJson(object.bbox) : null);
+    }
+    appliedRules.push({
+      rule_id: rule.rule_id,
+      target_group: rule.target_group,
+      axis: rule.axis,
+      value_mm: rule.value_mm,
+      value_expr: rule.value_expr,
+      post_repair: rule.post_repair,
+      affected_count: affectedObjects.length
+    });
+  }
+
+  return {
+    applied_rules: appliedRules
+  };
+}
+
 function parseTopoComment(commentValue) {
   const raw = String(commentValue || "").trim();
   if (!raw.toUpperCase().startsWith("TOPO:")) return null;
@@ -1229,7 +1675,7 @@ function parseTopoComment(commentValue) {
 }
 
 function collectTopoMetadata(parsedDocument) {
-  const sources = normalizeTopoCommentsInput(parsedDocument?.topo_comments);
+  const sources = normalizeTopoCommentsInput(parsedDocument?.topo_comments).filter((value) => isFileLevelTopoComment(value));
 
   if (Array.isArray(parsedDocument?.fileComments)) {
     sources.push(...parsedDocument.fileComments);
@@ -1252,10 +1698,45 @@ function collectTopoMetadata(parsedDocument) {
     .filter(Boolean);
 }
 
+function isEntityLevelTopoRole(topoObject) {
+  const role = String(topoObject?.keys?.role || "").trim();
+  return Boolean(role);
+}
+
+function isFileLevelTopoDefinition(topoObject) {
+  return Boolean(topoObject) && !isEntityLevelTopoRole(topoObject);
+}
+
 function validateTopoBlock(topoObject) {
   const errors = [];
   const mode = String(topoObject?.mode || "").trim();
   const keys = topoObject?.keys || {};
+  const role = String(keys.role || "").trim();
+  if (role) {
+    if (role !== "mover") {
+      errors.push({
+        code: "INVALID_TOPO_ROLE",
+        message: `Unsupported entity TOPO role: ${keys.role}`
+      });
+    }
+    if (!String(keys.group || "").trim()) {
+      errors.push({
+        code: "MISSING_TOPO_ROLE_GROUP",
+        message: "Missing entity TOPO role group."
+      });
+    }
+    const zone = String(keys.zone || "").trim().toUpperCase();
+    if (!["LEC", "REC"].includes(zone)) {
+      errors.push({
+        code: "INVALID_TOPO_ROLE_ZONE",
+        message: `Unsupported entity TOPO role zone: ${keys.zone}`
+      });
+    }
+    return {
+      ok: errors.length === 0,
+      errors
+    };
+  }
   const hasExecutableDraftFields = Boolean(
     keys.group || keys.axis
     || keys.lec_parameter || keys.lec_nominal || keys.rec_parameter || keys.rec_nominal
@@ -1358,7 +1839,7 @@ function validateTopoBlock(topoObject) {
 }
 
 function normalizeTopoRuntimeModel(topoObjects) {
-  const items = Array.isArray(topoObjects) ? topoObjects.filter(Boolean) : [];
+  const items = Array.isArray(topoObjects) ? topoObjects.filter(isFileLevelTopoDefinition) : [];
   if (!items.length) return null;
 
   const validated = items.map((item) => ({
@@ -1382,7 +1863,7 @@ function normalizeTopoRuntimeModel(topoObjects) {
 }
 
 function projectTopoMetadata(session) {
-  const raw_comments = normalizeTopoCommentsInput(session?.topo_comments);
+  const raw_comments = normalizeTopoCommentsInput(session?.topo_comments).filter((value) => isFileLevelTopoComment(value));
   const parsedRecords = raw_comments.map((raw_comment) => ({
     raw_comment,
     parsed: parseTopoComment(raw_comment)
@@ -1398,11 +1879,15 @@ function projectTopoMetadata(session) {
   const validationErrors = validations
     .filter((entry) => !entry.validation.ok)
     .flatMap((entry) => entry.validation.errors);
+  const file_level = parsed.filter(isFileLevelTopoDefinition);
+  const entity_roles = parsed.filter(isEntityLevelTopoRole);
   const runtime_model = normalizeTopoRuntimeModel(parsed);
 
   return {
     raw_comments,
     parsed,
+    file_level,
+    entity_roles,
     invalid_raw_comments,
     runtime_model,
     validation: {
@@ -1575,6 +2060,66 @@ function removeSemanticComment(document, entityId) {
   entity.preComments = preComments.filter((pair) => {
     const value = String(pair?.value || "").trim().toUpperCase();
     return !(String(pair?.code) === "999" && value.startsWith("SEM:"));
+  });
+}
+
+function nextRuntimeEntityId(document) {
+  const nums = (Array.isArray(document?.entities) ? document.entities : [])
+    .map((entity) => /^ent_(\d+)$/i.exec(String(entity?.id || "")))
+    .filter(Boolean)
+    .map((match) => Number(match[1]))
+    .filter(Number.isFinite);
+  return `ent_${(nums.length ? Math.max(...nums) : 0) + 1}`;
+}
+
+function makeRuntimeLineEntity({ id, x1, y1, x2, y2, layer = "0", preComments = [] }) {
+  const pairs = [
+    { code: "0", value: "LINE" },
+    { code: "8", value: String(layer || "0") },
+    { code: "10", value: String(roundNumber(Number(x1), 3)) },
+    { code: "20", value: String(roundNumber(Number(y1), 3)) },
+    { code: "30", value: "0" },
+    { code: "11", value: String(roundNumber(Number(x2), 3)) },
+    { code: "21", value: String(roundNumber(Number(y2), 3)) },
+    { code: "31", value: "0" }
+  ];
+  return {
+    id,
+    type: "LINE",
+    pairs,
+    preComments: clonePairsForRuntime(preComments),
+    section: "ENTITIES",
+    blockName: null,
+    source: null
+  };
+}
+
+function labelAnchorComment({ ruleId, width, height, rotation, coordinateSpace = "raw_part" }) {
+  return [
+    `SEM:label_anchor=${String(ruleId || "").trim()}`,
+    "role=envelope",
+    `coordinate_space=${String(coordinateSpace || "raw_part").trim()}`,
+    `width=${roundNumber(Number(width || 0), 3)}`,
+    `height=${roundNumber(Number(height || 0), 3)}`,
+    `rotation=${roundNumber(Number(rotation || 0), 3)}`
+  ].join(";");
+}
+
+function isLabelAnchorEntityForRule(entity, ruleId) {
+  const target = String(ruleId || "").trim();
+  if (!target) return false;
+  const comments = Array.isArray(entity?.preComments) ? entity.preComments : [];
+  return comments.some((pair) => {
+    if (String(pair?.code) !== "999") return false;
+    const parsed = parseSemanticComment(pair.value);
+    return parsed && String(parsed.keys?.label_anchor || "").trim() === target;
+  });
+}
+
+function labelAnchorObjects(objects) {
+  return (Array.isArray(objects) ? objects : []).filter((object) => {
+    const records = Array.isArray(object?.semantic_metadata?.parsed) ? object.semantic_metadata.parsed : [];
+    return records.some((record) => String(record?.keys?.label_anchor || "").trim());
   });
 }
 
@@ -1984,6 +2529,67 @@ function geometryVariantKey(object) {
   return String(object?.xdata_metadata?.geometry_variant || "").trim();
 }
 
+function normalizeBranchMode(mode) {
+  return String(mode || "ALL").trim() || "ALL";
+}
+
+function branchMetadataMatchesMode(metadata, branchMode) {
+  const mode = normalizeBranchMode(branchMode);
+  if (mode === "ALL") return true;
+  const geometryVariant = String(metadata?.geometry_variant || "").trim();
+  if (mode === "BASE") return !geometryVariant;
+  return geometryVariant === mode;
+}
+
+function objectMatchesBranchMode(object, branchMode) {
+  return branchMetadataMatchesMode(object?.xdata_metadata, branchMode);
+}
+
+function filterObjectsByBranchMode(objects, branchMode) {
+  const mode = normalizeBranchMode(branchMode);
+  if (mode === "ALL") return Array.isArray(objects) ? objects : [];
+  return (Array.isArray(objects) ? objects : []).filter((object) => objectMatchesBranchMode(object, mode));
+}
+
+function hasExplicitBranchMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object") return false;
+  if (String(metadata.geometry_variant || "").trim()) return true;
+  if (metadata.branch_valid === false) return true;
+  if (String(metadata.raw_geometry_variant || "").trim()) return true;
+  if (String(metadata.raw_value || "").trim()) return true;
+  return false;
+}
+
+function filterDocumentByBranchMode(session, document, branchMode) {
+  const mode = normalizeBranchMode(branchMode);
+  if (mode === "ALL") {
+    return { branch_mode: mode, top_level_removed: 0, block_child_removed: 0 };
+  }
+  const topEntities = Array.isArray(document?.entities) ? document.entities : [];
+  let topLevelRemoved = 0;
+  document.entities = topEntities.filter((entity) => {
+    const keep = branchMetadataMatchesMode(collectEntityXdataMetadata(session, entity.id), mode);
+    if (!keep) topLevelRemoved += 1;
+    return keep;
+  });
+  let blockChildRemoved = 0;
+  for (const block of Array.isArray(document?.blocks) ? document.blocks : []) {
+    const blockEntities = Array.isArray(block?.entities) ? block.entities : [];
+    block.entities = blockEntities.filter((entity) => {
+      const metadata = collectEntityXdataMetadata(session, entity.id);
+      if (!hasExplicitBranchMetadata(metadata)) return true;
+      const keep = branchMetadataMatchesMode(metadata, mode);
+      if (!keep) blockChildRemoved += 1;
+      return keep;
+    });
+  }
+  return {
+    branch_mode: mode,
+    top_level_removed: topLevelRemoved,
+    block_child_removed: blockChildRemoved
+  };
+}
+
 function connectionPointsForObject(object, summaryOverride = null) {
   const lineSummary = summaryOverride || lineGeometrySummary(object);
   if (lineSummary) return lineEndpoints(lineSummary);
@@ -2338,6 +2944,93 @@ function collectXdataContext(objects, extraObjects = []) {
   };
 }
 
+function normalizeSessionActivityLog(input) {
+  const items = Array.isArray(input) ? input : [];
+  return items
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      ts: String(item.ts || new Date().toISOString()),
+      severity: String(item.severity || "info"),
+      type: String(item.type || "session_event"),
+      summary: String(item.summary || "Session event"),
+      details: item.details && typeof item.details === "object" ? cloneJson(item.details) : {}
+    }))
+    .slice(-200);
+}
+
+function appendSessionActivity(session, event) {
+  if (!session || !event || typeof event !== "object") return null;
+  const entry = {
+    ts: new Date().toISOString(),
+    severity: String(event.severity || "info"),
+    type: String(event.type || "session_event"),
+    summary: String(event.summary || "Session event"),
+    details: event.details && typeof event.details === "object" ? cloneJson(event.details) : {}
+  };
+  session.activity_log = normalizeSessionActivityLog(session.activity_log).concat(entry).slice(-200);
+  return entry;
+}
+
+function sampleValues(values, limit = 8) {
+  return Array.from(new Set((Array.isArray(values) ? values : []).map((value) => String(value || "").trim()).filter(Boolean))).slice(0, limit);
+}
+
+function buildSessionArrangementSnapshot(session, context = {}) {
+  const objects = Array.isArray(context.objects) ? context.objects : [];
+  const documentSem = context.document_sem || collectDocumentSemMetadata(session?.document);
+  const topoMetadata = context.topo_metadata || projectTopoMetadata(session || {});
+  const config = normalizeConfigParameterSet(session?.config_parameter_set);
+  const ruleCatalog = normalizeRuleCatalogSnapshot(session?.rule_catalog);
+  const parameterCatalog = normalizeParameterCatalogSnapshot(session?.parameter_catalog);
+  const semTargets = objects.filter((object) => Array.isArray(object.semantic_metadata?.raw_comments) && object.semantic_metadata.raw_comments.length > 0);
+  const microShiftTargets = objects.filter((object) => {
+    const records = Array.isArray(object.semantic_metadata?.parsed) ? object.semantic_metadata.parsed : [];
+    return records.some((record) => String(record?.keys?.post_topo_group || "").trim() === "MICRO_SHIFT_SET");
+  });
+  const topoTargets = objects.filter((object) => object.topo_role_metadata?.keys?.role);
+  const labelAnchors = labelAnchorObjects(objects);
+  const labelAnchorRules = Array.from(new Set(labelAnchors.flatMap((object) => {
+    const records = Array.isArray(object.semantic_metadata?.parsed) ? object.semantic_metadata.parsed : [];
+    return records.map((record) => String(record?.keys?.label_anchor || "").trim()).filter(Boolean);
+  })));
+  const topoGroups = new Map();
+  for (const object of topoTargets) {
+    const keys = object.topo_role_metadata?.keys || {};
+    const group = String(keys.group || "").trim() || "(missing group)";
+    const zone = String(keys.zone || "").trim().toUpperCase() || "UNKNOWN";
+    if (!topoGroups.has(group)) topoGroups.set(group, { group, total: 0, LEC: 0, REC: 0, UNKNOWN: 0 });
+    const item = topoGroups.get(group);
+    item.total += 1;
+    item[zone] = Number(item[zone] || 0) + 1;
+  }
+  return {
+    source_name: session?.source_name || null,
+    artifact_state: session?.artifact_state || null,
+    status: session?.status || null,
+    family: documentSem?.family || config.family || null,
+    product: documentSem?.product || config.product || null,
+    part: documentSem?.part || config.part || config.product_code || null,
+    nominal_width: documentSem?.nominal_width || null,
+    nominal_height: documentSem?.nominal_height || null,
+    parameter_catalog_id: parameterCatalog.catalog_id || config.parameter_catalog_id || null,
+    rule_catalog_id: ruleCatalog.catalog_id || null,
+    rule_profile_id: ruleCatalog.profile_id || null,
+    document_rules: Array.isArray(documentSem?.rule_refs) ? documentSem.rule_refs : [],
+    topo_file_level: Array.isArray(topoMetadata?.file_level) ? topoMetadata.file_level.map((item) => item.raw_comment) : [],
+    topo_groups: Array.from(topoGroups.values()),
+    object_count: objects.length,
+    semantic_target_count: semTargets.length,
+    micro_shift_set_count: microShiftTargets.length,
+    micro_shift_set_sample: sampleValues(microShiftTargets.map((object) => object.entity_id)),
+    label_anchor_count: labelAnchors.length,
+    label_anchor_rules: labelAnchorRules,
+    label_anchor_sample: sampleValues(labelAnchors.map((object) => object.entity_id)),
+    topo_target_count: topoTargets.length,
+    config_parameter_count: Object.keys(config.parameters || {}).length,
+    last_validation_ok: session?.validation ? Boolean(session.validation.ok) : null
+  };
+}
+
 function projectViewModel(session) {
   reindexDocumentSources(session.document);
   const state = buildRelevantState(session.document, session.bands, session.assignments);
@@ -2380,9 +3073,16 @@ function projectViewModel(session) {
   });
   const topo_metadata = projectTopoMetadata(session);
   const document_sem = collectDocumentSemMetadata(session.document);
+  const document_rules = collectDocumentRuleMetadata(session.document);
   const blockInternalObjects = collectBlockInternalLineObjects(session, session.document);
   const geometry_hygiene = analyzeGeometryHygiene(session, session.document, objects);
   const xdata_context = collectXdataContext(objects, blockInternalObjects);
+  session.activity_log = normalizeSessionActivityLog(session.activity_log);
+  const arrangement_snapshot = buildSessionArrangementSnapshot(session, {
+    objects,
+    document_sem,
+    topo_metadata
+  });
 
   return {
     session_id: session.session_id,
@@ -2396,9 +3096,12 @@ function projectViewModel(session) {
     parameter_catalog: normalizeParameterCatalogSnapshot(session.parameter_catalog),
     rule_catalog: normalizeRuleCatalogSnapshot(session.rule_catalog),
     document_sem,
+    document_rules,
     topo_metadata,
     geometry_hygiene,
     xdata_context,
+    arrangement_snapshot,
+    activity_log: session.activity_log,
     objects,
     allowed_layers: Array.from(ALLOWED_PRIMARY_LAYERS.values()),
     semantic_colors: SEMANTIC_COLORS
@@ -2413,7 +3116,8 @@ function buildSessionSummary(session) {
     artifact_state: session.artifact_state || null,
     source_name: session.source_name || null,
     created_at: session.created_at || null,
-    updated_at: session.updated_at || null
+    updated_at: session.updated_at || null,
+    has_authoring_state: sessionHasAuthoringState(session)
   };
 }
 
@@ -2578,12 +3282,13 @@ function materializeChildDocumentNoTopo(session, config) {
   const view = assertNoTopoKskrChildScope(session, config);
   const parameters = config.parameters || {};
   const outputDocument = cloneJson(session.document);
+  const documentRuleExecution = materializeDocumentRulesOnDocument(outputDocument, session, view.objects, parameters);
   const decisionsByEntityId = new Map();
   const excludedEntities = [];
   const includedEntities = [];
   const unsupportedGeometryOps = [];
 
-  for (const object of Array.isArray(view.objects) ? view.objects : []) {
+  for (const object of Array.isArray(sourceObjects) ? sourceObjects : []) {
     const decision = evaluateChildEntityInclusion(object, parameters);
     decisionsByEntityId.set(object.entity_id, decision);
     if (!decision.included) {
@@ -2620,6 +3325,7 @@ function materializeChildDocumentNoTopo(session, config) {
       return !decision || decision.included;
     });
   pruneUnusedBlocks(outputDocument);
+  const finalChildExecution = finalizeChildDocument(outputDocument, session, config, repairContext);
 
   return {
     document: outputDocument,
@@ -2628,12 +3334,22 @@ function materializeChildDocumentNoTopo(session, config) {
       topology_mode: "none",
       product_code: config.product_code,
       technology_profile: config.technology_profile,
-      entity_count: (Array.isArray(view.objects) ? view.objects : []).length,
+      document_rules_applied: documentRuleExecution.applied_rules || [],
+      entity_count: sourceObjects.length,
       included_count: includedEntities.length,
       excluded_count: excludedEntities.length,
       included_entities: includedEntities,
       excluded_entities: excludedEntities,
-      unsupported_geometry_ops: unsupportedGeometryOps
+      unsupported_geometry_ops: unsupportedGeometryOps,
+      block_explosion: finalChildExecution.block_explosion,
+      final_orientation_rules_applied: finalChildExecution.final_orientation.applied_rules || [],
+      bbox_normalization: finalChildExecution.bbox_normalization,
+      final_gap_repair: finalChildExecution.final_gap_repair,
+      child_label_rules_applied: finalChildExecution.child_label.applied_rules || [],
+      child_label_removed_anchor_entities: finalChildExecution.child_label.removed_anchor_entities || [],
+      child_label_emitted_text_entities: finalChildExecution.child_label.emitted_text_entities || [],
+      layer_policy: finalChildExecution.layer_policy,
+      metadata_cleanup: finalChildExecution.metadata_cleanup
     }
   };
 }
@@ -2651,7 +3367,7 @@ function generateChildDxfNoTopo(session, parameterSet) {
 function firstExecutableTopoComment(session) {
   const comments = []
     .concat(Array.isArray(session?.document?.preComments) ? session.document.preComments : [])
-    .concat(normalizeTopoCommentsInput(session?.topo_comments).map((value) => ({ code: "999", value })));
+    .concat(normalizeTopoCommentsInput(session?.topo_comments).filter((value) => isFileLevelTopoComment(value)).map((value) => ({ code: "999", value })));
   for (const pair of comments) {
     if (String(pair?.code) !== "999") continue;
     const parsed = parseTopoComment(pair.value);
@@ -2687,6 +3403,210 @@ function translateEntityPairs(entity, dx, dy) {
     }
     return pair;
   });
+}
+
+function materializeDocumentRulesOnDocument(outputDocument, session, sourceObjects, parameters) {
+  const outputEntities = entityMapById(outputDocument);
+  const rules = resolveExecutableDocumentRules(session, parameters);
+  const appliedRules = [];
+
+  for (const rule of rules) {
+    const action = rule && typeof rule.action === "object" ? rule.action : {};
+    const targetScope = rule && typeof rule.target_scope === "object" ? rule.target_scope : {};
+    const targetLayer = String(targetScope.layer || "").trim().toUpperCase();
+    const geometry = String(action.geometry || "").trim().toLowerCase();
+    const axis = String(action.axis || "").trim().toUpperCase();
+    const valueMm = Number(action.value_mm);
+    const postRepair = String(action.post_repair || "").trim().toLowerCase();
+    if (geometry !== "offset" || !targetLayer || !Number.isFinite(valueMm) || !["X", "Y"].includes(axis)) continue;
+
+    const affectedObjects = (Array.isArray(sourceObjects) ? sourceObjects : []).filter((object) => {
+      if (String(object?.primary_layer || "").trim().toUpperCase() !== targetLayer) return false;
+      return evaluateChildEntityInclusion(object, parameters)?.included !== false;
+    });
+    if (!affectedObjects.length) continue;
+
+    const dx = axis === "X" ? valueMm : 0;
+    const dy = axis === "Y" ? valueMm : 0;
+    const affectedEntities = [];
+    for (const object of affectedObjects) {
+      const outputEntity = outputEntities.get(object.entity_id);
+      if (!outputEntity) continue;
+      translateEntityPairs(outputEntity, dx, dy);
+      affectedEntities.push({
+        entity_id: object.entity_id,
+        object_id: object.id,
+        type: object.type
+      });
+    }
+
+    appliedRules.push({
+      rule_id: String(rule.rule_id || "").trim() || null,
+      target_layer: targetLayer,
+      axis,
+      value_mm: valueMm,
+      post_repair: postRepair || null,
+      post_repair_status: postRepair === "bounded_trim_rejoin" ? "deferred_to_final_gap_repair" : "none",
+      affected_count: affectedEntities.length,
+      affected_entities: affectedEntities
+    });
+  }
+
+  return {
+    applied_rules: appliedRules
+  };
+}
+
+function applyPostTopoBoundedTrimRejoinOnDocument(outputDocument, sourceObjects, preRuleShapeSnapshot, movedEntities, rule) {
+  if (String(rule?.post_repair || "").trim().toLowerCase() !== "bounded_trim_rejoin") {
+    return { status: "none", applied_count: 0, touched_entities: [] };
+  }
+  if (String(rule?.axis || "").trim().toUpperCase() !== "X") {
+    return { status: "skipped_unsupported_axis", applied_count: 0, touched_entities: [] };
+  }
+
+  const outputEntities = entityMapById(outputDocument);
+  const movedByEntityId = new Map((Array.isArray(movedEntities) ? movedEntities : []).map((entry) => [entry.entity_id, entry]));
+  const movedEndpoints = [];
+  const tolerance = 1.5;
+
+  for (const moved of movedByEntityId.values()) {
+    const originalShape = preRuleShapeSnapshot.get(moved.entity_id);
+    if (!originalShape || lineOrientationLocal(originalShape) !== "vertical") continue;
+    const currentEntity = outputEntities.get(moved.entity_id);
+    const currentShape = lineShapeFromRuntimeEntity(currentEntity);
+    if (!currentShape || strictOrthogonalLineOrientation(currentShape) !== "vertical") continue;
+    for (const endpointName of ["start", "end"]) {
+      const original = lineEndpointPoint(originalShape, endpointName);
+      const current = lineEndpointPoint(currentShape, endpointName);
+      const oppositeEndpointName = endpointName === "start" ? "end" : "start";
+      const oppositeOriginal = lineEndpointPoint(originalShape, oppositeEndpointName);
+      const oppositeCurrent = lineEndpointPoint(currentShape, oppositeEndpointName);
+      if (!original || !current) continue;
+      movedEndpoints.push({
+        entity_id: moved.entity_id,
+        object_id: moved.object_id,
+        endpoint: endpointName,
+        original,
+        current,
+        opposite_original: oppositeOriginal,
+        opposite_current: oppositeCurrent
+      });
+    }
+  }
+
+  if (!movedEndpoints.length) {
+    return { status: "no_vertical_mover_endpoints", applied_count: 0, touched_entities: [] };
+  }
+
+  const touched = [];
+  for (const object of Array.isArray(sourceObjects) ? sourceObjects : []) {
+    if (movedByEntityId.has(object.entity_id)) continue;
+    const originalShape = preRuleShapeSnapshot.get(object.entity_id);
+    if (!originalShape || strictOrthogonalLineOrientation(originalShape) !== "horizontal") continue;
+    const outputEntity = outputEntities.get(object.entity_id);
+    if (!outputEntity || String(outputEntity.type || "").toUpperCase() !== "LINE") continue;
+
+    let nextShape = lineShapeFromRuntimeEntity(outputEntity) || cloneJson(originalShape);
+    const changes = [];
+    for (const endpointName of ["start", "end"]) {
+      const originalEndpoint = lineEndpointPoint(originalShape, endpointName);
+      if (!originalEndpoint) continue;
+      const matches = findMatchingMovedVerticals(originalEndpoint, movedEndpoints, tolerance);
+      if (matches.length !== 1) continue;
+      const match = matches[0];
+      const currentEndpoint = lineEndpointPoint(nextShape, endpointName);
+      let followPoint = match.current;
+      if (currentEndpoint && Math.abs(Number(currentEndpoint.y) - Number(match.current.y)) > tolerance) {
+        const projectedPoint = buildProjectedFollowerPoint(
+          currentEndpoint,
+          match.current,
+          match.opposite_current,
+          tolerance
+        );
+        if (!projectedPoint) continue;
+        followPoint = projectedPoint;
+      }
+      nextShape = setLineEndpointPoint(nextShape, endpointName, followPoint);
+      changes.push({
+        endpoint: endpointName,
+        followed_mover_entity_id: match.entity_id,
+        x: roundNumber(followPoint.x, 3),
+        y: roundNumber(followPoint.y, 3)
+      });
+    }
+
+    if (!changes.length) continue;
+    const length = shapeLineLength(nextShape);
+    if (!Number.isFinite(length) || length <= 0.5) continue;
+    if (!setLineRuntimeEntityShape(outputEntity, nextShape)) continue;
+    touched.push({
+      entity_id: object.entity_id,
+      object_id: object.id,
+      changes
+    });
+  }
+
+  return {
+    status: touched.length ? "executed_endpoint_follower" : "no_matching_line_endpoints",
+    applied_count: touched.length,
+    touched_entities: touched
+  };
+}
+
+function materializePostTopoRulesOnDocument(outputDocument, sourceSession, sourceObjects, parameters) {
+  const outputEntities = entityMapById(outputDocument);
+  const rules = executablePostTopoRules(sourceSession, parameters);
+  const appliedRules = [];
+
+  for (const rule of rules) {
+    const preRuleShapeSnapshot = new Map();
+    for (const object of Array.isArray(sourceObjects) ? sourceObjects : []) {
+      const outputEntity = outputEntities.get(object.entity_id);
+      if (!outputEntity || String(outputEntity.type || "").toUpperCase() !== "LINE") continue;
+      const outputShape = lineShapeFromRuntimeEntity(outputEntity);
+      if (outputShape) preRuleShapeSnapshot.set(object.entity_id, cloneJson(outputShape));
+    }
+    const affectedObjects = (Array.isArray(sourceObjects) ? sourceObjects : []).filter((object) => {
+      if (!objectHasPostTopoGroup(object, rule.target_group)) return false;
+      return evaluateChildEntityInclusion(object, parameters)?.included !== false;
+    });
+    if (!affectedObjects.length) continue;
+    const affectedEntities = [];
+    for (const object of affectedObjects) {
+      const outputEntity = outputEntities.get(object.entity_id);
+      if (!outputEntity) continue;
+      translateEntityPairs(outputEntity, rule.dx, rule.dy);
+      affectedEntities.push({
+        entity_id: object.entity_id,
+        object_id: object.id,
+        type: object.type
+      });
+    }
+    const postRepairExecution = applyPostTopoBoundedTrimRejoinOnDocument(
+      outputDocument,
+      sourceObjects,
+      preRuleShapeSnapshot,
+      affectedEntities,
+      rule
+    );
+    appliedRules.push({
+      rule_id: rule.rule_id,
+      target_group: rule.target_group,
+      axis: rule.axis,
+      value_mm: rule.value_mm,
+      value_expr: rule.value_expr,
+      post_repair: rule.post_repair,
+      post_repair_status: rule.post_repair ? postRepairExecution.status : "none",
+      post_repair_result: postRepairExecution,
+      affected_count: affectedEntities.length,
+      affected_entities: affectedEntities
+    });
+  }
+
+  return {
+    applied_rules: appliedRules
+  };
 }
 
 function setRuntimePairValue(entity, code, value) {
@@ -2942,9 +3862,738 @@ function resolveTopoZoneInput(topoKeys, parameters, zone) {
   };
 }
 
-function materializeChildDocumentTopoPoc(session, config) {
+function setEntityRuntimeLayer(entity, layer) {
+  if (!entity) return;
+  setRuntimePairValue(entity, "8", String(layer || "0"));
+}
+
+function makeRuntimeTextEntity({ id, x, y, z = 0, layer = "0", height = 1, rotation = 0, color = 1, hAlign = 1, vAlign = 2, text = "" }) {
+  return {
+    id,
+    type: "TEXT",
+    pairs: [
+      { code: "0", value: "TEXT" },
+      { code: "8", value: String(layer || "0") },
+      { code: "10", value: String(roundNumber(Number(x || 0), 3)) },
+      { code: "11", value: String(roundNumber(Number(x || 0), 3)) },
+      { code: "20", value: String(roundNumber(Number(y || 0), 3)) },
+      { code: "21", value: String(roundNumber(Number(y || 0), 3)) },
+      { code: "30", value: String(roundNumber(Number(z || 0), 3)) },
+      { code: "40", value: String(roundNumber(Number(height || 1), 3)) },
+      { code: "1", value: String(text || "") },
+      { code: "50", value: String(roundNumber(Number(rotation || 0), 3)) },
+      { code: "62", value: String(Number(color || 1)) },
+      { code: "72", value: String(Number(hAlign || 1)) },
+      { code: "73", value: String(Number(vAlign || 2)) }
+    ],
+    preComments: [],
+    section: "ENTITIES",
+    blockName: null,
+    source: null
+  };
+}
+
+function activeRuleRefs(session) {
+  const sem = collectDocumentSemMetadata(session?.document);
+  return Array.isArray(sem?.rule_refs) ? sem.rule_refs.map((item) => String(item || "").trim()).filter(Boolean) : [];
+}
+
+function ruleCatalogRule(session, ruleId) {
+  const catalog = normalizeRuleCatalogSnapshot(session?.rule_catalog);
+  const rules = catalog?.rules && typeof catalog.rules === "object" ? catalog.rules : {};
+  return rules[String(ruleId || "").trim()] || null;
+}
+
+function labelAnchorInfoFromEntity(entity) {
+  const comments = Array.isArray(entity?.preComments) ? entity.preComments : [];
+  for (const pair of comments) {
+    if (String(pair?.code) !== "999") continue;
+    const parsed = parseSemanticComment(pair.value);
+    const ruleId = String(parsed?.keys?.label_anchor || "").trim();
+    if (!ruleId) continue;
+    return { rule_id: ruleId, keys: parsed.keys || {}, raw_comment: parsed.raw_comment };
+  }
+  return null;
+}
+
+function lineRuntimeBBox(entity) {
+  const shape = lineShapeFromRuntimeEntity(entity);
+  if (!shape) return null;
+  return {
+    minX: Math.min(shape.x1, shape.x2),
+    minY: Math.min(shape.y1, shape.y2),
+    maxX: Math.max(shape.x1, shape.x2),
+    maxY: Math.max(shape.y1, shape.y2)
+  };
+}
+
+function normalizeChildAngleDeg(angle) {
+  let out = Number(angle || 0) % 360;
+  if (out < 0) out += 360;
+  return roundNumber(out, 3);
+}
+
+function mirrorAngleAcrossYAxis(angle) {
+  return normalizeChildAngleDeg(180 - Number(angle || 0));
+}
+
+function mirrorEntityAcrossYAxis(entity) {
+  const type = String(entity?.type || "").toUpperCase();
+  if (type === "LINE") {
+    for (const code of ["10", "11"]) {
+      const value = Number(pairValue(entity, code, "NaN"));
+      if (Number.isFinite(value)) setRuntimePairValue(entity, code, String(roundNumber(-value, 3)));
+    }
+    return true;
+  }
+  if (type === "CIRCLE") {
+    const value = Number(pairValue(entity, "10", "NaN"));
+    if (Number.isFinite(value)) setRuntimePairValue(entity, "10", String(roundNumber(-value, 3)));
+    return Number.isFinite(value);
+  }
+  if (type === "ARC") {
+    const value = Number(pairValue(entity, "10", "NaN"));
+    const start = Number(pairValue(entity, "50", "NaN"));
+    const end = Number(pairValue(entity, "51", "NaN"));
+    if (Number.isFinite(value)) setRuntimePairValue(entity, "10", String(roundNumber(-value, 3)));
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      setRuntimePairValue(entity, "50", String(mirrorAngleAcrossYAxis(end)));
+      setRuntimePairValue(entity, "51", String(mirrorAngleAcrossYAxis(start)));
+    }
+    return Number.isFinite(value);
+  }
+  if (type === "TEXT") {
+    for (const code of ["10", "11"]) {
+      const value = Number(pairValue(entity, code, "NaN"));
+      if (Number.isFinite(value)) setRuntimePairValue(entity, code, String(roundNumber(-value, 3)));
+    }
+    const rotation = Number(pairValue(entity, "50", "NaN"));
+    if (Number.isFinite(rotation)) setRuntimePairValue(entity, "50", String(mirrorAngleAcrossYAxis(rotation)));
+    return true;
+  }
+  return false;
+}
+
+function documentRuntimeBBox(document, options = {}) {
+  const excludeLabelAnchors = options && options.excludeLabelAnchors === true;
+  const entitiesById = new Map((Array.isArray(document?.entities) ? document.entities : []).map((entity) => [entity.id, entity]));
+  return listRelevantObjects(document)
+    .filter((object) => {
+      if (!excludeLabelAnchors) return true;
+      return !labelAnchorInfoFromEntity(entitiesById.get(object.entity_id || object.id));
+    })
+    .reduce((acc, object) => bboxUnion(acc, object.bbox), null);
+}
+
+function explodeAllBlockInsertsOnDocument(document) {
+  const entities = Array.isArray(document?.entities) ? document.entities : [];
+  const usedHandles = collectUsedHandles(document);
+  const nextIdRef = { value: nextExplodedEntityCounter(document) };
+  const nextEntities = [];
+  const exploded = [];
+  for (const entity of entities) {
+    if (String(entity?.type || "").toUpperCase() !== "INSERT") {
+      nextEntities.push(entity);
+      continue;
+    }
+    const children = explodeInsertChildren(document, entity, [], nextIdRef, usedHandles);
+    nextEntities.push(...children);
+    exploded.push({
+      entity_id: entity.id,
+      block_name: String(pairValue(entity, "2", "") || "").trim() || null,
+      emitted_count: children.length,
+      emitted_entity_ids: children.map((child) => child.id)
+    });
+  }
+  document.entities = nextEntities;
+  pruneUnusedBlocks(document);
+  return {
+    exploded_insert_count: exploded.length,
+    exploded_entities: exploded
+  };
+}
+
+function scopeMatchesValue(scopeValue, actualValue) {
+  const actual = String(actualValue || "").trim().toUpperCase();
+  if (!actual) return true;
+  if (scopeValue == null) return true;
+  const values = Array.isArray(scopeValue) ? scopeValue : [scopeValue];
+  return values.some((item) => {
+    const candidate = String(item || "").trim().toUpperCase();
+    return candidate === "*" || candidate === actual;
+  });
+}
+
+function catalogRuleTargetMatchesContext(rule, documentSem, config) {
+  const scope = rule && typeof rule.target_scope === "object" ? rule.target_scope : {};
+  return scopeMatchesValue(scope.family || scope.families, documentSem?.family || config?.family)
+    && scopeMatchesValue(scope.products, documentSem?.product || config?.product)
+    && scopeMatchesValue(scope.parts, documentSem?.part || config?.part);
+}
+
+function executableFinalOrientationRules(session, config) {
+  const catalog = normalizeRuleCatalogSnapshot(session?.rule_catalog);
+  const catalogRules = catalog && catalog.rules && typeof catalog.rules === "object" ? catalog.rules : {};
+  const documentSem = collectDocumentSemMetadata(session?.document);
+  const parameters = config?.parameters || {};
+  const technologyProfile = String(config?.technology_profile || DEFAULT_CONFIG_CONTEXT.technology_profile || "").trim().toUpperCase();
+  const rules = [];
+  for (const rule of Object.values(catalogRules)) {
+    if (!rule || typeof rule !== "object") continue;
+    const action = rule.action && typeof rule.action === "object" ? rule.action : {};
+    const stage = String(action.stage || "").trim().toLowerCase();
+    const geometry = String(action.geometry || "").trim().toLowerCase();
+    const axis = String(action.axis || "").trim().toUpperCase();
+    const profileScope = String(rule.profile_scope || "").trim().toUpperCase();
+    if (stage !== "final_orientation" || geometry !== "mirror" || axis !== "Y") continue;
+    if (profileScope && technologyProfile && profileScope !== technologyProfile) continue;
+    if (!catalogRuleTargetMatchesContext(rule, documentSem, config)) continue;
+    if (rule.condition && !evaluateCatalogRuleCondition(rule.condition, parameters)) continue;
+    rules.push({
+      rule_id: String(rule.rule_id || "").trim(),
+      axis,
+      normalize_bbox: action.normalize_bbox !== false,
+      text_policy: String(action.text_policy || "").trim() || null
+    });
+  }
+  return rules;
+}
+
+function materializeFinalOrientationRulesOnDocument(outputDocument, session, config) {
+  const rules = executableFinalOrientationRules(session, config);
+  const applied = [];
+  for (const rule of rules) {
+    let affectedCount = 0;
+    for (const entity of Array.isArray(outputDocument?.entities) ? outputDocument.entities : []) {
+      if (mirrorEntityAcrossYAxis(entity)) affectedCount += 1;
+    }
+    applied.push({
+      rule_id: rule.rule_id,
+      geometry: "mirror",
+      axis: rule.axis,
+      affected_count: affectedCount,
+      normalize_bbox: rule.normalize_bbox,
+      text_policy: rule.text_policy
+    });
+  }
+  return { applied_rules: applied };
+}
+
+function normalizeChildDocumentBBoxToOrigin(outputDocument) {
+  const bbox = documentRuntimeBBox(outputDocument, { excludeLabelAnchors: true });
+  if (!bbox) {
+    return { applied: false, dx: 0, dy: 0, bbox_before: null, bbox_after: null };
+  }
+  const dx = -Number(bbox.minX || 0);
+  const dy = -Number(bbox.minY || 0);
+  if (Math.abs(dx) > 0.0005 || Math.abs(dy) > 0.0005) {
+    for (const entity of Array.isArray(outputDocument?.entities) ? outputDocument.entities : []) {
+      translateEntityPairs(entity, dx, dy);
+    }
+  }
+  const nextBBox = documentRuntimeBBox(outputDocument, { excludeLabelAnchors: true });
+  return {
+    applied: Math.abs(dx) > 0.0005 || Math.abs(dy) > 0.0005,
+    dx: roundNumber(dx, 3),
+    dy: roundNumber(dy, 3),
+    bbox_before: bbox,
+    bbox_after: nextBBox
+  };
+}
+
+function isMotherAuthoringComment(pair) {
+  if (String(pair?.code) !== "999") return false;
+  return /^(SEM|TOPO|RULE):/i.test(String(pair?.value || "").trim());
+}
+
+function stripMotherAuthoringMetadataFromDocument(document) {
+  let removed = 0;
+  const stripPairs = (pairs) => {
+    const source = Array.isArray(pairs) ? pairs : [];
+    const next = source.filter((pair) => !isMotherAuthoringComment(pair));
+    removed += source.length - next.length;
+    return next;
+  };
+  document.preComments = stripPairs(document.preComments);
+  for (const entity of Array.isArray(document?.entities) ? document.entities : []) {
+    entity.preComments = stripPairs(entity.preComments);
+    entity.pairs = stripPairs(entity.pairs);
+  }
+  for (const block of Array.isArray(document?.blocks) ? document.blocks : []) {
+    block.headerPairs = stripPairs(block.headerPairs);
+    block.endblkPairs = stripPairs(block.endblkPairs);
+    for (const entity of Array.isArray(block?.entities) ? block.entities : []) {
+      entity.preComments = stripPairs(entity.preComments);
+      entity.pairs = stripPairs(entity.pairs);
+    }
+  }
+  return { removed_999_count: removed };
+}
+
+function collectRuntimeLineEntries(outputDocument) {
+  const entries = [];
+  for (const entity of Array.isArray(outputDocument?.entities) ? outputDocument.entities : []) {
+    if (String(entity?.type || "").toUpperCase() !== "LINE") continue;
+    const shape = lineShapeFromRuntimeEntity(entity);
+    const orientation = strictOrthogonalLineOrientation(shape);
+    if (!shape || !["horizontal", "vertical"].includes(orientation)) continue;
+    entries.push({ entity, shape, orientation });
+  }
+  return entries;
+}
+
+function runtimeLineEndpointsConnected(endpoint, selfEntityId, entries, tolerance = 0.75) {
+  for (const entry of entries) {
+    if (String(entry.entity?.id || "") === String(selfEntityId || "")) continue;
+    for (const endpointName of ["start", "end"]) {
+      const otherPoint = lineEndpointPoint(entry.shape, endpointName);
+      if (otherPoint && pointsOverlapLocal(endpoint, otherPoint, tolerance)) return true;
+    }
+  }
+  return false;
+}
+
+function expectedGapMatchesRepairContext(gap, expectedGapValues, tolerance = 1.5) {
+  const numericGap = Math.abs(Number(gap || 0));
+  if (!Number.isFinite(numericGap) || numericGap <= 0) return false;
+  const values = Array.isArray(expectedGapValues) ? expectedGapValues : [];
+  if (!values.length) return true;
+  return values.some((value) => Math.abs(numericGap - Number(value || 0)) <= tolerance);
+}
+
+function buildRepairDisciplineContext(documentRuleExecution, movedEntities, postTopoRuleExecution) {
+  const protectedEntityIds = new Set();
+  const expectedGapValues = new Set();
+  const recordExpectedGap = (value) => {
+    const numeric = Math.abs(Number(value || 0));
+    if (Number.isFinite(numeric) && numeric > 0.0005) expectedGapValues.add(roundNumber(numeric, 3));
+  };
+  for (const moved of Array.isArray(movedEntities) ? movedEntities : []) {
+    protectedEntityIds.add(String(moved.entity_id || ""));
+    recordExpectedGap(moved.dx);
+    recordExpectedGap(moved.dy);
+  }
+  for (const rule of Array.isArray(postTopoRuleExecution?.applied_rules) ? postTopoRuleExecution.applied_rules : []) {
+    recordExpectedGap(rule.value_mm);
+    for (const entity of Array.isArray(rule.affected_entities) ? rule.affected_entities : []) {
+      protectedEntityIds.add(String(entity.entity_id || ""));
+    }
+  }
+  for (const rule of Array.isArray(documentRuleExecution?.applied_rules) ? documentRuleExecution.applied_rules : []) {
+    recordExpectedGap(rule.value_mm);
+  }
+  return {
+    protected_entity_ids: Array.from(protectedEntityIds).filter(Boolean),
+    protected_entity_id_set: protectedEntityIds,
+    expected_gap_values: Array.from(expectedGapValues).sort((a, b) => a - b)
+  };
+}
+
+function applyFinalOpenContourGapRepair(outputDocument, repairContext = null) {
+  const entries = collectRuntimeLineEntries(outputDocument);
+  const axisTolerance = 1.5;
+  const endpointTolerance = 0.75;
+  const minGap = 0.5;
+  const maxGap = 12;
+  const touched = [];
+  const skippedProtected = [];
+  const skippedUnexpectedGap = [];
+  const protectedEntityIds = repairContext?.protected_entity_id_set instanceof Set
+    ? repairContext.protected_entity_id_set
+    : new Set(Array.isArray(repairContext?.protected_entity_ids) ? repairContext.protected_entity_ids.map((id) => String(id || "")) : []);
+  const expectedGapValues = Array.isArray(repairContext?.expected_gap_values) ? repairContext.expected_gap_values : [];
+
+  for (const entry of entries) {
+    if (protectedEntityIds.has(String(entry.entity?.id || ""))) {
+      skippedProtected.push(String(entry.entity?.id || ""));
+      continue;
+    }
+    let nextShape = entry.shape;
+    const changes = [];
+    for (const endpointName of ["start", "end"]) {
+      const endpoint = lineEndpointPoint(nextShape, endpointName);
+      if (!endpoint) continue;
+      if (runtimeLineEndpointsConnected(endpoint, entry.entity.id, entries, endpointTolerance)) continue;
+      const candidates = [];
+      for (const candidate of entries) {
+        if (String(candidate.entity?.id || "") === String(entry.entity?.id || "")) continue;
+        if (candidate.orientation === entry.orientation) continue;
+        let projected = null;
+        let gap = null;
+        if (entry.orientation === "horizontal" && candidate.orientation === "vertical") {
+          const minY = Math.min(candidate.shape.y1, candidate.shape.y2) - axisTolerance;
+          const maxY = Math.max(candidate.shape.y1, candidate.shape.y2) + axisTolerance;
+          if (endpoint.y < minY || endpoint.y > maxY) continue;
+          gap = Math.abs(endpoint.x - candidate.shape.x1);
+          if (!(gap > minGap && gap <= maxGap)) continue;
+          if (!expectedGapMatchesRepairContext(gap, expectedGapValues, axisTolerance)) {
+            skippedUnexpectedGap.push({ entity_id: entry.entity.id, candidate_entity_id: candidate.entity.id, gap_mm: roundNumber(gap, 3) });
+            continue;
+          }
+          projected = { x: candidate.shape.x1, y: endpoint.y };
+        } else if (entry.orientation === "vertical" && candidate.orientation === "horizontal") {
+          const minX = Math.min(candidate.shape.x1, candidate.shape.x2) - axisTolerance;
+          const maxX = Math.max(candidate.shape.x1, candidate.shape.x2) + axisTolerance;
+          if (endpoint.x < minX || endpoint.x > maxX) continue;
+          gap = Math.abs(endpoint.y - candidate.shape.y1);
+          if (!(gap > minGap && gap <= maxGap)) continue;
+          if (!expectedGapMatchesRepairContext(gap, expectedGapValues, axisTolerance)) {
+            skippedUnexpectedGap.push({ entity_id: entry.entity.id, candidate_entity_id: candidate.entity.id, gap_mm: roundNumber(gap, 3) });
+            continue;
+          }
+          projected = { x: endpoint.x, y: candidate.shape.y1 };
+        }
+        if (!projected) continue;
+        const candidateEndpoint = nearestObjectEndpoint({ shapes: [candidate.shape] }, projected, {
+          x1: candidate.shape.x1,
+          y1: candidate.shape.y1,
+          x2: candidate.shape.x2,
+          y2: candidate.shape.y2
+        }, endpointTolerance);
+        if (!candidateEndpoint) continue;
+        candidates.push({ candidate, projected, gap });
+      }
+      if (candidates.length !== 1) continue;
+      const match = candidates[0];
+      nextShape = setLineEndpointPoint(nextShape, endpointName, match.projected);
+      changes.push({
+        endpoint: endpointName,
+        gap_mm: roundNumber(match.gap, 3),
+        projected_x: roundNumber(match.projected.x, 3),
+        projected_y: roundNumber(match.projected.y, 3),
+        anchor_entity_id: match.candidate.entity.id
+      });
+    }
+    if (!changes.length) continue;
+    const length = shapeLineLength(nextShape);
+    if (!Number.isFinite(length) || length <= 0.5) continue;
+    if (!setLineRuntimeEntityShape(entry.entity, nextShape)) continue;
+    entry.shape = nextShape;
+    touched.push({ entity_id: entry.entity.id, changes });
+  }
+
+  return {
+    status: touched.length ? "executed_final_gap_repair" : "no_final_gap_repairs",
+    applied_count: touched.length,
+    touched_entities: touched,
+    protected_entity_count: protectedEntityIds.size,
+    skipped_protected_entities: Array.from(new Set(skippedProtected)).sort(),
+    skipped_unexpected_gap_candidates: skippedUnexpectedGap,
+    expected_gap_values: expectedGapValues
+  };
+}
+
+function enforceChildLayerPolicy(outputDocument, config) {
+  const technologyProfile = String(config?.technology_profile || "").trim().toUpperCase();
+  if (technologyProfile !== "OPS_S4P4") return { applied: false, text_layer: null, geometry_layer: null, updated_count: 0 };
+  let updatedCount = 0;
+  for (const entity of Array.isArray(outputDocument?.entities) ? outputDocument.entities : []) {
+    const layer = String(entity?.type || "").toUpperCase() === "TEXT" ? "0" : "1";
+    setEntityRuntimeLayer(entity, layer);
+    updatedCount += 1;
+  }
+  return { applied: true, text_layer: "0", geometry_layer: "1", updated_count: updatedCount };
+}
+
+function finalizeChildDocument(outputDocument, session, config, repairContext = null) {
+  const blockExplosion = explodeAllBlockInsertsOnDocument(outputDocument);
+  const finalOrientation = materializeFinalOrientationRulesOnDocument(outputDocument, session, config);
+  const bboxNormalization = normalizeChildDocumentBBoxToOrigin(outputDocument);
+  const finalGapRepair = applyFinalOpenContourGapRepair(outputDocument, repairContext);
+  const childLabelExecution = materializeChildLabelsOnDocument(outputDocument, session);
+  const layerPolicy = enforceChildLayerPolicy(outputDocument, config);
+  const metadataCleanup = stripMotherAuthoringMetadataFromDocument(outputDocument);
+  pruneUnusedBlocks(outputDocument);
+  return {
+    block_explosion: blockExplosion,
+    final_orientation: finalOrientation,
+    bbox_normalization: bboxNormalization,
+    final_gap_repair: finalGapRepair,
+    child_label: childLabelExecution,
+    layer_policy: layerPolicy,
+    metadata_cleanup: metadataCleanup
+  };
+}
+
+function materializeChildLabelsOnDocument(outputDocument, session) {
+  const activeRefs = new Set(activeRuleRefs(session));
+  const entities = Array.isArray(outputDocument?.entities) ? outputDocument.entities : [];
+  const grouped = new Map();
+  for (const entity of entities) {
+    const info = labelAnchorInfoFromEntity(entity);
+    if (!info || !activeRefs.has(info.rule_id)) continue;
+    if (!grouped.has(info.rule_id)) grouped.set(info.rule_id, { info, entities: [] });
+    grouped.get(info.rule_id).entities.push(entity);
+  }
+  if (!grouped.size) return { applied_rules: [], removed_anchor_entities: [], emitted_text_entities: [] };
+
+  const removedIds = new Set();
+  const emitted = [];
+  const applied = [];
+  for (const [ruleId, group] of grouped.entries()) {
+    const boxes = group.entities.map(lineRuntimeBBox).filter(Boolean);
+    if (!boxes.length) continue;
+    const bbox = boxes.reduce((acc, item) => bboxUnion(acc, item), null);
+    const center = bboxCenter(bbox);
+    const rule = ruleCatalogRule(session, ruleId) || {};
+    const action = rule.action || {};
+    const keys = group.info.keys || {};
+    const rotation = Number(keys.rotation || action.rotation || 0);
+    const textEntityId = nextRuntimeEntityId(outputDocument);
+    const payload = String(action.payload_template || ";|{{WORKORDERCODE}}|{{MODEL}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}");
+    const textEntity = makeRuntimeTextEntity({
+      id: textEntityId,
+      x: center.x,
+      y: center.y,
+      z: 0,
+      layer: String(action.carrier_layer || "0"),
+      height: Number(action.carrier_height || 1),
+      rotation,
+      color: Number(action.carrier_color || 1),
+      hAlign: Number(action.carrier_h_align || 1),
+      vAlign: Number(action.carrier_v_align || 2),
+      text: payload
+    });
+    for (const entity of group.entities) removedIds.add(entity.id);
+    emitted.push(textEntity);
+    applied.push({
+      rule_id: ruleId,
+      anchor_count: group.entities.length,
+      removed_anchor_entities: group.entities.map((entity) => entity.id),
+      emitted_text_entity: textEntityId,
+      x: roundNumber(center.x, 3),
+      y: roundNumber(center.y, 3),
+      payload_template: payload
+    });
+  }
+
+  outputDocument.entities = entities.filter((entity) => !removedIds.has(entity.id));
+  for (const entity of outputDocument.entities) {
+    setEntityRuntimeLayer(entity, "1");
+  }
+  outputDocument.entities.push(...emitted);
+
+  return {
+    applied_rules: applied,
+    removed_anchor_entities: Array.from(removedIds),
+    emitted_text_entities: emitted.map((entity) => entity.id)
+  };
+}
+
+function lineShapeFromRuntimeEntity(entity) {
+  if (String(entity?.type || "").toUpperCase() !== "LINE") return null;
+  const x1 = Number(childPairValue(entity, "10", "NaN"));
+  const y1 = Number(childPairValue(entity, "20", "NaN"));
+  const x2 = Number(childPairValue(entity, "11", "NaN"));
+  const y2 = Number(childPairValue(entity, "21", "NaN"));
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+  return { kind: "line", x1, y1, x2, y2 };
+}
+
+function setLineRuntimeEntityShape(entity, shape) {
+  if (!entity || !shape || shape.kind !== "line") return false;
+  const values = [shape.x1, shape.y1, shape.x2, shape.y2].map((value) => Number(value));
+  if (!values.every(Number.isFinite)) return false;
+  setRuntimePairValue(entity, "10", roundNumber(values[0], 3));
+  setRuntimePairValue(entity, "20", roundNumber(values[1], 3));
+  setRuntimePairValue(entity, "11", roundNumber(values[2], 3));
+  setRuntimePairValue(entity, "21", roundNumber(values[3], 3));
+  return true;
+}
+
+function lineEndpointPoint(shape, endpointName) {
+  if (!shape || shape.kind !== "line") return null;
+  if (endpointName === "start") return { x: Number(shape.x1), y: Number(shape.y1) };
+  return { x: Number(shape.x2), y: Number(shape.y2) };
+}
+
+function setLineEndpointPoint(shape, endpointName, point) {
+  if (!shape || shape.kind !== "line" || !point) return shape;
+  const px = Number(point.x);
+  const py = Number(point.y);
+  if (![px, py].every(Number.isFinite)) return shape;
+  if (endpointName === "start") return { ...shape, x1: px, y1: py };
+  return { ...shape, x2: px, y2: py };
+}
+
+function translatedLineEndpoint(shape, endpointName, dx, dy) {
+  const point = lineEndpointPoint(shape, endpointName);
+  if (!point) return null;
+  return {
+    x: Number(point.x) + Number(dx || 0),
+    y: Number(point.y) + Number(dy || 0)
+  };
+}
+
+function pointWithinVerticalSpan(pointY, a, b, tolerance = 1.5) {
+  const y = Number(pointY);
+  const ya = Number(a?.y);
+  const yb = Number(b?.y);
+  if (![y, ya, yb].every(Number.isFinite)) return false;
+  const minY = Math.min(ya, yb) - tolerance;
+  const maxY = Math.max(ya, yb) + tolerance;
+  return y >= minY && y <= maxY;
+}
+
+function buildProjectedFollowerPoint(currentEndpoint, movedEndpoint, oppositeMovedEndpoint, tolerance = 1.5) {
+  if (!currentEndpoint || !movedEndpoint || !oppositeMovedEndpoint) return null;
+  const currentY = Number(currentEndpoint.y);
+  const movedX = Number(movedEndpoint.x);
+  if (![currentY, movedX].every(Number.isFinite)) return null;
+  if (!pointWithinVerticalSpan(currentY, movedEndpoint, oppositeMovedEndpoint, tolerance)) return null;
+  return {
+    x: movedX,
+    y: currentY
+  };
+}
+
+function originalHorizontalEndpointTouchesMovedVertical(originalEndpoint, candidate, tolerance = 1.5) {
+  if (!originalEndpoint || !candidate) return false;
+  if (String(candidate.endpoint || '').toLowerCase() !== 'start') return false;
+  if (pointsOverlapLocal(originalEndpoint, candidate.original, tolerance)) return true;
+  const x = Number(originalEndpoint.x);
+  const verticalX = Number(candidate.original?.x);
+  if (![x, verticalX].every(Number.isFinite)) return false;
+  if (Math.abs(x - verticalX) > tolerance) return false;
+  return pointWithinVerticalSpan(originalEndpoint.y, candidate.original, candidate.opposite_original, tolerance);
+}
+
+function findMatchingMovedVerticals(originalEndpoint, movedEndpoints, tolerance = 1.5) {
+  return (Array.isArray(movedEndpoints) ? movedEndpoints : []).filter((candidate) => (
+    originalHorizontalEndpointTouchesMovedVertical(originalEndpoint, candidate, tolerance)
+  ));
+}
+
+function applyTopoTrimRejoinEndpointFollowerRepair(session, outputDocument, sourceObjects, movedEntities, topoKeys) {
+  if (String(topoKeys?.trim_policy || "").trim() !== "rejoin") {
+    return { status: "none", applied_count: 0, touched_entities: [] };
+  }
+  if (String(topoKeys?.mode || "fixed_envelope_slide").trim() !== "fixed_envelope_slide") {
+    return { status: "skipped_unsupported_mode", applied_count: 0, touched_entities: [] };
+  }
+  if (String(topoKeys?.axis || "").trim().toUpperCase() !== "X") {
+    return { status: "skipped_unsupported_axis", applied_count: 0, touched_entities: [] };
+  }
+
+  const outputEntities = entityMapById(outputDocument);
+  const topLevelObjects = Array.isArray(sourceObjects) ? sourceObjects : [];
+  const blockInternalObjects = collectBlockInternalLineObjects(session, session?.document);
+  const sourceByEntityId = new Map(topLevelObjects.map((object) => [object.entity_id, object]));
+  const movedByEntityId = new Map((Array.isArray(movedEntities) ? movedEntities : []).map((entry) => [entry.entity_id, entry]));
+  const movedEndpoints = [];
+
+  const pushMovedLineEndpoints = (shape, moved, objectRef) => {
+    if (!shape || strictOrthogonalLineOrientation(shape) !== "vertical") return;
+    const dx = Number(moved.dx || 0);
+    const dy = Number(moved.dy || 0);
+    const runtimeShape = objectRef?.parent_insert_id
+      ? null
+      : lineShapeFromRuntimeEntity(outputEntities.get(moved.entity_id));
+    const currentShape = runtimeShape && strictOrthogonalLineOrientation(runtimeShape) === "vertical"
+      ? runtimeShape
+      : null;
+    for (const endpointName of ["start", "end"]) {
+      const original = lineEndpointPoint(shape, endpointName);
+      const current = currentShape
+        ? lineEndpointPoint(currentShape, endpointName)
+        : translatedLineEndpoint(shape, endpointName, dx, dy);
+      if (!original || !current) continue;
+      const oppositeEndpointName = endpointName === "start" ? "end" : "start";
+      const oppositeOriginal = lineEndpointPoint(shape, oppositeEndpointName);
+      const oppositeCurrent = currentShape
+        ? lineEndpointPoint(currentShape, oppositeEndpointName)
+        : translatedLineEndpoint(shape, oppositeEndpointName, dx, dy);
+      movedEndpoints.push({
+        entity_id: moved.entity_id,
+        object_id: objectRef?.id || moved.object_id,
+        endpoint: endpointName,
+        original,
+        current,
+        opposite_original: oppositeOriginal,
+        opposite_current: oppositeCurrent,
+        source_kind: objectRef?.parent_insert_id ? "block_child" : "top_level"
+      });
+    }
+  };
+
+  for (const moved of movedByEntityId.values()) {
+    const object = sourceByEntityId.get(moved.entity_id);
+    const originalShape = Array.isArray(object?.shapes) ? object.shapes.find((shape) => shape?.kind === "line") : null;
+    if (originalShape) pushMovedLineEndpoints(originalShape, moved, object);
+
+    for (const childObject of blockInternalObjects) {
+      if (String(childObject?.parent_insert_id || "") !== String(moved.entity_id || "")) continue;
+      const childShape = Array.isArray(childObject?.shapes) ? childObject.shapes.find((shape) => shape?.kind === "line") : null;
+      if (childShape) pushMovedLineEndpoints(childShape, moved, childObject);
+    }
+  }
+
+  if (!movedEndpoints.length) {
+    return { status: "no_vertical_mover_endpoints", applied_count: 0, touched_entities: [] };
+  }
+
+  const tolerance = 1.5;
+  const touched = [];
+  for (const object of Array.isArray(sourceObjects) ? sourceObjects : []) {
+    if (movedByEntityId.has(object.entity_id)) continue;
+    const outputEntity = outputEntities.get(object.entity_id);
+    if (!outputEntity || String(outputEntity.type || "").toUpperCase() !== "LINE") continue;
+    const originalShape = Array.isArray(object?.shapes) ? object.shapes.find((shape) => shape?.kind === "line") : null;
+    if (!originalShape || strictOrthogonalLineOrientation(originalShape) !== "horizontal") continue;
+
+    let nextShape = lineShapeFromRuntimeEntity(outputEntity) || cloneJson(originalShape);
+    const changes = [];
+    for (const endpointName of ["start", "end"]) {
+      const originalEndpoint = lineEndpointPoint(originalShape, endpointName);
+      if (!originalEndpoint) continue;
+      const matches = findMatchingMovedVerticals(originalEndpoint, movedEndpoints, tolerance);
+      if (matches.length !== 1) continue;
+      const match = matches[0];
+      const currentEndpoint = lineEndpointPoint(nextShape, endpointName);
+      let followPoint = match.current;
+      if (currentEndpoint && Math.abs(Number(currentEndpoint.y) - Number(match.current.y)) > tolerance) {
+        const projectedPoint = buildProjectedFollowerPoint(
+          currentEndpoint,
+          match.current,
+          match.opposite_current,
+          tolerance
+        );
+        if (!projectedPoint) {
+          continue;
+        }
+        followPoint = projectedPoint;
+      }
+      nextShape = setLineEndpointPoint(nextShape, endpointName, followPoint);
+      changes.push({
+        endpoint: endpointName,
+        followed_mover_entity_id: match.entity_id,
+        x: roundNumber(followPoint.x, 3),
+        y: roundNumber(followPoint.y, 3)
+      });
+    }
+
+    if (!changes.length) continue;
+    const length = shapeLineLength(nextShape);
+    if (!Number.isFinite(length) || length <= 0.5) continue;
+    if (!setLineRuntimeEntityShape(outputEntity, nextShape)) continue;
+    touched.push({
+      entity_id: object.entity_id,
+      object_id: object.id,
+      changes
+    });
+  }
+
+  return {
+    status: touched.length ? "executed_endpoint_follower" : "no_matching_line_endpoints",
+    applied_count: touched.length,
+    touched_entities: touched
+  };
+}
+
+function materializeChildDocumentTopoPoc(session, config, options = {}) {
   const view = projectViewModel(session);
   const parameters = config.parameters || {};
+  const branchMode = normalizeBranchMode(options?.branchMode || config.branch_mode || "ALL");
   const topo = firstExecutableTopoComment(session);
   if (!topo) {
     throw new Error("TOPO child POC requires executable file-level TOPO metadata.");
@@ -2957,8 +4606,11 @@ function materializeChildDocumentTopoPoc(session, config) {
   if (String(topoKeys.delta_rule || "").trim() !== "config_minus_nominal") {
     throw new Error(`Unsupported TOPO delta_rule: ${topoKeys.delta_rule}`);
   }
+  const sourceObjects = filterObjectsByBranchMode(view.objects, branchMode);
   const outputDocument = cloneJson(session.document);
+  const branchFilterExecution = filterDocumentByBranchMode(session, outputDocument, branchMode);
   const outputEntities = entityMapById(outputDocument);
+  const documentRuleExecution = materializeDocumentRulesOnDocument(outputDocument, session, sourceObjects, parameters);
   const decisionsByEntityId = new Map();
   const excludedEntities = [];
   const includedEntities = [];
@@ -2966,7 +4618,11 @@ function materializeChildDocumentTopoPoc(session, config) {
   const skippedTopoEntities = [];
   let matchingTopoMoverCount = 0;
 
-  for (const object of Array.isArray(view.objects) ? view.objects : []) {
+  for (const object of Array.isArray(sourceObjects) ? sourceObjects : []) {
+    const sourceEntity = findEntity(session.document, object.entity_id);
+    const topoRole = entityTopoRoleMetadata(sourceEntity);
+    const isMoverRole = topoRole && topoRole.keys?.role === "mover";
+    const roleGroupMatches = isMoverRole && String(topoRole.keys?.group || "").trim() === String(topoKeys.group || "").trim();
     const decision = evaluateChildEntityInclusion(object, parameters);
     decisionsByEntityId.set(object.entity_id, decision);
     if (!decision.included) {
@@ -2976,6 +4632,14 @@ function materializeChildDocumentTopoPoc(session, config) {
         type: object.type,
         exclusion_reason: decision.exclusion_reason || "excluded"
       });
+      if (roleGroupMatches) {
+        skippedTopoEntities.push({
+          entity_id: object.entity_id,
+          object_id: object.id,
+          reason: "TOPO_MOVER_EXCLUDED_BY_SEM",
+          exclusion_reason: decision.exclusion_reason || "excluded"
+        });
+      }
       continue;
     }
     includedEntities.push({
@@ -2984,8 +4648,6 @@ function materializeChildDocumentTopoPoc(session, config) {
       type: object.type
     });
 
-    const sourceEntity = findEntity(session.document, object.entity_id);
-    const topoRole = entityTopoRoleMetadata(sourceEntity);
     if (!topoRole || topoRole.keys?.role !== "mover") continue;
     if (String(topoRole.keys?.group || "").trim() !== String(topoKeys.group || "").trim()) {
       skippedTopoEntities.push({
@@ -3067,8 +4729,29 @@ function materializeChildDocumentTopoPoc(session, config) {
   }
 
   if (!matchingTopoMoverCount) {
+    const excludedMoverCount = skippedTopoEntities.filter((item) => item.reason === "TOPO_MOVER_EXCLUDED_BY_SEM").length;
+    if (excludedMoverCount) {
+      const firstExcluded = skippedTopoEntities.find((item) => item.reason === "TOPO_MOVER_EXCLUDED_BY_SEM");
+      throw new Error(`TOPO group ${String(topoKeys.group || "").trim() || "(missing group)"} has ${excludedMoverCount} mover annotation(s), but all are excluded by SEM/config before TOPO. First excluded entity: ${firstExcluded?.entity_id || "?"}; reason: ${firstExcluded?.exclusion_reason || "excluded"}.`);
+    }
     throw new Error(`TOPO group ${String(topoKeys.group || "").trim() || "(missing group)"} has no entity-level mover annotations in the current session.`);
   }
+
+  const topoRepairExecution = applyTopoTrimRejoinEndpointFollowerRepair(
+    session,
+    outputDocument,
+    sourceObjects,
+    movedEntities,
+    topoKeys
+  );
+
+  const postTopoRuleExecution = materializePostTopoRulesOnDocument(
+    outputDocument,
+    session,
+    sourceObjects,
+    parameters
+  );
+  const repairContext = buildRepairDisciplineContext(documentRuleExecution, movedEntities, postTopoRuleExecution);
 
   outputDocument.entities = (Array.isArray(outputDocument.entities) ? outputDocument.entities : [])
     .filter((entity) => {
@@ -3076,6 +4759,7 @@ function materializeChildDocumentTopoPoc(session, config) {
       return !decision || decision.included;
     });
   pruneUnusedBlocks(outputDocument);
+  const finalChildExecution = finalizeChildDocument(outputDocument, session, config, repairContext);
 
   return {
     document: outputDocument,
@@ -3084,6 +4768,8 @@ function materializeChildDocumentTopoPoc(session, config) {
       topology_mode: "fixed_envelope_slide",
       product_code: config.product_code,
       technology_profile: config.technology_profile,
+      branch_mode: branchMode,
+      branch_filter: branchFilterExecution,
       topo_group: topoKeys.group,
       axis,
       parameter: null,
@@ -3094,23 +4780,39 @@ function materializeChildDocumentTopoPoc(session, config) {
         left: resolveTopoZoneInput(topoKeys, parameters, "LEC"),
         right: resolveTopoZoneInput(topoKeys, parameters, "REC")
       },
+      document_rules_applied: documentRuleExecution.applied_rules || [],
       trim_policy: topoKeys.trim_policy || null,
-      trim_policy_status: topoKeys.trim_policy ? "declared_not_executed" : "none",
-      entity_count: (Array.isArray(view.objects) ? view.objects : []).length,
+      trim_policy_status: topoKeys.trim_policy ? topoRepairExecution.status : "none",
+      trim_policy_repair: topoRepairExecution,
+      entity_count: sourceObjects.length,
       included_count: includedEntities.length,
       excluded_count: excludedEntities.length,
       moved_count: movedEntities.length,
       included_entities: includedEntities,
       excluded_entities: excludedEntities,
       moved_entities: movedEntities,
-      skipped_topo_entities: skippedTopoEntities
+      skipped_topo_entities: skippedTopoEntities,
+      post_topo_rules_applied: postTopoRuleExecution.applied_rules || [],
+      repair_discipline: {
+        protected_entity_ids: repairContext.protected_entity_ids,
+        expected_gap_values: repairContext.expected_gap_values
+      },
+      block_explosion: finalChildExecution.block_explosion,
+      final_orientation_rules_applied: finalChildExecution.final_orientation.applied_rules || [],
+      bbox_normalization: finalChildExecution.bbox_normalization,
+      final_gap_repair: finalChildExecution.final_gap_repair,
+      child_label_rules_applied: finalChildExecution.child_label.applied_rules || [],
+      child_label_removed_anchor_entities: finalChildExecution.child_label.removed_anchor_entities || [],
+      child_label_emitted_text_entities: finalChildExecution.child_label.emitted_text_entities || [],
+      layer_policy: finalChildExecution.layer_policy,
+      metadata_cleanup: finalChildExecution.metadata_cleanup
     }
   };
 }
 
-function generateChildDxfTopoPoc(session, parameterSet) {
+function generateChildDxfTopoPoc(session, parameterSet, options = {}) {
   const config = normalizeConfigParameterSet(parameterSet || DEFAULT_KSKR_EXECUTION_CHECK_PARAMETER_SET);
-  const materialized = materializeChildDocumentTopoPoc(session, config);
+  const materialized = materializeChildDocumentTopoPoc(session, config, options);
   return {
     config_parameter_set: config,
     generation_summary: materialized.generation_summary,
@@ -3118,6 +4820,90 @@ function generateChildDxfTopoPoc(session, parameterSet) {
   };
 }
 
+function buildResolverMaterializedSimulation(session, config, materialized) {
+  const outputObjects = listRelevantObjects(materialized.document);
+  const summary = materialized.generation_summary || {};
+  const sourceView = projectViewModel(session);
+  const sourceByEntityId = new Map((Array.isArray(sourceView?.objects) ? sourceView.objects : []).map((object) => [String(object.entity_id || ""), object]));
+  const renderObjects = outputObjects.map((object) => {
+    const sourceObject = sourceByEntityId.get(String(object.entityId || "")) || null;
+    return {
+      id: object.id,
+      entity_id: object.entityId,
+      display_label: object.type === "INSERT" && object.blockName
+        ? `${object.type} ${object.blockName}`
+        : `${object.type} ${object.id}`,
+      type: object.type,
+      primary_layer: object.layer || sourceObject?.primary_layer || null,
+      classification_state: sourceObject?.classification_state || "classified",
+      semantic_color: String(object.type || "").toUpperCase() === "TEXT"
+        ? "#dc2626"
+        : (sourceObject?.semantic_color || "#334155"),
+      semantic_metadata: sourceObject?.semantic_metadata ? cloneJson(sourceObject.semantic_metadata) : null,
+      topo_role_metadata: sourceObject?.topo_role_metadata ? cloneJson(sourceObject.topo_role_metadata) : null,
+      raw_ref: sourceObject?.raw_ref ? cloneJson(sourceObject.raw_ref) : null,
+      source: object.source || sourceObject?.source || null,
+      bbox: object.bbox ? cloneJson(object.bbox) : null,
+      shapes: cloneShapes(object.shapes)
+    };
+  });
+
+  const items = renderObjects.map((object) => ({
+    entity_id: object.entity_id,
+    object_id: object.id,
+    display_label: object.display_label,
+    type: object.type,
+    primary_layer: object.primary_layer,
+    classification_state: object.classification_state,
+    semantic_metadata: object.semantic_metadata,
+    config_snapshot: {
+      technology_profile: config.technology_profile,
+      product_code: config.product_code,
+      parameters: cloneJson(config.parameters)
+    },
+    preview: {
+      visible: true,
+      included: true,
+      exclusion_reason: null,
+      topology_mode: summary.topology_mode || "fixed_envelope_slide",
+      geometry_simulation_mode: "resolver_materialized_child_dxf_v0",
+      simulated_shapes: cloneShapes(object.shapes),
+      simulated_bbox: object.bbox ? cloneJson(object.bbox) : null,
+      applied_offset: null,
+      render_visible: true,
+      line_pairing: [],
+      document_rule_actions: [],
+      post_topo_rule_actions: [],
+      resolver_materialized: true,
+      ready_for_child_planning: object.classification_state === "classified" && Boolean(object.primary_layer),
+      preview_actions: [
+        object.primary_layer ? "LAYER=" + object.primary_layer : null,
+        "RESOLVER_CHILD=TRUE"
+      ].filter(Boolean)
+    }
+  }));
+  const validation = validateCombinedPreviewGeometry(renderObjects, items, summary.topology_mode || "fixed_envelope_slide");
+
+  return {
+    session_id: session.session_id,
+    technology_profile: config.technology_profile,
+    product_code: config.product_code,
+    topology_mode: summary.topology_mode || "fixed_envelope_slide",
+    config_parameter_set: config,
+    render_objects: renderObjects,
+    items,
+    validation,
+    summary: {
+      object_count: items.length,
+      included_count: items.filter((item) => item.preview?.included !== false).length,
+      excluded_count: items.filter((item) => item.preview?.included === false).length,
+      resolver_materialized: true,
+      child_mode: summary.mode || "child_topo_poc_v0",
+      post_topo_rules_applied: summary.post_topo_rules_applied || [],
+      validation_counts: validation.counts
+    }
+  };
+}
 function cloneShapes(shapes) {
   return JSON.parse(JSON.stringify(Array.isArray(shapes) ? shapes : []));
 }
@@ -3596,6 +5382,7 @@ function simulateChildPreview(session) {
     })
     : buildIdentitySimulationMap(view.objects, topologyMode);
   let documentRuleExecution = { applied_rules: [] };
+  let postTopoRuleExecution = { applied_rules: [] };
   let topoSimulationMap = null;
   let activeSimulationMap = standardSimulationMap;
 
@@ -3624,6 +5411,13 @@ function simulateChildPreview(session) {
     );
     activeSimulationMap = topoSimulationMap || standardSimulationMap;
   }
+  postTopoRuleExecution = applyPostTopoRulesToSimulationMap(
+    session,
+    view.objects,
+    config.parameters,
+    activeSimulationMap
+  );
+  const finalSimulationMap = activeSimulationMap;
   const limitator = normalizeBooleanLike(config.parameters.LIMITATOR);
   const brava = config.parameters.BRAVA == null ? null : String(config.parameters.BRAVA);
   const items = view.objects.map((object) => {
@@ -3657,9 +5451,7 @@ function simulateChildPreview(session) {
     const conditionalActual = presenceEval.conditional_actual;
     const visible = aggregated.included;
     const visibilityReason = presenceEval.visibility_reason;
-    const geometryPreview = topologyMode === "none"
-      ? (standardSimulationMap && standardSimulationMap.get(object.id)) || buildIdentityGeometrySimulation(object, topologyMode)
-      : (topoSimulationMap && topoSimulationMap.get(object.id)) || buildIdentityGeometrySimulation(object, topologyMode);
+    const geometryPreview = (finalSimulationMap && finalSimulationMap.get(object.id)) || buildIdentityGeometrySimulation(object, topologyMode);
     const preview_actions = [];
     if (object.primary_layer) preview_actions.push(`LAYER=${object.primary_layer}`);
     if (partHint) preview_actions.push(`PART=${partHint}`);
@@ -3705,6 +5497,7 @@ function simulateChildPreview(session) {
         render_visible: geometryPreview.render_visible !== false,
         line_pairing: geometryPreview.line_pairing || [],
         document_rule_actions: geometryPreview.document_rule_actions || [],
+        post_topo_rule_actions: geometryPreview.post_topo_rule_actions || [],
         preview_actions,
         ready_for_child_planning: object.classification_state === "classified" && Boolean(object.primary_layer)
       }
@@ -3726,6 +5519,7 @@ function simulateChildPreview(session) {
       classified_count: items.filter((item) => item.classification_state === "classified").length,
       sem_bound_count: items.filter((item) => (item.semantic_metadata?.raw_comments || []).length > 0).length,
       document_rules_applied: documentRuleExecution.applied_rules || [],
+      post_topo_rules_applied: postTopoRuleExecution.applied_rules || [],
       validation_counts: validation.counts
     }
   };
@@ -3746,7 +5540,7 @@ function runExecutionCheck(session, configParameterSet) {
   };
 }
 
-async function createSession({ dxfText, sourceName, bands, storeRoot }) {
+async function createSession({ dxfText, sourceName, bands, forceRefresh = false, storeRoot }) {
   const normalizedSourceName = String(sourceName || "mother_dxf_input.dxf");
   const nowIso = new Date().toISOString();
   const document = sanitizeDocument(dxfText);
@@ -3757,6 +5551,23 @@ async function createSession({ dxfText, sourceName, bands, storeRoot }) {
     .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
   const currentSession = matchingSessions[0] || null;
   const preserveCustomTitle = currentSession && !titleLooksLikeDefault(currentSession.title, currentSession.source_name);
+  if (currentSession && sessionHasAuthoringState(currentSession) && !forceRefresh) {
+    currentSession.parameter_catalog = normalizeParameterCatalogSnapshot(currentSession.parameter_catalog || DEFAULT_PARAMETER_CATALOG);
+    currentSession.rule_catalog = normalizeRuleCatalogSnapshot(currentSession.rule_catalog || DEFAULT_RULE_CATALOG);
+    currentSession.config_parameter_set = normalizeConfigParameterSet(currentSession.config_parameter_set || buildDefaultConfigFromParameterCatalog(currentSession.parameter_catalog, defaultConfigContextForSource(normalizedSourceName)));
+    appendSessionActivity(currentSession, {
+      type: "raw_refresh_preserved",
+      severity: "ok",
+      summary: "Existing enriched session preserved; raw refresh not applied.",
+      details: { source_name: normalizedSourceName }
+    });
+    projectViewModel(currentSession);
+    await saveSession({ rootDir: storeRoot || defaultRoot(), session: currentSession });
+    return {
+      session: currentSession,
+      action: "reused_existing_preserved"
+    };
+  }
   if (currentSession && sessionHasAuthoringState(currentSession)) {
     currentSession.document = document;
     currentSession.bands = normalizeBands(bands);
@@ -3769,10 +5580,16 @@ async function createSession({ dxfText, sourceName, bands, storeRoot }) {
     currentSession.artifact_state = "sanitized";
     currentSession.topo_comments = extractTopoCommentsFromDxfText(dxfText);
     currentSession.assignments = {};
-    currentSession.parameter_catalog = normalizeParameterCatalogSnapshot(currentSession.parameter_catalog || DEFAULT_PARAMETER_CATALOG);
+    currentSession.parameter_catalog = normalizeParameterCatalogSnapshot(DEFAULT_PARAMETER_CATALOG);
     currentSession.rule_catalog = normalizeRuleCatalogSnapshot(currentSession.rule_catalog || DEFAULT_RULE_CATALOG);
-    currentSession.config_parameter_set = cloneJson(currentSession.config_parameter_set || DEFAULT_CONFIG_PARAMETER_SET);
+    currentSession.config_parameter_set = normalizeConfigParameterSet(currentSession.config_parameter_set || buildDefaultConfigFromParameterCatalog(currentSession.parameter_catalog, defaultConfigContextForSource(normalizedSourceName)));
     currentSession.xdata_assignments = mergeImportedXdataAssignments(currentSession.document, importedXdataAssignments);
+    appendSessionActivity(currentSession, {
+      type: "raw_refresh_forced",
+      severity: "warn",
+      summary: "Existing authoring erased and session refreshed from raw DXF.",
+      details: { source_name: normalizedSourceName }
+    });
     projectViewModel(currentSession);
     await saveSession({ rootDir: storeRoot || defaultRoot(), session: currentSession });
     for (const duplicate of matchingSessions.slice(1)) {
@@ -3795,14 +5612,21 @@ async function createSession({ dxfText, sourceName, bands, storeRoot }) {
     artifact_state: "sanitized",
     source_name: normalizedSourceName,
     bands: normalizeBands(bands),
-    config_parameter_set: cloneJson(DEFAULT_CONFIG_PARAMETER_SET),
+    config_parameter_set: buildDefaultConfigFromParameterCatalog(DEFAULT_PARAMETER_CATALOG, defaultConfigContextForSource(normalizedSourceName)),
     parameter_catalog: cloneJson(DEFAULT_PARAMETER_CATALOG),
     rule_catalog: cloneJson(DEFAULT_RULE_CATALOG),
     topo_comments: extractTopoCommentsFromDxfText(dxfText),
     assignments: {},
     xdata_assignments: normalizeXdataAssignments(document, importedXdataAssignments),
-    document
+    document,
+    activity_log: []
   };
+  appendSessionActivity(session, {
+    type: currentSession ? "session_refreshed" : "session_created",
+    severity: "ok",
+    summary: currentSession ? "Working session refreshed from raw DXF." : "Working session created.",
+    details: { source_name: normalizedSourceName }
+  });
   projectViewModel(session);
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
   for (const duplicate of matchingSessions.slice(1)) {
@@ -3819,11 +5643,17 @@ async function getSession({ sessionId, storeRoot }) {
   const importedXdataAssignments = hoistMotherXdataFromDocument(session.document);
   session.title = normalizeSessionTitle(session.title, defaultSessionTitleForSource(session.source_name));
   session.status = normalizeSessionStatus(session.status || "draft");
-  session.topo_comments = normalizeTopoCommentsInput(session.topo_comments);
+  session.activity_log = normalizeSessionActivityLog(session.activity_log);
+  const normalizedTopoComments = normalizeTopoCommentsInput(session.topo_comments).filter((value) => isFileLevelTopoComment(value));
+  const topoCommentsChanged = JSON.stringify(session.topo_comments || []) !== JSON.stringify(normalizedTopoComments);
+  session.topo_comments = normalizedTopoComments;
   session.parameter_catalog = normalizeParameterCatalogSnapshot(session.parameter_catalog);
   session.rule_catalog = normalizeRuleCatalogSnapshot(session.rule_catalog);
   session.xdata_assignments = mergeImportedXdataAssignments(session.document, session.xdata_assignments || importedXdataAssignments);
   projectViewModel(session);
+  if (topoCommentsChanged) {
+    await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  }
   return session;
 }
 
@@ -3864,9 +5694,138 @@ async function updateBands({ sessionId, bands, storeRoot }) {
   return session;
 }
 
+async function updateLabelDefinition({ sessionId, payload, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const ruleId = String(payload?.rule_id || "S4P4_LBRA_LABEL_APPLICATION").trim();
+  if (!ruleId) throw new Error("Missing label rule id.");
+  const x = Number(payload?.x);
+  const y = Number(payload?.y);
+  const width = Number(payload?.width || 50);
+  const height = Number(payload?.height || 20);
+  const rotation = Number(payload?.rotation || 0);
+  if (![x, y, width, height, rotation].every(Number.isFinite) || width <= 0 || height <= 0) {
+    throw new Error("Label definition requires numeric x, y, width, height, and rotation.");
+  }
+  const documentSem = collectDocumentSemMetadata(session.document);
+  if (!documentSem) {
+    throw new Error("Document SEM identity must be saved before label definition.");
+  }
+
+  const entities = Array.isArray(session.document.entities) ? session.document.entities : [];
+  const removedIds = entities.filter((entity) => isLabelAnchorEntityForRule(entity, ruleId)).map((entity) => entity.id);
+  session.document.entities = entities.filter((entity) => !isLabelAnchorEntityForRule(entity, ruleId));
+  for (const entityId of removedIds) {
+    delete session.assignments?.[entityId];
+    delete session.xdata_assignments?.[entityId];
+  }
+
+  const rad = rotation * Math.PI / 180;
+  const ux = { x: Math.cos(rad), y: Math.sin(rad) };
+  const uy = { x: -Math.sin(rad), y: Math.cos(rad) };
+  const hw = width / 2;
+  const hh = height / 2;
+  const corners = [
+    { x: x - ux.x * hw - uy.x * hh, y: y - ux.y * hw - uy.y * hh },
+    { x: x + ux.x * hw - uy.x * hh, y: y + ux.y * hw - uy.y * hh },
+    { x: x + ux.x * hw + uy.x * hh, y: y + ux.y * hw + uy.y * hh },
+    { x: x - ux.x * hw + uy.x * hh, y: y - ux.y * hw + uy.y * hh }
+  ];
+  const comment = labelAnchorComment({ ruleId, width, height, rotation, coordinateSpace: "raw_part" });
+  const preComments = [{ code: "999", value: comment }];
+  for (let i = 0; i < 4; i += 1) {
+    const id = nextRuntimeEntityId(session.document);
+    const a = corners[i];
+    const b = corners[(i + 1) % 4];
+    session.document.entities.push(makeRuntimeLineEntity({
+      id,
+      x1: a.x,
+      y1: a.y,
+      x2: b.x,
+      y2: b.y,
+      layer: "0",
+      preComments
+    }));
+  }
+
+  const existingRuleRefs = new Set(Array.isArray(documentSem.rule_refs) ? documentSem.rule_refs : []);
+  if (!existingRuleRefs.has(ruleId)) {
+    session.document.preComments = Array.isArray(session.document.preComments) ? session.document.preComments : [];
+    session.document.preComments.push({ code: "999", value: `SEM:document=true;rule_ref=${ruleId}` });
+  }
+
+  appendSessionActivity(session, {
+    type: "label_definition_saved",
+    severity: "ok",
+    summary: `Label definition saved for ${ruleId}.`,
+    details: { rule_id: ruleId, x, y, width, height, rotation, removed_entity_ids: removedIds }
+  });
+  session.updated_at = new Date().toISOString();
+  session.artifact_state = "mother_draft";
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return session;
+}
+
+async function clearLabelDefinition({ sessionId, ruleId, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const normalizedRuleId = String(ruleId || "S4P4_LBRA_LABEL_APPLICATION").trim();
+  const entities = Array.isArray(session.document.entities) ? session.document.entities : [];
+  const removedIds = entities.filter((entity) => isLabelAnchorEntityForRule(entity, normalizedRuleId)).map((entity) => entity.id);
+  session.document.entities = entities.filter((entity) => !isLabelAnchorEntityForRule(entity, normalizedRuleId));
+  for (const entityId of removedIds) {
+    delete session.assignments?.[entityId];
+    delete session.xdata_assignments?.[entityId];
+  }
+  appendSessionActivity(session, {
+    type: "label_definition_cleared",
+    severity: "warn",
+    summary: `Label definition cleared for ${normalizedRuleId}.`,
+    details: { rule_id: normalizedRuleId, removed_entity_ids: removedIds }
+  });
+  session.updated_at = new Date().toISOString();
+  session.artifact_state = "mother_draft";
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return session;
+}
+
+async function resetConfigParameterSetFromCatalog({ sessionId, context, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const documentSem = collectDocumentSemMetadata(session.document);
+  const semContext = documentSem ? {
+    family: documentSem.family,
+    product: documentSem.product,
+    part: documentSem.part
+  } : {};
+  const config = buildDefaultConfigFromParameterCatalog(session.parameter_catalog || DEFAULT_PARAMETER_CATALOG, {
+    ...defaultConfigContextForSource(session.source_name),
+    ...semContext,
+    ...(context && typeof context === "object" ? context : {})
+  });
+  session.config_parameter_set = normalizeConfigParameterSet(config);
+  appendSessionActivity(session, {
+    type: "config_reset_from_catalog",
+    severity: "ok",
+    summary: "Config parameter set reset from catalog defaults.",
+    details: {
+      context: { family: config.family, product: config.product, part: config.part },
+      parameter_count: Object.keys(config.parameters || {}).length
+    }
+  });
+  session.updated_at = new Date().toISOString();
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return session;
+}
+
 async function updateConfigParameterSet({ sessionId, configParameterSet, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   session.config_parameter_set = normalizeConfigParameterSet(configParameterSet);
+  appendSessionActivity(session, {
+    type: "config_saved",
+    severity: "ok",
+    summary: "Config parameter set saved.",
+    details: {
+      parameter_count: Object.keys(session.config_parameter_set.parameters || {}).length
+    }
+  });
   session.updated_at = new Date().toISOString();
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
   return session;
@@ -3891,6 +5850,19 @@ async function updateDocumentSemMetadata({ sessionId, payload, storeRoot }) {
     nextDocumentComments.unshift(...semPairs);
   }
   session.document.preComments = nextDocumentComments;
+  appendSessionActivity(session, {
+    type: "document_sem_saved",
+    severity: "ok",
+    summary: "Document SEM identity and rules saved.",
+    details: {
+      nominal_width: Number(payload?.nominal_width),
+      nominal_height: Number(payload?.nominal_height),
+      family: payload?.family || null,
+      product: payload?.product || null,
+      part: payload?.part || null,
+      rule_refs: ruleRefs
+    }
+  });
 
   for (const entity of session.document?.entities || []) {
     const comments = Array.isArray(entity.preComments) ? entity.preComments : [];
@@ -3913,6 +5885,12 @@ async function updateTopoMetadata({ sessionId, topoText, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   const rawComment = upsertFileLevelTopoComment(session, topoText);
   session.topo_comments = [rawComment];
+  appendSessionActivity(session, {
+    type: "topo_saved",
+    severity: "ok",
+    summary: "File-level TOPO definition saved.",
+    details: { raw_comment: rawComment }
+  });
   session.updated_at = new Date().toISOString();
   session.artifact_state = "mother_draft";
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
@@ -3922,6 +5900,12 @@ async function updateTopoMetadata({ sessionId, topoText, storeRoot }) {
 async function clearTopoMetadata({ sessionId, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   clearFileLevelTopoComment(session);
+  appendSessionActivity(session, {
+    type: "topo_cleared",
+    severity: "warn",
+    summary: "File-level TOPO definition cleared.",
+    details: {}
+  });
   session.updated_at = new Date().toISOString();
   session.artifact_state = "mother_draft";
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
@@ -3932,6 +5916,12 @@ async function updateEntityTopoRoleMetadata({ sessionId, entityId, role, group, 
   const session = await getSession({ sessionId, storeRoot });
   const rawComment = buildEntityTopoRoleComment({ role, group, zone });
   upsertEntityTopoComment(session, entityId, rawComment);
+  appendSessionActivity(session, {
+    type: rawComment ? "topo_role_assigned" : "topo_role_cleared",
+    severity: rawComment ? "ok" : "warn",
+    summary: rawComment ? "Entity-level TOPO role assigned." : "Entity-level TOPO role cleared.",
+    details: { entity_id: entityId, role: role || null, group: group || null, zone: zone || null, raw_comment: rawComment || null }
+  });
   session.updated_at = new Date().toISOString();
   session.artifact_state = "mother_draft";
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
@@ -3972,6 +5962,18 @@ async function authorSemanticMetadata({ sessionId, entityId, entityIds, operatio
   for (const targetEntityId of normalizedIds) {
     upsertSemanticComment(session.document, targetEntityId, rawComment);
   }
+  appendSessionActivity(session, {
+    type: "semantic_metadata_assigned",
+    severity: "ok",
+    summary: String(rawComment).includes("post_topo_group=MICRO_SHIFT_SET")
+      ? String(normalizedIds.length) + " entitet(a) assigned to MICRO_SHIFT_SET."
+      : "Semantic metadata assigned to " + String(normalizedIds.length) + " entitet(a).",
+    details: {
+      entity_count: normalizedIds.length,
+      sample_entity_ids: sampleValues(normalizedIds),
+      semantic_comment: rawComment
+    }
+  });
   session.updated_at = new Date().toISOString();
   session.artifact_state = "mother_draft";
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
@@ -3985,6 +5987,12 @@ async function authorSemanticMetadata({ sessionId, entityId, entityIds, operatio
 async function clearSemanticMetadata({ sessionId, entityId, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   removeSemanticComment(session.document, entityId);
+  appendSessionActivity(session, {
+    type: "semantic_metadata_cleared",
+    severity: "warn",
+    summary: "Semantic metadata cleared from entity.",
+    details: { entity_id: entityId }
+  });
   session.updated_at = new Date().toISOString();
   session.artifact_state = "mother_draft";
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
@@ -4022,6 +6030,12 @@ async function updateEntityXdataMetadata({ sessionId, entityIds, value, previous
       delete session.xdata_assignments[entityId];
     }
   }
+  appendSessionActivity(session, {
+    type: nextValue ? "xdata_assigned" : "xdata_cleared",
+    severity: nextValue ? "ok" : "warn",
+    summary: nextValue ? "Geometry branch XDATA assigned." : "Geometry branch XDATA cleared.",
+    details: { entity_count: normalizedIds.length, sample_entity_ids: sampleValues(normalizedIds), value: nextValue || null, previous_value: previousGroupValue || null }
+  });
   session.updated_at = new Date().toISOString();
   session.artifact_state = "mother_draft";
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
@@ -4082,6 +6096,13 @@ async function generateChildDxfNoTopoForSession({ sessionId, parameterSet, store
     dxfText: result.dxf_text,
     suffix: "child_no_topo"
   });
+  appendSessionActivity(session, {
+    type: "child_dxf_saved",
+    severity: "ok",
+    summary: "Resolver child DXF saved.",
+    details: { mode: result.generation_summary?.mode || "child_no_topo", child_file: childInfo.filePath }
+  });
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
   return {
     session,
     ...result,
@@ -4089,20 +6110,41 @@ async function generateChildDxfNoTopoForSession({ sessionId, parameterSet, store
   };
 }
 
-async function generateChildDxfTopoPocForSession({ sessionId, parameterSet, storeRoot }) {
+async function generateChildDxfTopoPocForSession({ sessionId, parameterSet, branchMode, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   const config = await persistSessionConfigParameterSet(session, parameterSet, storeRoot);
-  const result = generateChildDxfTopoPoc(session, config);
+  const result = generateChildDxfTopoPoc(session, config, { branchMode });
   const childInfo = await saveChildExport({
     rootDir: storeRoot || defaultRoot(),
     sessionId,
     dxfText: result.dxf_text,
     suffix: "child_topo_poc"
   });
+  appendSessionActivity(session, {
+    type: "topo_child_dxf_saved",
+    severity: "ok",
+    summary: "Resolver TOPO child DXF saved.",
+    details: { mode: result.generation_summary?.mode || "child_topo_poc", child_file: childInfo.filePath, moved_count: result.generation_summary?.moved_count ?? null }
+  });
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
   return {
     session,
     ...result,
     child_file: childInfo.filePath
+  };
+}
+
+async function generateChildDxfTopoPocPreviewForSession({ sessionId, parameterSet, branchMode, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const config = await persistSessionConfigParameterSet(session, parameterSet, storeRoot);
+  const materialized = materializeChildDocumentTopoPoc(session, config, { branchMode });
+  const dxfText = serializeDocument(materialized.document);
+  return {
+    session,
+    config_parameter_set: config,
+    generation_summary: materialized.generation_summary,
+    dxf_text: dxfText,
+    resolver_preview: buildResolverMaterializedSimulation(session, config, materialized)
   };
 }
 
@@ -4114,6 +6156,12 @@ async function validateMotherDraft({ sessionId, storeRoot }) {
   if (validation.ok) {
     session.artifact_state = "mother_validated";
   }
+  appendSessionActivity(session, {
+    type: "mother_draft_validated",
+    severity: validation.ok ? "ok" : "error",
+    summary: validation.ok ? "Mother draft validation passed." : "Mother draft validation failed.",
+    details: { error_count: validation.errors?.length || 0, warning_count: validation.warnings?.length || 0 }
+  });
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
   return { session, validation };
 }
@@ -4148,6 +6196,10 @@ module.exports = {
   assignPrimaryLayer,
   updateBands,
   updateConfigParameterSet,
+  resetConfigParameterSetFromCatalog,
+  updateLabelDefinition,
+  clearLabelDefinition,
+  buildDefaultConfigFromParameterCatalog,
   updateDocumentSemMetadata,
   updateTopoMetadata,
   clearTopoMetadata,
@@ -4163,6 +6215,7 @@ module.exports = {
   generateChildDxfNoTopoForSession,
   generateChildDxfTopoPoc,
   generateChildDxfTopoPocForSession,
+  generateChildDxfTopoPocPreviewForSession,
   validateMotherDraft,
   exportMotherDraft,
   projectViewModel,
@@ -4170,9 +6223,11 @@ module.exports = {
   serializeDocument,
   parseDocumentSem,
   collectDocumentSemMetadata,
+  collectDocumentRuleMetadata,
   upsertFileLevelTopoComment,
   upsertEntityTopoComment,
   parseTopoComment,
+  parseRuleComment,
   collectTopoMetadata,
   validateTopoBlock,
   normalizeTopoRuntimeModel

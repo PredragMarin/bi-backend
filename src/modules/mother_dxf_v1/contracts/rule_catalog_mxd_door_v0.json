@@ -12,7 +12,10 @@
       "condition": {
         "parameter": "TIP_VRATA",
         "operator": "IN",
-        "values": ["Europa", "EuroMax"]
+        "values": [
+          "Europa",
+          "EuroMax"
+        ]
       },
       "target_scope": {
         "layer": "B"
@@ -43,6 +46,97 @@
         "axis": "Y",
         "value_mm": 9.5,
         "post_repair": "bounded_trim_rejoin"
+      },
+      "status": "draft"
+    },
+    "MICRO_SHIFT_SET_X": {
+      "rule_id": "MICRO_SHIFT_SET_X",
+      "label": "Post-TOPO micro shift X",
+      "profile_scope": "MXD",
+      "description": "Nakon document SEM i TOPO materializacije pomakni sve entitete označene SEM:post_topo_group=MICRO_SHIFT_SET kao rigidni skup po X osi. Pozitivna vrijednost SKRACENJE skraćuje LBRA, pa se primjenjuje kao -SKRACENJE po X osi.",
+      "target_scope": {
+        "post_topo_group": "MICRO_SHIFT_SET"
+      },
+      "action": {
+        "stage": "post_topo",
+        "geometry": "offset",
+        "axis": "X",
+        "value_expr": "-SKRACENJE",
+        "unit": "mm",
+        "default": 0,
+        "post_repair": "bounded_trim_rejoin"
+      },
+      "status": "draft"
+    },
+    "S4P4_LBRA_LABEL_APPLICATION": {
+      "rule_id": "S4P4_LBRA_LABEL_APPLICATION",
+      "label": "S4P4 LBRA label application",
+      "profile_scope": "MXD",
+      "description": "Postavi production label application envelope za LBRA. DXF TEXT je downstream payload carrier; label envelope se koristi za placement i collision preview.",
+      "target_scope": {
+        "family": "VRATA",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "LBRA"
+        ]
+      },
+      "action": {
+        "stage": "child_label",
+        "priority": 100,
+        "operation": "apply_label",
+        "coordinate_space": "raw_part",
+        "anchor_transform": "through_final_child",
+        "label_width": 50,
+        "label_height": 20,
+        "rotation": 0,
+        "collision_policy": "warn",
+        "payload_carrier": "TEXT",
+        "carrier_layer": "0",
+        "carrier_height": 1,
+        "carrier_color": 1,
+        "carrier_h_align": 1,
+        "carrier_v_align": 2,
+        "payload_template": ";|{{WORKORDERCODE}}|{{MODEL}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}",
+        "payload_fields": {
+          "DIMENSION_SHORT": "format({{SIRINA_VRATA_DIV10}}x{{VISINA_VRATA_DIV10}})",
+          "SIRINA_VRATA_DIV10": "number_expr(SIRINA_VRATA/10,integer)",
+          "VISINA_VRATA_DIV10": "number_expr(VISINA_VRATA/10,integer)",
+          "OPENING_SIDE_SHORT": "map(STRANA_OTVARANJA:{Desna (DX)=D,Lijeva (SX)=L,Inverzna desna (INV DX)=D,Inverzna lijeva (INV SX)=L})"
+        }
+      },
+      "status": "draft"
+    },
+    "DOOR_SX_DX_MIRROR": {
+      "rule_id": "DOOR_SX_DX_MIRROR",
+      "label": "Door SX/DX final orientation mirror",
+      "profile_scope": "OPS_S4P4",
+      "description": "Raw DXF je DX orijentacija. Za Lijeva (SX) i Inverzna lijeva (INV SX) child geometrija se finalno mirror-a oko Y osi i zatim normalizira u bbox ishodište.",
+      "target_scope": {
+        "family": "VRATA",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "condition": {
+        "parameter": "STRANA_OTVARANJA",
+        "operator": "IN",
+        "values": [
+          "Lijeva (SX)",
+          "Inverzna lijeva (INV SX)"
+        ]
+      },
+      "action": {
+        "stage": "final_orientation",
+        "priority": 100,
+        "geometry": "mirror",
+        "axis": "Y",
+        "normalize_bbox": true,
+        "text_policy": "keep_upright"
       },
       "status": "draft"
     }

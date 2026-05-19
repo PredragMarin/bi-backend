@@ -552,7 +552,8 @@ Catalog entry minimum discipline:
 
 - svaki catalog-backed entry mora imati stabilni `id`
 - svaki entry mora imati kratki `label` ili `description`
-- svaki entry mora imati eksplicitni `profile_scope`
+- svaki rule/operation entry mora imati eksplicitni `profile_scope`
+- parameter entries moraju imati `scope.family/products/parts` i `default`, kako bi session mogao iz Parameter Cataloga derivirati početni Config Parameter Set
 - `generic` je dozvoljen `profile_scope`, ali mora biti eksplicitno zapisan
 
 Current concrete artifacts:
@@ -947,7 +948,7 @@ Za executable `fixed_envelope_slide` intent potrebna su dodatna polja:
 - `lec_delta_factor` — faktor primjene delte za `LEC`
 - `rec_delta_factor` — faktor primjene delte za `REC`
 - `follower_policy` — kako se ponašaju rigid followers; v0 vrijednost: `rigid`
-- `trim_policy` — što se radi s `LINE` geometrijom; v0 vrijednost: `rejoin`
+- `trim_policy` — što se radi s `LINE` geometrijom; v0 vrijednost: `rejoin`. Za `fixed_envelope_slide` resolver materializira endpoint-follower repair: horizontalni LINE endpoint koji je u mother DXF-u dodirivao vertikalni mover endpoint slijedi taj mover endpoint na novoj X poziciji.
 
 ### X-axis machining convention
 
@@ -1067,7 +1068,133 @@ Do tada:
 
 - `SEM` ostaje existence / variant filtering
 - `TOPO` ostaje topology behavior definition
+- `RULE:stage=post_topo` smije definirati završni rigidni offset nad
+  eksplicitno označenom `SEM:post_topo_group=...` selekcijom
 - `9-Layer` ostaje zoning / classification model
+
+### Post-TOPO rigid group offset
+
+`RULE:stage=post_topo` je document-level `999` metadata za zadnji rigidni
+pomak nakon `SEM` filtering i `TOPO` materializacije.
+
+Canonical v0 oblik:
+
+```text
+999
+RULE:stage=post_topo;id=MICRO_SHIFT_SET_X;geometry=offset;target_group=MICRO_SHIFT_SET;axis=X;value_expr=-SKRACENJE;unit=mm;default=0;post_repair=bounded_trim_rejoin
+```
+
+Target entiteti nose entity-level marker:
+
+```text
+999
+SEM:post_topo_group=MICRO_SHIFT_SET
+```
+
+Execution order:
+
+1. document-level `SEM` inclusion / exclusion
+2. `TOPO` fixed-envelope slide
+3. `RULE:stage=post_topo` rigid offset
+4. bounded preview repair / validation
+
+`value_expr` v0 podržava numerički parametar ili aritmetički izraz nad
+numeričkim configurator parametrima. Ako vrijednost nije numerička, koristi se
+`default`.
+
+### Planned final orientation rule
+
+`RULE:stage=final_orientation` is a planned document/profile-level child
+transform for final handedness/orientation changes. It is not entity-level SEM
+and not TOPO.
+
+Canonical planned form:
+
+```text
+999
+RULE:stage=final_orientation;id=DOOR_SX_DX_MIRROR;geometry=mirror;axis=Y;when=STRANA_OTVARANJA IN [Lijeva (SX),Inverzna lijeva (INV SX)];normalize_bbox=true
+```
+
+Semantics:
+
+- `geometry=mirror` with `axis=Y` maps `x'=-x`, `y'=y`
+- `normalize_bbox=true` translates the final child so bbox starts at `0,0`
+- rule execution happens after SEM, TOPO, and post-TOPO offset
+- `STRANA_OTVARANJA` is the canonical parameter source for DX/SX behavior
+
+### Planned child label application rule
+
+`RULE:stage=child_label` is a planned child enrichment rule for inserting a
+production label application hit. The label is not modeled as visible font
+geometry; the DXF `TEXT` entity is only a downstream payload carrier. Mother
+DXF defines placement, label envelope, rotation, collision policy, and payload
+template. DBR materializes placeholders during batch processing.
+
+Canonical planned LBRA form:
+
+```text
+999
+RULE:stage=child_label;id=S4P4_LBRA_LABEL_APPLICATION;operation=apply_label;coordinate_space=raw_part;anchor_transform=through_final_child;x=1276;y=39;z=0;label_width=50;label_height=20;rotation=0;collision_policy=warn;payload_carrier=TEXT;carrier_layer=0;carrier_height=1;carrier_color=1;carrier_h_align=1;carrier_v_align=2;payload_template=;|{{WORKORDERCODE}}|{{TIP_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}};payload_field_DIMENSION_SHORT=format({{SIRINA_VRATA_DIV10}}x{{VISINA_VRATA_DIV10}});payload_field_SIRINA_VRATA_DIV10=number_expr(SIRINA_VRATA/10,integer);payload_field_VISINA_VRATA_DIV10=number_expr(VISINA_VRATA/10,integer);payload_field_OPENING_SIDE_SHORT=map(STRANA_OTVARANJA:{Desna (DX)=D,Lijeva (SX)=L,Inverzna desna (INV DX)=D,Inverzna lijeva (INV SX)=L})
+```
+
+Field semantics:
+
+- `operation=apply_label` identifies the production hit semantics
+- `x/y/z` define the label anchor in the declared coordinate space
+- `label_width` and `label_height` define the physical label envelope for preview, safe placement, and collision checks
+- `rotation` rotates the production label hit/envelope
+- `collision_policy` controls validation behavior, for example `warn` or `error`
+- `payload_carrier=TEXT` maps payload output to a DXF `TEXT` carrier entity
+- `carrier_height=1` is the OPS S4P4 carrier requirement and must not be changed for canvas readability
+- `carrier_layer`, `carrier_color`, `carrier_h_align`, and `carrier_v_align` map to standard DXF TEXT carrier group codes
+- `payload_template` may contain direct and derived placeholders in `{{PLACEHOLDER}}` form
+- `payload_field_*` entries define derived placeholders with controlled resolver operations such as `format`, `number_expr`, and `map`
+- direct placeholders resolve from merged DBR batch row, document-level `999` metadata, and config parameter set context
+- `DIMENSION_SHORT` is the production-tested width/height short form and currently excludes `SKRACENJE`
+- `OPENING_SIDE_SHORT` must use enum mapping, not naive first-letter extraction
+- `coordinate_space=raw_part` means the label anchor follows the same child transform chain as geometry
+- `anchor_transform=through_final_child` means mirror/rotate/normalize transforms are applied to the anchor/envelope before carrier emission
+- canvas readability and helper rectangles are UI policy only and must not alter production DXF geometry or carrier height
+
+Production-tested carrier shape after DBR materialization:
+
+```text
+0
+TEXT
+8
+0
+10
+1276
+11
+1276
+20
+39
+21
+39
+30
+0
+40
+1
+1
+;|26T01V01|PPV30|SPANJA B3|80x196|L
+50
+0
+62
+1
+72
+1
+73
+2
+0
+```
+
+Planned ordering extension:
+
+1. document-level `SEM` inclusion / exclusion
+2. `TOPO` fixed-envelope slide
+3. `RULE:stage=post_topo` rigid offset
+4. `RULE:stage=final_orientation` mirror / normalization
+5. `RULE:stage=child_label` label hit / transformed raw anchor carrier emission
 
 ---
 

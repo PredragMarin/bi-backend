@@ -19,12 +19,12 @@
     }
     *{box-sizing:border-box}
     body{margin:0;background:linear-gradient(180deg,#eef4ea 0%,#e0e7dd 100%);color:var(--ink);font-family:"Segoe UI",Tahoma,sans-serif}
-    .page{display:grid;gap:14px;padding:14px;overflow-x:auto}
+    .page{display:grid;gap:14px;padding:14px;overflow-x:hidden}
     .hero,.card{background:var(--paper);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px rgba(24,32,38,.08)}
     .hero{padding:18px;background:radial-gradient(circle at top right, rgba(38,70,83,.12), transparent 30%),linear-gradient(135deg, rgba(38,70,83,.08), rgba(251,253,248,.96))}
     .hero h1{margin:0 0 10px;font-size:32px}
     .hero p{margin:0;color:var(--muted);max-width:1100px;line-height:1.5}
-    .layout{display:grid;grid-template-columns:340px minmax(760px,1fr);gap:14px;align-items:start;min-width:1120px;width:100%;max-width:none}
+    .layout{display:grid;grid-template-columns:minmax(420px,30vw) minmax(0,1fr);gap:14px;align-items:start;width:100%;max-width:none}
     .bottom-grid{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;width:100%;max-width:100%}
     .bottom-grid .card{flex:1 1 420px;min-width:320px;width:auto}
     .support-launcher{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
@@ -32,6 +32,9 @@
     .viewer-card-wide-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
     .stack{display:grid;gap:14px;align-content:start;grid-auto-rows:max-content;min-width:0}
     .card{padding:16px;min-width:0}
+    .phase-summary{border:1px solid var(--line);border-radius:10px;background:#f7faf4;padding:10px;margin-bottom:12px}
+    .phase-summary-title{font-weight:700;margin-bottom:4px}
+    .phase-summary-row{color:var(--muted);font-size:12px;line-height:1.45}
     h2{margin:0 0 10px;font-size:18px}
     textarea,input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;color:var(--ink)}
     .compact-form textarea,.compact-form input,.compact-form select{padding:5px 8px;border-radius:8px;min-height:30px}
@@ -124,17 +127,19 @@
         </div>
 
         <div class="card" id="cardAutoSuggestion">
-          <h2>4-band Auto-Suggestion</h2>
-          <div class="grid-2">
-            <label>Left band (mm)<input id="bandLeft" type="number" value="80" min="0" step="1" /></label>
-            <label>Right band (mm)<input id="bandRight" type="number" value="80" min="0" step="1" /></label>
-            <label>Top band (mm)<input id="bandTop" type="number" value="80" min="0" step="1" /></label>
-            <label>Bottom band (mm)<input id="bandBottom" type="number" value="80" min="0" step="1" /></label>
-          </div>
-          <div class="toolbar" style="margin-top:12px">
-            <button id="startBtn">Create / Refresh Working Session</button>
-            <button id="reclassifyBtn" class="secondary" disabled>Re-run Auto-Suggest</button>
-          </div>
+          <details id="autoSuggestionDetails" open>
+            <summary><strong>4-Band Definition</strong></summary>
+            <div class="grid-2" style="margin-top:10px">
+              <label>Left band (mm)<input id="bandLeft" type="number" value="80" min="0" step="1" /></label>
+              <label>Right band (mm)<input id="bandRight" type="number" value="80" min="0" step="1" /></label>
+              <label>Top band (mm)<input id="bandTop" type="number" value="80" min="0" step="1" /></label>
+              <label>Bottom band (mm)<input id="bandBottom" type="number" value="80" min="0" step="1" /></label>
+            </div>
+            <div class="toolbar" style="margin-top:12px">
+              <button id="startBtn">Create / Refresh Working Session</button>
+              <button id="reclassifyBtn" class="secondary" disabled>Re-run Auto-Suggest</button>
+            </div>
+          </details>
         </div>
 
         <div class="card" id="cardSelection">
@@ -279,12 +284,9 @@
         <div class="card compact-form" id="cardMetadataAuthoring">
           <details id="metadataAuthoringDetails">
           <summary><strong>Metadata Authoring</strong></summary>
-          <div class="toolbar" style="margin-bottom:12px">
-            <button id="authoringStageTopoBtn" type="button" class="secondary">Stage 1: TOPO</button>
-            <button id="authoringStageSemBtn" type="button" class="secondary">Stage 2: SEM</button>
-          </div>
-          <div id="authoringStageMeta" class="meta" style="margin-bottom:10px">Stage 1 definira part topology. Stage 2 otvara entity-level `SEM` authoring.</div>
           <div id="documentSemPanel" style="margin-bottom:14px">
+            <div id="documentSemSummaryPanel" class="phase-summary" style="display:none"></div>
+            <div id="documentSemEditorPanel">
             <div id="documentSemMeta" class="meta" style="margin-bottom:8px">Document SEM not saved.</div>
             <div class="meta" style="margin-bottom:10px">Identity definira document contract, a document rules aktiviraju profile/product-specific runtime ponašanja nad cijelim mother artefaktom.</div>
             <div class="meta" style="margin-bottom:8px"><strong>Identity</strong></div>
@@ -306,7 +308,7 @@
             </div>
             <div class="grid-2" style="margin-top:10px">
               <label>Part
-                <input id="documentSemPart" type="text" placeholder="KSKR" />
+                <input id="documentSemPart" type="text" placeholder="LBRA" />
               </label>
             </div>
             <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
@@ -330,7 +332,13 @@
               <button id="saveDocumentSemBtn" class="secondary" disabled>Save Document SEM</button>
             </div>
             <pre id="documentSemOut">{"ok":false,"note":"Document SEM not loaded yet."}</pre>
+            </div>
           </div>
+          <div id="authoringStageToolbar" class="toolbar" style="margin-bottom:12px">
+            <button id="authoringStageTopoBtn" type="button" class="secondary">Stage 1: TOPO</button>
+            <button id="authoringStageSemBtn" type="button" class="secondary">Stage 2: SEM</button>
+          </div>
+          <div id="authoringStageMeta" class="meta" style="margin-bottom:10px">Stage 1 definira part topology. Stage 2 otvara entity-level `SEM` authoring.</div>
           <div id="topoStagePanel">
             <div id="topoMeta" class="meta" style="margin-bottom:8px">No active TOPO metadata.</div>
             <div class="grid-2">
@@ -446,6 +454,7 @@
                 <option value="presence">Presence condition</option>
                 <option value="geometry_role">Geometry role</option>
                 <option value="operation_ref">Operation reference</option>
+                <option value="post_topo_group">Post-TOPO group</option>
               </select>
             </label>
             <div id="metadataPresencePrimaryRow" class="grid-2">
@@ -537,7 +546,59 @@
             <div id="metadataPreviewSummary" class="meta" style="margin-top:8px">No canonical metadata generated yet.</div>
             <div class="toolbar" style="margin-top:12px">
               <button id="applyMetadataBtn" class="secondary" disabled>Apply Metadata</button>
+              <button id="assignMicroShiftSetBtn" class="secondary" disabled>Assign MICRO_SHIFT_SET to Selection</button>
               <button id="clearMetadataBtn" class="secondary" disabled>Clear Metadata</button>
+            </div>
+            <div id="microShiftSetStatus" class="meta" style="margin-top:8px">MICRO_SHIFT_SET assignment not run yet.</div>
+          </details>
+        </div>
+
+        <div class="card compact-form" id="cardLabelDefinition">
+          <details id="labelDefinitionDetails">
+            <summary><strong>Label Definition</strong></summary>
+            <div id="labelDefinitionSummary" class="phase-summary" style="display:none;margin-top:10px"></div>
+            <div id="labelDefinitionEditor" style="margin-top:10px">
+              <div id="labelDefinitionMeta" class="meta" style="margin-bottom:10px">Label definition not saved.</div>
+              <label>Rule
+                <select id="labelRuleRef">
+                  <option value="S4P4_LBRA_LABEL_APPLICATION">S4P4_LBRA_LABEL_APPLICATION</option>
+                </select>
+              </label>
+              <div class="grid-2" style="margin-top:10px">
+                <label>Label width (mm)
+                  <input id="labelWidth" type="number" step="0.1" value="50" />
+                </label>
+                <label>Label height (mm)
+                  <input id="labelHeight" type="number" step="0.1" value="20" />
+                </label>
+              </div>
+              <div class="grid-2" style="margin-top:10px">
+                <label>Anchor X
+                  <input id="labelAnchorX" type="number" step="0.001" />
+                </label>
+                <label>Anchor Y
+                  <input id="labelAnchorY" type="number" step="0.001" />
+                </label>
+              </div>
+              <label style="margin-top:10px;display:block">Rotation
+                <select id="labelRotation">
+                  <option value="0">0°</option>
+                  <option value="90">90°</option>
+                  <option value="180">180°</option>
+                  <option value="270">270°</option>
+                </select>
+              </label>
+              <div class="toolbar" style="margin-top:12px">
+                <button id="pickLabelPositionBtn" class="secondary" type="button">Pick Label Position</button>
+                <button id="saveLabelDefinitionBtn" class="secondary" type="button" disabled>Save Label Definition</button>
+                <button id="clearLabelDefinitionBtn" class="secondary" type="button" disabled>Clear Label</button>
+              </div>
+              <div id="labelValidationBox" class="meta" style="margin-top:10px">No label anchor picked.</div>
+              <details style="margin-top:10px">
+                <summary>Advanced / Generated 999</summary>
+                <textarea id="labelGenerated999" style="min-height:92px;margin-top:8px" readonly></textarea>
+                <div id="labelPayloadPreview" class="meta" style="margin-top:8px"></div>
+              </details>
             </div>
           </details>
         </div>
@@ -546,10 +607,11 @@
           <details id="configParameterSetDetails">
             <summary><strong>Config Parameter Set</strong></summary>
             <div class="meta" style="margin:10px 0 8px">Ovdje se unosi životni konfiguracijski JSON artefakt za smoke simulaciju prije child DXF generacije.</div>
-            <textarea id="configInput" style="min-height:180px" placeholder='{"technology_profile":"OPS_S4P4","product_code":"KSKR","parameters":{"BRAVA":"TIP1","LIMITATOR":false}}'></textarea>
+            <textarea id="configInput" style="min-height:180px" placeholder='{"technology_profile":"OPS_S4P4","family":"VRATA","product":"PPV","part":"LBRA","parameters":{"SIRINA_VRATA":900,"VISINA_VRATA":2100}}'></textarea>
             <div class="toolbar" style="margin-top:12px">
               <button id="saveConfigBtn" class="secondary" disabled>Save Config</button>
               <button id="reloadConfigBtn" class="secondary" disabled>Use Saved Config</button>
+              <button id="resetConfigFromCatalogBtn" class="secondary" disabled>Reset from Catalog Defaults</button>
               <button id="simulateBtn" class="good" disabled>Preview Enriched Child</button>
               <button id="previewTopoChildBtn" class="good" style="display:none" disabled>Preview TOPO Child</button>
               <button id="backToDraftViewBtn" class="secondary" disabled>Back to Draft View</button>
@@ -566,9 +628,10 @@
               <button id="exportBtn" class="good" disabled>Export Mother DXF</button>
               <button id="generateChildBtn" class="good" style="display:none" disabled>Save Child DXF</button>
               <button id="generateTopoChildBtn" class="good" style="display:none" disabled>Generate TOPO Child DXF</button>
+              <button id="generateDraftChildBtn" class="secondary" disabled>Save Resolver Child DXF (Draft)</button>
             </div>
             <div id="childSummaryBox" class="meta" style="display:none;margin-top:10px"></div>
-            <div class="meta" style="margin:10px 0 6px">Validation</div>
+            <div class="meta" style="margin:10px 0 6px">Session arrangement, activity log, and validation</div>
             <pre id="validationOut">{"ok":false}</pre>
           </details>
         </div>
@@ -635,7 +698,13 @@
       configDirty: false,
       documentSem: {
         ruleRefs: [],
-        dirtyRules: false
+        dirtyRules: false,
+        dirtyIdentity: false,
+        editing: false
+      },
+      labelDefinition: {
+        pickMode: false,
+        editing: true
       },
       authoring: {
         activeStage: "topo",
@@ -651,7 +720,9 @@
       },
       branchContext: {
         activeMode: "ALL"
-      }
+      },
+      sessionSummaries: [],
+      microShiftAssigning: false
     };
 
     const LAYERS = ["L","R","T","B","TL","TR","BL","BR","A"];
@@ -663,6 +734,7 @@
     const selectionTowerBox = document.getElementById("selectionTowerBox");
     const selectionExplodeBtn = document.getElementById("selectionExplodeBtn");
     const selectionTowerDoneBtn = document.getElementById("selectionTowerDoneBtn");
+    const autoSuggestionDetails = document.getElementById("autoSuggestionDetails");
     const selectionDetails = document.getElementById("selectionDetails");
     const sanitizeCheckDetails = document.getElementById("sanitizeCheckDetails");
     const sanitizeContinueBtn = document.getElementById("sanitizeContinueBtn");
@@ -693,6 +765,7 @@
     const configInput = document.getElementById("configInput");
     const generateChildBtn = document.getElementById("generateChildBtn");
     const generateTopoChildBtn = document.getElementById("generateTopoChildBtn");
+    const generateDraftChildBtn = document.getElementById("generateDraftChildBtn");
     const childSummaryBox = document.getElementById("childSummaryBox");
     const sessionTitleInput = document.getElementById("sessionTitle");
     const sessionStatusSelect = document.getElementById("sessionStatus");
@@ -706,7 +779,23 @@
     const openParameterCatalogBtn = document.getElementById("openParameterCatalogBtn");
     const openRuleCatalogBtn = document.getElementById("openRuleCatalogBtn");
     const openSimulationPreviewBtn = document.getElementById("openSimulationPreviewBtn");
-    const metadataTargetBox = document.getElementById("metadataTargetBox");
+    const labelDefinitionDetails = document.getElementById("labelDefinitionDetails");
+    const labelDefinitionSummary = document.getElementById("labelDefinitionSummary");
+    const labelDefinitionEditor = document.getElementById("labelDefinitionEditor");
+    const labelDefinitionMeta = document.getElementById("labelDefinitionMeta");
+    const labelRuleRef = document.getElementById("labelRuleRef");
+    const labelWidth = document.getElementById("labelWidth");
+    const labelHeight = document.getElementById("labelHeight");
+    const labelAnchorX = document.getElementById("labelAnchorX");
+    const labelAnchorY = document.getElementById("labelAnchorY");
+    const labelRotation = document.getElementById("labelRotation");
+    const pickLabelPositionBtn = document.getElementById("pickLabelPositionBtn");
+    const saveLabelDefinitionBtn = document.getElementById("saveLabelDefinitionBtn");
+    const clearLabelDefinitionBtn = document.getElementById("clearLabelDefinitionBtn");
+    const labelValidationBox = document.getElementById("labelValidationBox");
+    const labelGenerated999 = document.getElementById("labelGenerated999");
+    const labelPayloadPreview = document.getElementById("labelPayloadPreview");
+        const metadataTargetBox = document.getElementById("metadataTargetBox");
     const metadataMode = document.getElementById("metadataMode");
     const metadataPresencePrimaryRow = document.getElementById("metadataPresencePrimaryRow");
     const metadataOperation = document.getElementById("metadataOperation");
@@ -738,6 +827,8 @@
     const metadataExpectedValueSecondaryMeta = document.getElementById("metadataExpectedValueSecondaryMeta");
     const metadataPreview = document.getElementById("metadataPreview");
     const metadataPreviewSummary = document.getElementById("metadataPreviewSummary");
+    const assignMicroShiftSetBtn = document.getElementById("assignMicroShiftSetBtn");
+    const microShiftSetStatus = document.getElementById("microShiftSetStatus");
     const parameterCatalogMeta = document.getElementById("parameterCatalogMeta");
     const parameterCatalogOut = document.getElementById("parameterCatalogOut");
     const ruleCatalogMeta = document.getElementById("ruleCatalogMeta");
@@ -769,6 +860,8 @@
     const topoInspectorMeta = document.getElementById("topoInspectorMeta");
     const topoInspectorLecList = document.getElementById("topoInspectorLecList");
     const topoInspectorRecList = document.getElementById("topoInspectorRecList");
+    const documentSemSummaryPanel = document.getElementById("documentSemSummaryPanel");
+    const documentSemEditorPanel = document.getElementById("documentSemEditorPanel");
     const documentSemMeta = document.getElementById("documentSemMeta");
     const documentSemOut = document.getElementById("documentSemOut");
     const documentSemNominalWidth = document.getElementById("documentSemNominalWidth");
@@ -816,6 +909,12 @@
       statusBox.style.color = tone === "error" ? "#b42318" : tone === "ok" ? "#166534" : "#14323d";
     }
 
+    function markDocumentSemIdentityDirty() {
+      state.documentSem.dirtyIdentity = true;
+      state.documentSem.editing = true;
+      documentSemPreview.value = "Document SEM edits pending. Save Document SEM to generate/update document-level 999.";
+    }
+
     function arrangeWorkspaceCards() {
       const leftStack = document.querySelector(".layout > .stack:first-child");
       const workStack = document.querySelector(".layout > .side-stack");
@@ -848,6 +947,7 @@
         "cardSelection",
         "cardForceAssign",
         "cardMetadataAuthoring",
+        "cardLabelDefinition",
         "cardConfigParameterSet",
         "cardForceXdata"
       ]);
@@ -1036,9 +1136,17 @@
       state.view.offsetY = 20 + bbox.maxY * state.view.scale;
     }
 
+    function effectiveRenderObjects() {
+      const renderObjects = state.simulation && Array.isArray(state.simulation.render_objects)
+        ? state.simulation.render_objects
+        : null;
+      if (renderObjects && renderObjects.length) return renderObjects;
+      return state.session && Array.isArray(state.session.objects) ? state.session.objects : [];
+    }
+
     function currentPreviewBBox() {
-      if (!state.session || !Array.isArray(state.session.objects) || !state.session.objects.length) return null;
-      const visibleBboxes = state.session.objects
+      if (!state.session || !Array.isArray(effectiveRenderObjects()) || !effectiveRenderObjects().length) return null;
+      const visibleBboxes = effectiveRenderObjects()
         .filter((object) => isObjectVisibleInSimulation(object.id))
         .filter((object) => isObjectVisibleInVariantContext(object))
         .map((object) => effectiveBBoxForObject(object))
@@ -1084,6 +1192,8 @@
     }
 
     function objectById(id) {
+      const renderMatch = effectiveRenderObjects().find((item) => item.id === id) || null;
+      if (renderMatch) return renderMatch;
       return state.session && Array.isArray(state.session.objects)
         ? state.session.objects.find((item) => item.id === id) || null
         : null;
@@ -1303,7 +1413,7 @@
     function objectIdsForXdataValue(value) {
       const normalized = String(value || "").trim();
       if (!normalized || !state.session) return [];
-      return (state.session.objects || [])
+      return (effectiveRenderObjects() || [])
         .filter((object) => String(object?.xdata_metadata?.value || "").trim() === normalized)
         .map((object) => object.id);
     }
@@ -1516,7 +1626,7 @@
       if (!state.session) return null;
       let best = null;
       let bestDistance = Number.POSITIVE_INFINITY;
-      for (const object of state.session.objects || []) {
+      for (const object of effectiveRenderObjects() || []) {
         if (!isObjectVisibleInSimulation(object.id)) continue;
         if (!isObjectVisibleInVariantContext(object)) continue;
         for (const snapPoint of collectSnapPointsForObject(object)) {
@@ -1918,7 +2028,169 @@
     }
 
     function renderValidation(validation) {
-      validationOut.textContent = JSON.stringify(validation || { ok: false }, null, 2);
+      const session = state.session || null;
+      const payload = {
+        validation: validation || session?.validation || { ok: false, note: "Validation not run yet." },
+        arrangement_snapshot: session?.arrangement_snapshot || null,
+        activity_log: Array.isArray(session?.activity_log) ? session.activity_log.slice(-80).reverse() : []
+      };
+      validationOut.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    function refreshArrangementStatus() {
+      renderValidation(state.session?.validation || { ok: false, note: "Validation not run yet." });
+    }
+
+    function labelRuleEntries() {
+      return currentRuleEntries().filter((rule) => String(rule?.action?.stage || "").trim() === "child_label");
+    }
+
+    function syncLabelRuleOptions() {
+      const rules = labelRuleEntries();
+      const current = String(labelRuleRef.value || "S4P4_LBRA_LABEL_APPLICATION").trim();
+      const options = rules.length
+        ? rules.map((rule) => `<option value="${esc(rule.rule_id)}">${esc(rule.rule_id)} | ${esc(rule.label || "")}</option>`)
+        : [`<option value="S4P4_LBRA_LABEL_APPLICATION">S4P4_LBRA_LABEL_APPLICATION</option>`];
+      labelRuleRef.innerHTML = options.join("");
+      labelRuleRef.value = Array.from(labelRuleRef.options).some((option) => option.value === current) ? current : labelRuleRef.options[0]?.value || "S4P4_LBRA_LABEL_APPLICATION";
+      const rule = rules.find((item) => item.rule_id === labelRuleRef.value);
+      const action = rule?.action || {};
+      if (!labelWidth.value) labelWidth.value = Number(action.label_width || 50);
+      if (!labelHeight.value) labelHeight.value = Number(action.label_height || 20);
+    }
+
+    function readLabelPayload() {
+      return {
+        rule_id: String(labelRuleRef.value || "S4P4_LBRA_LABEL_APPLICATION").trim(),
+        x: Number(labelAnchorX.value),
+        y: Number(labelAnchorY.value),
+        width: Number(labelWidth.value || 50),
+        height: Number(labelHeight.value || 20),
+        rotation: Number(labelRotation.value || 0)
+      };
+    }
+
+    function labelCorners(payload = readLabelPayload()) {
+      const x = Number(payload.x);
+      const y = Number(payload.y);
+      const width = Number(payload.width);
+      const height = Number(payload.height);
+      const rotation = Number(payload.rotation || 0);
+      if (![x, y, width, height, rotation].every(Number.isFinite) || width <= 0 || height <= 0) return [];
+      const rad = rotation * Math.PI / 180;
+      const ux = { x: Math.cos(rad), y: Math.sin(rad) };
+      const uy = { x: -Math.sin(rad), y: Math.cos(rad) };
+      const hw = width / 2;
+      const hh = height / 2;
+      return [
+        { x: x - ux.x * hw - uy.x * hh, y: y - ux.y * hw - uy.y * hh },
+        { x: x + ux.x * hw - uy.x * hh, y: y + ux.y * hw - uy.y * hh },
+        { x: x + ux.x * hw + uy.x * hh, y: y + ux.y * hw + uy.y * hh },
+        { x: x - ux.x * hw + uy.x * hh, y: y - ux.y * hw + uy.y * hh }
+      ];
+    }
+
+    function labelAnchorObjectsForRule(ruleId = String(labelRuleRef.value || "").trim()) {
+      return (state.session?.objects || []).filter((object) => {
+        const records = Array.isArray(object.semantic_metadata?.parsed) ? object.semantic_metadata.parsed : [];
+        return records.some((record) => String(record?.keys?.label_anchor || "").trim() === ruleId);
+      });
+    }
+
+    function savedLabelSummary(ruleId = String(labelRuleRef.value || "").trim()) {
+      const objects = labelAnchorObjectsForRule(ruleId);
+      if (!objects.length) return null;
+      const bbox = unionBbox(objects.map((object) => object.bbox).filter(Boolean));
+      const firstRecord = objects.flatMap((object) => object.semantic_metadata?.parsed || [])
+        .find((record) => String(record?.keys?.label_anchor || "").trim() === ruleId);
+      const keys = firstRecord?.keys || {};
+      const center = bbox ? { x: (bbox.minX + bbox.maxX) / 2, y: (bbox.minY + bbox.maxY) / 2 } : null;
+      return { objects, bbox, center, keys };
+    }
+
+    function labelGeneratedComment(payload = readLabelPayload()) {
+      if (!payload.rule_id || !Number.isFinite(payload.x) || !Number.isFinite(payload.y)) return "";
+      return `SEM:label_anchor=${payload.rule_id};role=envelope;coordinate_space=raw_part;width=${payload.width};height=${payload.height};rotation=${payload.rotation}`;
+    }
+
+    function labelValidation(payload = readLabelPayload()) {
+      const corners = labelCorners(payload);
+      if (!state.session) return { tone: "error", message: "No active session." };
+      if (!hasDocumentSemConfigured()) return { tone: "error", message: "Document SEM must be saved before label definition." };
+      if (!corners.length) return { tone: "warn", message: "Pick label position or enter numeric X/Y." };
+      const bbox = unionBbox([{
+        minX: Math.min(...corners.map((p) => p.x)),
+        minY: Math.min(...corners.map((p) => p.y)),
+        maxX: Math.max(...corners.map((p) => p.x)),
+        maxY: Math.max(...corners.map((p) => p.y))
+      }]);
+      const doc = state.session.document_bbox || null;
+      if (doc && (bbox.minX < doc.minX || bbox.minY < doc.minY || bbox.maxX > doc.maxX || bbox.maxY > doc.maxY)) {
+        return { tone: "warn", message: "Warning: label envelope is partly outside current mother bbox." };
+      }
+      const collisions = (effectiveRenderObjects() || []).filter((object) => {
+        const records = Array.isArray(object.semantic_metadata?.parsed) ? object.semantic_metadata.parsed : [];
+        if (records.some((record) => String(record?.keys?.label_anchor || "").trim())) return false;
+        const other = object.bbox;
+        return other && !(other.maxX < bbox.minX || other.minX > bbox.maxX || other.maxY < bbox.minY || other.minY > bbox.maxY);
+      });
+      if (collisions.length) return { tone: "warn", message: `Warning: label envelope intersects ${collisions.length} existing object bbox(es).` };
+      return { tone: "ok", message: "OK: label envelope is inside current bbox with no bbox intersections." };
+    }
+
+    function validationColor(tone) {
+      return tone === "error" ? "#b42318" : tone === "warn" ? "#d97706" : "#0f766e";
+    }
+
+    function drawLabelEnvelope(corners, color = "#0f766e", fill = "rgba(20,184,166,.10)") {
+      if (!Array.isArray(corners) || corners.length !== 4) return;
+      const pts = corners.map(worldToScreen);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (const pt of pts.slice(1)) ctx.lineTo(pt.x, pt.y);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const center = pts.reduce((acc, pt) => ({ x: acc.x + pt.x / 4, y: acc.y + pt.y / 4 }), { x: 0, y: 0 });
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function renderLabelDefinition() {
+      syncLabelRuleOptions();
+      const payload = readLabelPayload();
+      const saved = savedLabelSummary(payload.rule_id);
+      const validation = labelValidation(payload);
+      labelDefinitionMeta.textContent = saved
+        ? `Label saved | ${payload.rule_id} | envelope entities ${saved.objects.length}`
+        : "Label definition not saved.";
+      labelDefinitionSummary.style.display = saved && !state.labelDefinition.editing ? "block" : "none";
+      labelDefinitionEditor.style.display = !saved || state.labelDefinition.editing ? "block" : "none";
+      if (saved && !state.labelDefinition.editing) {
+        labelDefinitionSummary.innerHTML = `
+          <div class="phase-summary-title">Label saved</div>
+          <div class="phase-summary-row">${esc(payload.rule_id)} | x=${esc(roundNumber(saved.center?.x || 0, 3))} y=${esc(roundNumber(saved.center?.y || 0, 3))} | ${esc(saved.keys.width || payload.width)} x ${esc(saved.keys.height || payload.height)} | rot=${esc(saved.keys.rotation || payload.rotation)}°</div>
+          <div class="toolbar" style="margin-top:8px"><button type="button" class="secondary" data-edit-label-definition>EDIT Label</button><button type="button" class="secondary" data-focus-label-definition>Focus Label</button></div>
+        `;
+        labelDefinitionSummary.querySelector("[data-edit-label-definition]")?.addEventListener("click", () => { state.labelDefinition.editing = true; render(); });
+        labelDefinitionSummary.querySelector("[data-focus-label-definition]")?.addEventListener("click", () => focusObjectsByIds(saved.objects.map((object) => object.id)));
+      }
+      labelValidationBox.textContent = validation.message;
+      labelValidationBox.style.color = validation.tone === "error" ? "#b42318" : validation.tone === "ok" ? "#166534" : "#92400e";
+      labelGenerated999.value = labelGeneratedComment(payload) ? `999\n${labelGeneratedComment(payload)}` : "";
+      labelPayloadPreview.textContent = "Payload template: ;|{{WORKORDERCODE}}|{{MODEL}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}";
+      saveLabelDefinitionBtn.disabled = validation.tone === "error" || !Number.isFinite(payload.x) || !Number.isFinite(payload.y);
+      clearLabelDefinitionBtn.disabled = !state.session || !saved;
+      pickLabelPositionBtn.textContent = state.labelDefinition.pickMode ? "Picking... click canvas" : "Pick Label Position";
     }
 
     function geometryHygieneFallbackReport() {
@@ -1992,6 +2264,12 @@
           .filter(Boolean);
       }
       return [];
+    }
+
+    function roundNumber(value, places = 3) {
+      const factor = 10 ** Number(places || 0);
+      const number = Number(value);
+      return Number.isFinite(number) ? Math.round(number * factor) / factor : 0;
     }
 
     function unionBbox(bboxes) {
@@ -2434,7 +2712,7 @@
         return;
       }
       if (viewerModeBadge) viewerModeBadge.textContent = currentViewerModeLabel();
-      sessionMeta.textContent = `${state.session.source_name} | ${state.session.artifact_state} | ${state.session.status} | objects ${state.session.objects.length}`;
+      sessionMeta.textContent = `${state.session.source_name} | ${state.session.artifact_state} | ${state.session.status} | objects ${effectiveRenderObjects().length}`;
       const bbox = state.session.document_bbox || null;
       const bboxWidth = bbox ? Math.max(0, (bbox.maxX || 0) - (bbox.minX || 0)) : null;
       const bboxHeight = bbox ? Math.max(0, (bbox.maxY || 0) - (bbox.minY || 0)) : null;
@@ -2442,7 +2720,7 @@
       const topo = state.session.topo_metadata || null;
       const rulesUsedCount = Array.isArray(sem?.rule_refs) ? sem.rule_refs.length : 0;
       const topoCount = Array.isArray(topo?.raw_comments) ? topo.raw_comments.length : 0;
-      const entitySemCount = (state.session.objects || []).filter((object) => object?.semantic_metadata && Array.isArray(object.semantic_metadata.raw_comments) && object.semantic_metadata.raw_comments.length).length;
+      const entitySemCount = (effectiveRenderObjects() || []).filter((object) => object?.semantic_metadata && Array.isArray(object.semantic_metadata.raw_comments) && object.semantic_metadata.raw_comments.length).length;
       const branchMode = currentBranchMode();
       const badges = [
         `file ${state.session.source_name || "-"}`,
@@ -2456,7 +2734,7 @@
         `topo ${topoCount}`,
         `sem ${entitySemCount}`,
         `rules ${rulesUsedCount}`,
-        `objects ${state.session.objects.length}`,
+        `objects ${effectiveRenderObjects().length}`,
         `status ${state.session.status || "-"}`,
         `artifact ${state.session.artifact_state || "-"}`
       ];
@@ -2495,6 +2773,7 @@
       generateChildBtn.disabled = !visible;
       generateTopoChildBtn.style.display = "none";
       generateTopoChildBtn.disabled = true;
+      generateDraftChildBtn.disabled = !state.session;
       if (!visible) {
         childSummaryBox.style.display = "none";
         childSummaryBox.textContent = "";
@@ -2540,6 +2819,7 @@
         ? Object.values(catalog).sort((a, b) => String(a.code || "").localeCompare(String(b.code || ""), undefined, { numeric: true }))
         : [];
     }
+
 
     function selectedCatalogParameter() {
       return currentCatalogParameters().find((item) => item.key === metadataParameter.value) || null;
@@ -2676,6 +2956,24 @@
         : "";
     }
 
+    function inferPartFromSourceName(sourceName) {
+      const baseName = String(sourceName || "")
+        .trim()
+        .replace(/\.[^.]+$/, "")
+        .split(/[\s_-]+/)[0]
+        .trim()
+        .toUpperCase();
+      return /^[A-Z]+$/.test(baseName) ? baseName : "";
+    }
+
+    function knownDocumentPart() {
+      const semPart = String(state.session?.document_sem?.part || "").trim();
+      if (semPart) return semPart;
+      const configPart = String(state.session?.config_parameter_set?.part || "").trim();
+      if (configPart) return configPart;
+      return inferPartFromSourceName(state.session?.source_name || "");
+    }
+
     function availableDocumentRules() {
       const rules = currentRuleEntries();
       const profileId = String(state.session?.rule_catalog?.profile_id || "").trim().toUpperCase();
@@ -2702,12 +3000,14 @@
 
     function syncDocumentSemFormFromSession() {
       const sem = state.session && state.session.document_sem ? state.session.document_sem : null;
-      const productCode = knownProductCode();
-      documentSemNominalWidth.value = sem && sem.nominal_width ? sem.nominal_width : "900";
-      documentSemNominalHeight.value = sem && sem.nominal_height ? sem.nominal_height : "2100";
-      documentSemFamily.value = sem && sem.family ? sem.family : "VRATA";
-      documentSemProduct.value = sem && sem.product ? sem.product : "PPV";
-      documentSemPart.value = sem && sem.part ? sem.part : productCode;
+      const documentPart = knownDocumentPart();
+      if (!state.documentSem.dirtyIdentity) {
+        documentSemNominalWidth.value = sem && sem.nominal_width ? sem.nominal_width : "900";
+        documentSemNominalHeight.value = sem && sem.nominal_height ? sem.nominal_height : "2100";
+        documentSemFamily.value = sem && sem.family ? sem.family : "VRATA";
+        documentSemProduct.value = sem && sem.product ? sem.product : "PPV";
+        documentSemPart.value = sem && sem.part ? sem.part : documentPart;
+      }
       documentSemPart.readOnly = false;
       if (!state.documentSem.dirtyRules) {
         state.documentSem.ruleRefs = Array.isArray(sem?.rule_refs) ? [...sem.rule_refs] : [];
@@ -2738,9 +3038,26 @@
       return lines;
     }
 
+    function confirmedDocumentSemComments(sem) {
+      if (!sem || state.documentSem.dirtyIdentity || state.documentSem.dirtyRules) return [];
+      return Array.isArray(sem.raw_comments) ? sem.raw_comments : [];
+    }
+
+    function documentSemPreviewText(sem) {
+      if (!sem) {
+        return "Document SEM identity draft only. Save Document SEM to generate document-level 999.";
+      }
+      if (state.documentSem.dirtyIdentity || state.documentSem.dirtyRules) {
+        return "Document SEM edits pending. Save Document SEM to update document-level 999.";
+      }
+      const comments = confirmedDocumentSemComments(sem);
+      return comments.length ? comments.join("\n") : "Document SEM saved, but no document-level 999 comments were found.";
+    }
+
     function removeDocumentSemRule(ruleRef) {
       state.documentSem.ruleRefs = (state.documentSem.ruleRefs || []).filter((item) => item !== ruleRef);
       state.documentSem.dirtyRules = true;
+      state.documentSem.editing = true;
       render();
     }
 
@@ -2754,6 +3071,7 @@
         state.documentSem.ruleRefs = [...(state.documentSem.ruleRefs || []), ruleRef];
       }
       state.documentSem.dirtyRules = true;
+      state.documentSem.editing = true;
       render();
       setStatus(`Document rule queued: ${ruleRef}`, "ok");
     }
@@ -2762,6 +3080,8 @@
       const sem = state.session && state.session.document_sem ? state.session.document_sem : null;
       const saveBtn = document.getElementById("saveDocumentSemBtn");
       if (!state.session) {
+        documentSemSummaryPanel.style.display = "none";
+        documentSemEditorPanel.style.display = "block";
         documentSemMeta.textContent = "No active session.";
         documentSemRulesBox.innerHTML = `<div class="meta">No active document rules.</div>`;
         documentSemPreview.value = "";
@@ -2771,6 +3091,29 @@
       }
       syncDocumentSemFormFromSession();
       saveBtn.disabled = false;
+      const documentSemDirty = Boolean(state.documentSem.dirtyIdentity || state.documentSem.dirtyRules);
+      const editorOpen = !sem || state.documentSem.editing || documentSemDirty;
+      documentSemSummaryPanel.style.display = sem ? "block" : "none";
+      documentSemEditorPanel.style.display = editorOpen ? "block" : "none";
+      if (sem) {
+        const ruleCount = Array.isArray(sem.rule_refs) ? sem.rule_refs.length : 0;
+        const dirtyBadge = documentSemDirty ? " | draft edits pending" : "";
+        documentSemSummaryPanel.innerHTML = `
+          <div class="phase-summary-title">Document SEM saved${esc(dirtyBadge)}</div>
+          <div class="phase-summary-row">${esc(sem.nominal_width)} x ${esc(sem.nominal_height)} | ${esc(sem.family)} | product ${esc(sem.product)} | part ${esc(sem.part)} | rules ${esc(ruleCount)}</div>
+          <div class="toolbar" style="margin-top:8px"><button type="button" class="secondary" data-edit-document-sem>EDIT Document SEM</button></div>
+        `;
+        const editButton = documentSemSummaryPanel.querySelector("[data-edit-document-sem]");
+        if (editButton) {
+          editButton.addEventListener("click", () => {
+            state.documentSem.editing = true;
+            render();
+            documentSemEditorPanel.scrollIntoView({ block: "start", behavior: "smooth" });
+          });
+        }
+      } else {
+        documentSemSummaryPanel.innerHTML = "";
+      }
       documentSemMeta.textContent = hasDocumentSemConfigured()
         ? `Document SEM saved | ${sem.nominal_width} x ${sem.nominal_height} | ${sem.family} | product ${sem.product} | part ${sem.part} | rules ${Array.isArray(sem.rule_refs) ? sem.rule_refs.length : 0}`
         : "Document SEM identity required before TOPO authoring.";
@@ -2787,10 +3130,13 @@
           button.addEventListener("click", () => removeDocumentSemRule(button.dataset.removeDocRule));
         });
       }
-      documentSemPreview.value = generatedDocumentSemPreviewLines().join("\n");
+      const confirmedComments = confirmedDocumentSemComments(sem);
+      const draftPending = !sem || state.documentSem.dirtyIdentity || state.documentSem.dirtyRules;
+      documentSemPreview.value = documentSemPreviewText(sem);
       documentSemOut.textContent = JSON.stringify({
         document_sem: sem || null,
-        generated_999_comments: generatedDocumentSemPreviewLines()
+        confirmed_999_comments: confirmedComments,
+        draft_identity: draftPending ? readDocumentSemPayload() : null
       }, null, 2);
     }
 
@@ -2823,11 +3169,13 @@
       return String(fallback);
     }
 
-    function syncTopoParameterOptions() {
-      const parameters = currentCatalogParameters();
+    function syncTopoParameterOptions(preferredLecParameter = null, preferredRecParameter = null) {
+      const previousLecParameter = String(preferredLecParameter || topoLecParameter.value || "").trim();
+      const previousRecParameter = String(preferredRecParameter || topoRecParameter.value || "").trim();
+      const parameters = currentCatalogParameters().filter((item) => String(item?.type || "").trim().toLowerCase() === "number");
       if (!parameters.length) {
-        topoLecParameter.innerHTML = `<option value="">No catalog parameters</option>`;
-        topoRecParameter.innerHTML = `<option value="">No catalog parameters</option>`;
+        topoLecParameter.innerHTML = `<option value="">No numeric catalog parameters</option>`;
+        topoRecParameter.innerHTML = `<option value="">No numeric catalog parameters</option>`;
         return;
       }
       const buildOptions = () => parameters
@@ -2835,13 +3183,12 @@
         .join("");
       topoLecParameter.innerHTML = buildOptions();
       topoRecParameter.innerHTML = buildOptions();
-      const preferredKey = String(topoLecParameter.value || topoRecParameter.value || "").trim();
-      const preferred = parameters.find((item) => item.key === preferredKey)
-        || parameters.find((item) => String(item.key || "").toUpperCase() === "SIRINA_VRATA")
-        || parameters[0];
-      const nextValue = preferred ? preferred.key : "";
-      topoLecParameter.value = Array.from(topoLecParameter.options).some((option) => option.value === topoLecParameter.value) ? topoLecParameter.value : nextValue;
-      topoRecParameter.value = Array.from(topoRecParameter.options).some((option) => option.value === topoRecParameter.value) ? topoRecParameter.value : nextValue;
+      const defaultParameter = parameters.find((item) => String(item.key || "").toUpperCase() === "VISINA_VRATA") || parameters[0];
+      const defaultValue = defaultParameter ? defaultParameter.key : "";
+      const lecValue = parameters.some((item) => item.key === previousLecParameter) ? previousLecParameter : defaultValue;
+      const recValue = parameters.some((item) => item.key === previousRecParameter) ? previousRecParameter : defaultValue;
+      topoLecParameter.value = lecValue;
+      topoRecParameter.value = recValue;
     }
 
     function syncTopoZoneOptions() {
@@ -2860,9 +3207,9 @@
         "axis=X",
         "delta_rule=config_minus_nominal",
         `lec_parameter=${String(topoLecParameter.value || "").trim()}`,
-        `lec_nominal=${numberText(topoLecNominal.value, state.session?.document_sem?.nominal_width || 900)}`,
+        `lec_nominal=${numberText(topoLecNominal.value, state.session?.document_sem?.nominal_height || 2100)}`,
         `rec_parameter=${String(topoRecParameter.value || "").trim()}`,
-        `rec_nominal=${numberText(topoRecNominal.value, state.session?.document_sem?.nominal_width || 900)}`,
+        `rec_nominal=${numberText(topoRecNominal.value, state.session?.document_sem?.nominal_height || 2100)}`,
         `lec_delta_factor=${numberText(topoLecDeltaFactor.value, -1.0)}`,
         `rec_delta_factor=${numberText(topoRecDeltaFactor.value, 1.0)}`
       ];
@@ -2881,9 +3228,9 @@
         ? state.session.topo_metadata.raw_comments.find((value) => String(value || "").includes("mode=fixed_envelope_slide")) || ""
         : "";
       const parsed = parseMetadataPairs(raw, "TOPO");
-      syncTopoParameterOptions();
+      syncTopoParameterOptions(parsed.lec_parameter, parsed.rec_parameter);
       topoMode.value = "fixed_envelope_slide";
-      topoGroup.value = parsed.group || topoGroup.value || "LBRA_X_SLIDE";
+      topoGroup.value = parsed.group || "LBRA_X_SLIDE";
       topoAxis.value = "X";
       if (parsed.lec_parameter && Array.from(topoLecParameter.options).some((option) => option.value === parsed.lec_parameter)) {
         topoLecParameter.value = parsed.lec_parameter;
@@ -2891,12 +3238,12 @@
       if (parsed.rec_parameter && Array.from(topoRecParameter.options).some((option) => option.value === parsed.rec_parameter)) {
         topoRecParameter.value = parsed.rec_parameter;
       }
-      topoLecNominal.value = parsed.lec_nominal || topoLecNominal.value || state.session?.document_sem?.nominal_width || 900;
-      topoRecNominal.value = parsed.rec_nominal || topoRecNominal.value || state.session?.document_sem?.nominal_width || 900;
+      topoLecNominal.value = parsed.lec_nominal || state.session?.document_sem?.nominal_height || 2100;
+      topoRecNominal.value = parsed.rec_nominal || state.session?.document_sem?.nominal_height || 2100;
       topoDeltaRule.value = "config_minus_nominal";
       topoTrimPolicy.value = "rejoin";
-      topoLecDeltaFactor.value = parsed.lec_delta_factor || topoLecDeltaFactor.value || "-1.0";
-      topoRecDeltaFactor.value = parsed.rec_delta_factor || topoRecDeltaFactor.value || "1.0";
+      topoLecDeltaFactor.value = parsed.lec_delta_factor || "-1.0";
+      topoRecDeltaFactor.value = parsed.rec_delta_factor || "1.0";
       syncTopoZoneOptions();
       topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
       topoInput.value = buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
@@ -2966,8 +3313,9 @@
 
     function topoTargetsForActiveGroup() {
       const group = String(topoGroup.value || "").trim();
-      if (!group || !state.session || !Array.isArray(state.session.objects)) return [];
-      return state.session.objects.filter((object) => {
+      const sessionObjects = state.session && Array.isArray(state.session.objects) ? state.session.objects : [];
+      if (!group || !sessionObjects.length) return [];
+      return sessionObjects.filter((object) => {
         const topoRole = object?.topo_role_metadata;
         return topoRole
           && String(topoRole.keys?.role || "").trim() === "mover"
@@ -3215,15 +3563,16 @@
       const isPresence = mode === "presence";
       const isGeometryRole = mode === "geometry_role";
       const isOperationRef = mode === "operation_ref";
+      const isPostTopoGroup = mode === "post_topo_group";
 
       metadataPresencePrimaryRow.style.display = isPresence ? "grid" : "none";
       metadataExpectedValuePrimaryWrap.style.display = isPresence ? "grid" : "none";
       metadataSecondConditionToggleRow.style.display = isPresence ? "flex" : "none";
       metadataSecondConditionPanel.style.display = isPresence && secondConditionEnabled() ? "block" : "none";
-      metadataRoleRow.style.display = (isGeometryRole || isOperationRef) ? "grid" : "none";
-      metadataRoleLabelWrap.style.display = isOperationRef ? "none" : "block";
+      metadataRoleRow.style.display = (isGeometryRole || isOperationRef || isPostTopoGroup) ? "grid" : "none";
+      metadataRoleLabelWrap.style.display = (isOperationRef || isPostTopoGroup) ? "none" : "block";
       metadataRuleRefWrap.style.display = isGeometryRole ? "block" : "none";
-      metadataOperationHelp.style.display = isOperationRef ? "block" : "none";
+      metadataOperationHelp.style.display = (isOperationRef || isPostTopoGroup) ? "block" : "none";
       metadataDebugDetails.style.display = "block";
 
       if (!isPresence) {
@@ -3236,6 +3585,10 @@
       } else if (isOperationRef) {
         metadataVariantLabel.textContent = "Operation ref id";
         metadataVariant.placeholder = "SBRA_BOTTOM_TRIM_JOIN";
+      } else if (isPostTopoGroup) {
+        metadataVariantLabel.textContent = "Post-TOPO group id";
+        metadataVariant.placeholder = "MICRO_SHIFT_SET";
+        metadataOperationHelp.textContent = "Post-TOPO group marks selected entities as the target set for document-level post_topo rules.";
       } else {
         metadataVariantLabel.textContent = "Variant id";
         metadataVariant.placeholder = "IZNAD_DRUGE";
@@ -3265,6 +3618,10 @@
         return feature
           ? `Operation reference ${operationRef || "-"} bound to feature ${feature}.`
           : `Operation reference ${operationRef || "-"}.`;
+      }
+      if (mode === "post_topo_group") {
+        const group = String(metadataVariant.value || "").trim();
+        return `Post-TOPO target group ${group || "-"}.`;
       }
       const primaryDef = selectedCatalogParameter();
       const secondaryDef = selectedCatalogParameterByKey(metadataParameterSecondary.value);
@@ -3335,7 +3692,20 @@
           ? `SEM:operation_ref=${operationRef};feature=${parameter}`
           : `SEM:operation_ref=${operationRef}`;
         metadataPreviewSummary.textContent = metadataSummaryForPreview(metadataPreview.value, mode);
-        document.getElementById("applyMetadataBtn").disabled = !selectedObject();
+        document.getElementById("applyMetadataBtn").disabled = !state.selectedIds.size;
+        return;
+      }
+      if (mode === "post_topo_group") {
+        const group = variant || "MICRO_SHIFT_SET";
+        if (!group) {
+          metadataPreview.value = "";
+          metadataPreviewSummary.textContent = "Post-TOPO group authoring needs a group id.";
+          document.getElementById("applyMetadataBtn").disabled = true;
+          return;
+        }
+        metadataPreview.value = `SEM:post_topo_group=${group}`;
+        metadataPreviewSummary.textContent = metadataSummaryForPreview(metadataPreview.value, mode);
+        document.getElementById("applyMetadataBtn").disabled = !state.selectedIds.size;
         return;
       }
       if (!parameter || !expected || !operation) {
@@ -3360,11 +3730,20 @@
       document.getElementById("applyMetadataBtn").disabled = !selectedObject();
     }
 
+    function updateMicroShiftSetButtonState() {
+      const selectedCount = state.selectedIds ? state.selectedIds.size : 0;
+      assignMicroShiftSetBtn.disabled = state.microShiftAssigning || !state.session || selectedCount <= 0;
+      assignMicroShiftSetBtn.textContent = state.microShiftAssigning
+        ? "Assigning MICRO_SHIFT_SET..."
+        : (selectedCount > 0 ? `Assign MICRO_SHIFT_SET to ${selectedCount} selected` : "Assign MICRO_SHIFT_SET to Selection");
+    }
+
     function renderMetadataTarget() {
       const object = selectedObject();
       if (!object) {
         metadataTargetBox.textContent = "Select one relevant object to author `999` metadata.";
         document.getElementById("applyMetadataBtn").disabled = true;
+        updateMicroShiftSetButtonState();
         document.getElementById("clearMetadataBtn").disabled = true;
         return;
       }
@@ -3374,11 +3753,13 @@
       const rawLabel = rawRefLabel(object.raw_ref);
       metadataTargetBox.textContent = `Target: ${object.display_label} | entity_id=${object.entity_id}${rawLabel ? ` | ${rawLabel}` : ""}${semantic}`;
       document.getElementById("applyMetadataBtn").disabled = !metadataPreview.value;
+      updateMicroShiftSetButtonState();
       document.getElementById("clearMetadataBtn").disabled = false;
     }
 
     function renderSessionOptions(sessions) {
       const items = Array.isArray(sessions) ? sessions : [];
+      state.sessionSummaries = items;
       if (!items.length) {
         sessionSelect.innerHTML = `<option value="">No saved sessions found</option>`;
         return;
@@ -3401,6 +3782,21 @@
         .join("");
     }
 
+    function sessionHasUiAuthoringState(session) {
+      if (!session) return false;
+      const hasDocumentSem = Array.isArray(session.document_sem?.raw_comments) && session.document_sem.raw_comments.length > 0;
+      const hasTopo = Array.isArray(session.topo_metadata?.raw_comments) && session.topo_metadata.raw_comments.length > 0;
+      const hasEntitySem = Array.isArray(session.objects) && session.objects.some((object) => Array.isArray(object.semantic_metadata?.raw_comments) && object.semantic_metadata.raw_comments.length > 0);
+      const hasEntityTopo = Array.isArray(session.objects) && session.objects.some((object) => Array.isArray(object.topo_role_metadata?.raw_comments) && object.topo_role_metadata.raw_comments.length > 0);
+      return hasDocumentSem || hasTopo || hasEntitySem || hasEntityTopo;
+    }
+
+    function matchingSessionSummaryForSource(sourceName) {
+      const normalized = String(sourceName || "").trim();
+      if (!normalized) return null;
+      return (state.sessionSummaries || []).find((session) => String(session?.source_name || "").trim() === normalized) || null;
+    }
+
     function render() {
       syncCanvasSize();
       ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
@@ -3414,6 +3810,7 @@
       renderParameterCatalog();
       renderRuleCatalog();
       renderDocumentSemPanel();
+      renderLabelDefinition();
       renderAuthoringStage();
       renderTopoPanel();
       renderMetadataTarget();
@@ -3432,7 +3829,7 @@
       });
       const hasSelection = state.selectedIds.size > 0;
       drawGhostOverlay();
-      for (const object of state.session.objects) {
+      for (const object of effectiveRenderObjects()) {
         if (!isObjectVisibleInSimulation(object.id)) continue;
         if (!isObjectVisibleInVariantContext(object)) continue;
         const isSelected = state.selectedIds.has(object.id);
@@ -3460,6 +3857,11 @@
         }
       }
 
+      const draftCorners = labelCorners(readLabelPayload());
+      if (draftCorners.length && (labelDefinitionDetails.open || state.labelDefinition.pickMode)) {
+        drawLabelEnvelope(draftCorners, validationColor(labelValidation(readLabelPayload()).tone));
+      }
+
       if (state.dragRect) {
         const rect = state.dragRect;
         ctx.strokeStyle = "#264653";
@@ -3479,7 +3881,7 @@
 
     function objectIdsInRect(screenRect) {
       if (!state.session) return [];
-      return state.session.objects
+      return effectiveRenderObjects()
         .filter((object) => isObjectSelectableInVariantContext(object))
         .filter((object) => {
           const bbox = objectScreenBBox(object);
@@ -3491,7 +3893,7 @@
 
     function objectIdAtPoint(point) {
       if (!state.session) return null;
-      const candidates = state.session.objects
+      const candidates = effectiveRenderObjects()
         .filter((object) => isObjectSelectableInVariantContext(object))
         .map((object) => ({ object, bbox: objectScreenBBox(object) }))
         .filter((entry) => entry.bbox)
@@ -3524,11 +3926,23 @@
         setStatus("Load a DXF file or enter Working name / source override before creating a working session.", "error");
         return;
       }
-      setStatus("Creating or refreshing working session...");
+      const matchingSummary = matchingSessionSummaryForSource(sourceName);
+      const activeSameSource = state.session && String(state.session.source_name || "").trim() === sourceName;
+      const hasExistingAuthoring = Boolean(matchingSummary?.has_authoring_state) || (activeSameSource && sessionHasUiAuthoringState(state.session));
+      let forceRefresh = false;
+      if (hasExistingAuthoring) {
+        const answer = window.prompt(`Postojeći Mother DXF session za ${sourceName} ima SEM/TOPO/RULE assignmente.\n\nSigurna akcija: ostavi prazno ili Cancel za učitavanje postojećeg enrichanog sessiona.\nDestruktivna akcija: upiši ERASE ako stvarno želiš obrisati authoring i refreshati iz RAW DXF-a.`, "");
+        forceRefresh = String(answer || "").trim().toUpperCase() === "ERASE";
+        if (answer && !forceRefresh) {
+          setStatus("Raw refresh nije pokrenut: za brisanje authoringa treba ručno upisati ERASE. Učitavam postojeći enrichani session.", "warn");
+        }
+      }
+      setStatus(forceRefresh ? "Refreshing working session from raw DXF after explicit ERASE confirmation..." : "Loading existing enriched session when available...");
       const payload = {
         dxf_text: dxfText,
         source_name: sourceName,
-        bands: bandsPayload()
+        bands: bandsPayload(),
+        force_refresh: forceRefresh
       };
       const data = await fetchJson("/api/mother-dxf/v1/sessions", {
         method: "POST",
@@ -3542,10 +3956,13 @@
       state.selectedIds.clear();
       clearXdataEditor();
       state.documentSem.dirtyRules = false;
+      state.documentSem.dirtyIdentity = false;
+      state.documentSem.editing = false;
       state.hoverId = null;
       syncCurrentDxfText(data.dxf_text);
       syncBandsInputFromSession();
       syncSessionSourceOverrideFromSession();
+      autoSuggestionDetails.open = false;
       fitViewToDocument();
       renderValidation({ ok: false, note: "Validation not run yet." });
       renderSimulation({ ok: false, note: "Simulation not run yet." });
@@ -3554,6 +3971,7 @@
       document.getElementById("exportBtn").disabled = false;
       document.getElementById("saveConfigBtn").disabled = false;
       document.getElementById("reloadConfigBtn").disabled = false;
+      document.getElementById("resetConfigFromCatalogBtn").disabled = false;
       document.getElementById("simulateBtn").disabled = false;
       document.getElementById("previewTopoChildBtn").disabled = false;
       document.getElementById("backToDraftViewBtn").disabled = false;
@@ -3565,7 +3983,7 @@
       if (data.session_action === "reused_existing_preserved") {
         setStatus("Existing working session loaded and preserved. Current enrichment stayed intact.", "ok");
       } else if (data.session_action === "refreshed_existing" || data.session_action === "refreshed_existing_from_source") {
-        setStatus("Existing working session refreshed from raw DXF. Auto-suggestion applied.", "ok");
+        setStatus("Existing working session refreshed from raw DXF after explicit confirmation. Auto-suggestion applied.", "warn");
       } else {
         setStatus("Working session ready. Auto-suggestion applied.", "ok");
       }
@@ -3589,6 +4007,7 @@
       syncCurrentDxfText(data.dxf_text);
       syncBandsInputFromSession();
       syncSessionSourceOverrideFromSession();
+      autoSuggestionDetails.open = false;
       fitViewToDocument();
       render();
       refitViewerAfterLayout();
@@ -3632,7 +4051,7 @@
       });
       state.session = data.session;
       state.selectedIds = new Set(
-        (state.session.objects || [])
+        (effectiveRenderObjects() || [])
           .filter((object) => entityIds.includes(object.entity_id))
           .map((object) => object.id)
       );
@@ -3712,6 +4131,27 @@
       setStatus("Saved config reloaded into editor.", "ok");
     }
 
+    function documentSemContextForConfigDefaults() {
+      const family = String(documentSemFamily.value || state.session?.document_sem?.family || "VRATA").trim();
+      const product = String(documentSemProduct.value || state.session?.document_sem?.product || "PPV").trim();
+      const part = String(documentSemPart.value || state.session?.document_sem?.part || state.session?.config_parameter_set?.part || inferPartFromSourceName(state.session?.source_name || "")).trim();
+      return { family, product, part };
+    }
+
+    async function resetConfigParameterSetFromCatalogDefaults() {
+      if (!state.session) return;
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/config/reset-from-catalog`, {
+        method: "POST",
+        body: JSON.stringify({ context: documentSemContextForConfigDefaults() })
+      });
+      state.session = data.session;
+      clearTopoPreview();
+      syncCurrentDxfText(data.dxf_text);
+      syncConfigInputFromSession(true);
+      render();
+      setStatus("Config reset from scoped parameter catalog defaults.", "ok");
+    }
+
     async function saveDocumentSemMetadata() {
       if (!state.session) return;
       const pendingRuleRef = String(documentSemRuleRef.value || "").trim();
@@ -3730,9 +4170,50 @@
       state.session = data.session;
       clearTopoPreview();
       state.documentSem.dirtyRules = false;
+      state.documentSem.dirtyIdentity = false;
+      state.documentSem.editing = false;
       syncCurrentDxfText(data.dxf_text);
+      refreshArrangementStatus();
       render();
       setStatus("Document SEM identity and document rules saved.", "ok");
+    }
+
+    async function saveLabelDefinition() {
+      if (!state.session) return;
+      const payload = readLabelPayload();
+      if (!Number.isFinite(payload.x) || !Number.isFinite(payload.y)) {
+        setStatus("Pick label position before saving Label Definition.", "error");
+        return;
+      }
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/label-definition`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      state.session = data.session;
+      state.labelDefinition.pickMode = false;
+      state.labelDefinition.editing = false;
+      syncCurrentDxfText(data.dxf_text);
+      refreshArrangementStatus();
+      render();
+      setStatus(`Label definition saved for ${payload.rule_id}.`, "ok");
+    }
+
+    async function clearLabelDefinition() {
+      if (!state.session) return;
+      const ruleId = String(labelRuleRef.value || "S4P4_LBRA_LABEL_APPLICATION").trim();
+      if (!window.confirm(`Clear label definition for ${ruleId}?`)) return;
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/label-definition/${encodeURIComponent(ruleId)}`, {
+        method: "DELETE"
+      });
+      state.session = data.session;
+      state.labelDefinition.pickMode = false;
+      state.labelDefinition.editing = true;
+      labelAnchorX.value = "";
+      labelAnchorY.value = "";
+      syncCurrentDxfText(data.dxf_text);
+      refreshArrangementStatus();
+      render();
+      setStatus(`Label definition cleared for ${ruleId}.`, "ok");
     }
 
     async function saveTopoMetadata() {
@@ -3777,8 +4258,10 @@
       state.authoring.activeStage = "sem";
       syncTopoInputFromSession();
       openWorkflowStep("metadata");
+      refreshArrangementStatus();
       render();
-      setStatus(selectedObjects.length ? `TOPO metadata saved to DXF document and ${selectedObjects.length} selected entiteta.` : "TOPO metadata saved to DXF document.", "ok");
+      const topoTargets = state.session?.arrangement_snapshot?.topo_target_count ?? selectedObjects.length;
+      setStatus(selectedObjects.length ? `TOPO metadata saved: ${topoTargets} targeta ukupno, ${selectedObjects.length} selected entiteta updated.` : "TOPO metadata saved to DXF document.", "ok");
     }
 
     async function clearSelectedTopoMetadata() {
@@ -3806,6 +4289,7 @@
         syncCurrentDxfText(roleData.dxf_text);
       }
       syncTopoInputFromSession();
+      refreshArrangementStatus();
       render();
       setStatus(`Entity-level TOPO removed from ${selectedObjects.length} selected entiteta.`, "ok");
     }
@@ -3819,6 +4303,7 @@
       syncCurrentDxfText(data.dxf_text);
       clearTopoPreview();
       syncTopoInputFromSession();
+      refreshArrangementStatus();
       render();
       setStatus("File-level TOPO cleared from current mother draft.", "ok");
     }
@@ -3877,6 +4362,8 @@
       state.selectedIds.clear();
       clearXdataEditor();
       state.documentSem.dirtyRules = false;
+      state.documentSem.dirtyIdentity = false;
+      state.documentSem.editing = false;
       state.branchContext.activeMode = "ALL";
       syncCurrentDxfText(data.dxf_text || "");
       syncBandsInputFromSession();
@@ -3889,6 +4376,7 @@
       document.getElementById("exportBtn").disabled = false;
       document.getElementById("saveConfigBtn").disabled = false;
       document.getElementById("reloadConfigBtn").disabled = false;
+      document.getElementById("resetConfigFromCatalogBtn").disabled = false;
       document.getElementById("simulateBtn").disabled = false;
       document.getElementById("previewTopoChildBtn").disabled = false;
       document.getElementById("backToDraftViewBtn").disabled = false;
@@ -3939,6 +4427,49 @@
       setStatus(`Metadata applied to ${affectedCount} entitet(a): ${data.semantic_comment}`, "ok");
     }
 
+    async function assignMicroShiftSetToSelection() {
+      const selectedObjects = currentSelectionObjects();
+      if (!state.session || !selectedObjects.length) {
+        setStatus("Select one or more relevant objects first.", "error");
+        return;
+      }
+      const entityIds = Array.from(new Set(selectedObjects.map((object) => object.entity_id).filter(Boolean)));
+      if (!entityIds.length) {
+        setStatus("Current selection has no entity ids to annotate.", "error");
+        return;
+      }
+      const semanticComment = "SEM:post_topo_group=MICRO_SHIFT_SET";
+      const attemptedCount = entityIds.length;
+      state.microShiftAssigning = true;
+      updateMicroShiftSetButtonState();
+      microShiftSetStatus.textContent = `Assigning MICRO_SHIFT_SET to ${attemptedCount} selected entitet(a)...`;
+      setStatus(`Assigning MICRO_SHIFT_SET to ${attemptedCount} selected entitet(a)...`, "info");
+      let data;
+      try {
+        data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/metadata`, {
+          method: "POST",
+          body: JSON.stringify({
+            entity_id: entityIds[0],
+            entity_ids: entityIds,
+            semantic_comment: semanticComment
+          })
+        });
+      } catch (error) {
+        microShiftSetStatus.textContent = `MICRO_SHIFT_SET assignment failed: ${error.message}`;
+        throw error;
+      } finally {
+        state.microShiftAssigning = false;
+        updateMicroShiftSetButtonState();
+      }
+      state.session = data.session;
+      clearTopoPreview();
+      syncCurrentDxfText(data.dxf_text);
+      const affectedCount = Array.isArray(data.affected_entity_ids) ? data.affected_entity_ids.length : entityIds.length;
+      microShiftSetStatus.textContent = `${affectedCount} entitet(a) assigned to MICRO_SHIFT_SET.`;
+      render();
+      setStatus(`${affectedCount} entitet(a) assigned to MICRO_SHIFT_SET.`, "ok");
+    }
+
     async function clearMetadataRule() {
       const object = selectedObject();
       if (!state.session || !object) {
@@ -3954,9 +4485,21 @@
       setStatus("Semantic metadata cleared.", "ok");
     }
 
+    function ensureTopoPreviewHasTargets() {
+      if (!hasTopoConfigured()) return true;
+      const targets = topoTargetsForActiveGroup();
+      if (targets.length) return true;
+      const group = String(topoGroup.value || "").trim() || "(missing group)";
+      setStatus(`TOPO group ${group} has 0 mover targets. Select the mover entities in Stage 1: TOPO, keep Role=mover and Zone=LEC or REC, then click Save TOPO again.`, "error");
+      openWorkflowStep("topo");
+      renderTopoInspector();
+      return false;
+    }
+
     async function simulatePreChildPreview() {
       if (!state.session) return;
       if (hasTopoConfigured()) {
+        if (!ensureTopoPreviewHasTargets()) return;
         setStatus("TOPO is configured, so preview uses the TOPO child path.", "info");
         await previewTopoChildDxf();
         return;
@@ -3988,17 +4531,18 @@
       window.open(`/api/mother-dxf/v1/sessions/${state.session.session_id}/export`, "_blank");
     }
 
-    async function generateChildDxf() {
+    async function generateChildDxf(options = {}) {
       if (!state.session) return;
-      if (!canGenerateChildDxf()) {
+      const allowDraft = Boolean(options.allowDraft);
+      if (!allowDraft && !canGenerateChildDxf()) {
         setStatus("Child DXF generation requires mother_validated artifact or in_review status.", "error");
         return;
       }
       if (hasTopoConfigured()) {
-        await generateTopoChildDxf();
+        await generateTopoChildDxf({ allowDraft });
         return;
       }
-      setStatus("Generating child DXF...");
+      setStatus(allowDraft ? "Generating draft/debug child DXF..." : "Generating child DXF...");
       const config_parameter_set = readConfigInput();
       const response = await fetch(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/no-topo`, {
         method: "POST",
@@ -4027,23 +4571,28 @@
       const included = response.headers.get("X-Mother-DXF-Included-Count") || "?";
       const excluded = response.headers.get("X-Mother-DXF-Excluded-Count") || "?";
       const unsupported = response.headers.get("X-Mother-DXF-Unsupported-Geometry-Ops") || "0";
+      const productionSafe = response.headers.get("X-Mother-DXF-Production-Safe") || "?";
       childSummaryBox.style.display = "";
-      childSummaryBox.textContent = `Child DXF generated: included=${included}, excluded=${excluded}, unsupported_geometry_ops=${unsupported}`;
-      setStatus("Child DXF download ready.", "ok");
+      childSummaryBox.textContent = `Child DXF generated: included=${included}, excluded=${excluded}, unsupported_geometry_ops=${unsupported}, production_safe=${productionSafe}`;
+      setStatus(allowDraft ? "Draft/debug child DXF download ready." : "Child DXF download ready.", "ok");
     }
 
-    async function generateTopoChildDxf() {
+    async function generateTopoChildDxf(options = {}) {
       if (!state.session) return;
-      if (!canGenerateChildDxf()) {
+      const allowDraft = Boolean(options.allowDraft);
+      if (!allowDraft && !canGenerateChildDxf()) {
         setStatus("TOPO child DXF generation requires mother_validated artifact or in_review status.", "error");
         return;
       }
-      setStatus("Generating TOPO child DXF...");
+      setStatus(allowDraft ? "Generating draft/debug TOPO child DXF..." : "Generating TOPO child DXF...");
       const config_parameter_set = readConfigInput();
       const response = await fetch(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/topo-poc`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config_parameter_set)
+        body: JSON.stringify({
+          config_parameter_set,
+          branch_mode: currentBranchMode()
+        })
       });
       if (!response.ok) {
         const text = await response.text();
@@ -4069,19 +4618,24 @@
       const moved = response.headers.get("X-Mother-DXF-Moved-Count") || "?";
       const delta = response.headers.get("X-Mother-DXF-Topo-Delta") || "?";
       const trim = response.headers.get("X-Mother-DXF-Trim-Policy-Status") || "";
+      const productionSafe = response.headers.get("X-Mother-DXF-Production-Safe") || "?";
       const deltaSummary = "per-side";
       childSummaryBox.style.display = "";
-      childSummaryBox.textContent = `TOPO Child DXF generated: included=${included}, excluded=${excluded}, moved=${moved}, delta=${deltaSummary}, trim=${trim}`;
-      setStatus("TOPO child DXF download ready.", "ok");
+      childSummaryBox.textContent = `TOPO Child DXF generated: included=${included}, excluded=${excluded}, moved=${moved}, delta=${deltaSummary}, trim=${trim}, production_safe=${productionSafe}`;
+      setStatus(allowDraft ? "Draft/debug TOPO child DXF download ready." : "TOPO child DXF download ready.", "ok");
     }
 
     async function previewTopoChildDxf() {
       if (!state.session) return;
+      if (!ensureTopoPreviewHasTargets()) return;
       setStatus("Previewing TOPO child geometry...");
       const config_parameter_set = readConfigInput();
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/topo-poc/preview`, {
         method: "POST",
-        body: JSON.stringify(config_parameter_set)
+        body: JSON.stringify({
+          config_parameter_set,
+          branch_mode: currentBranchMode()
+        })
       });
       state.session = data.session;
       state.simulation = data.simulation || null;
@@ -4163,7 +4717,7 @@
         state.panning = point;
         return;
       }
-      if (state.measure.enabled) {
+      if (state.measure.enabled || state.labelDefinition.pickMode) {
         return;
       }
       state.dragStart = point;
@@ -4175,6 +4729,16 @@
       const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       if (state.panning) {
         state.panning = null;
+        return;
+      }
+      if (state.labelDefinition.pickMode) {
+        const world = screenToWorld(point);
+        labelAnchorX.value = String(roundNumber(world.x, 3));
+        labelAnchorY.value = String(roundNumber(world.y, 3));
+        state.labelDefinition.pickMode = false;
+        state.labelDefinition.editing = true;
+        setStatus(`Label anchor picked at x=${labelAnchorX.value}, y=${labelAnchorY.value}.`, "ok");
+        render();
         return;
       }
       if (state.measure.enabled) {
@@ -4446,10 +5010,37 @@
       saveConfigParameterSet().catch((error) => setStatus(error.message, "error"));
     });
     document.getElementById("reloadConfigBtn").addEventListener("click", reloadConfigParameterSetFromSession);
+    document.getElementById("resetConfigFromCatalogBtn").addEventListener("click", () => {
+      resetConfigParameterSetFromCatalogDefaults().catch((error) => setStatus(error.message, "error"));
+    });
     document.getElementById("saveDocumentSemBtn").addEventListener("click", () => {
       saveDocumentSemMetadata().catch((error) => setStatus(error.message, "error"));
     });
-    document.getElementById("saveTopoBtn").addEventListener("click", () => {
+    pickLabelPositionBtn.addEventListener("click", () => {
+      if (!state.session) {
+        setStatus("Create or load a session before picking label position.", "error");
+        return;
+      }
+      if (!hasDocumentSemConfigured()) {
+        setStatus("Save Document SEM before Label Definition.", "error");
+        return;
+      }
+      state.labelDefinition.pickMode = !state.labelDefinition.pickMode;
+      state.labelDefinition.editing = true;
+      setStatus(state.labelDefinition.pickMode ? "Label pick mode active. Click the label center on canvas." : "Label pick mode off.", state.labelDefinition.pickMode ? "ok" : "info");
+      render();
+    });
+    saveLabelDefinitionBtn.addEventListener("click", () => {
+      saveLabelDefinition().catch((error) => setStatus(error.message, "error"));
+    });
+    clearLabelDefinitionBtn.addEventListener("click", () => {
+      clearLabelDefinition().catch((error) => setStatus(error.message, "error"));
+    });
+    [labelRuleRef, labelWidth, labelHeight, labelAnchorX, labelAnchorY, labelRotation].forEach((input) => {
+      input.addEventListener("input", () => { state.labelDefinition.editing = true; render(); });
+      input.addEventListener("change", () => { state.labelDefinition.editing = true; render(); });
+    });
+        document.getElementById("saveTopoBtn").addEventListener("click", () => {
       saveTopoMetadata().catch((error) => setStatus(error.message, "error"));
     });
     document.getElementById("skipTopoBtn").addEventListener("click", continueWithoutTopo);
@@ -4464,6 +5055,9 @@
       }
       state.authoring.activeStage = "sem";
       render();
+    });
+    [documentSemNominalWidth, documentSemNominalHeight, documentSemFamily, documentSemProduct, documentSemPart].forEach((input) => {
+      input.addEventListener("input", markDocumentSemIdentityDirty);
     });
     document.getElementById("saveSessionMetaBtn").addEventListener("click", () => {
       saveSessionMeta().catch((error) => setStatus(error.message, "error"));
@@ -4484,6 +5078,9 @@
     document.getElementById("applyMetadataBtn").addEventListener("click", () => {
       applyMetadataRule().catch((error) => setStatus(error.message, "error"));
     });
+    document.getElementById("assignMicroShiftSetBtn").addEventListener("click", () => {
+      assignMicroShiftSetToSelection().catch((error) => setStatus(error.message, "error"));
+    });
     document.getElementById("clearMetadataBtn").addEventListener("click", () => {
       clearMetadataRule().catch((error) => setStatus(error.message, "error"));
     });
@@ -4493,6 +5090,9 @@
     });
     generateTopoChildBtn.addEventListener("click", () => {
       generateChildDxf().catch((error) => setStatus(error.message, "error"));
+    });
+    generateDraftChildBtn.addEventListener("click", () => {
+      generateChildDxf({ allowDraft: true }).catch((error) => setStatus(error.message, "error"));
     });
     measureToggleBtn.addEventListener("click", () => {
       state.measure.enabled = !state.measure.enabled;
@@ -4513,6 +5113,7 @@
 
     initAssignToolbar();
     arrangeWorkspaceCards();
+    autoSuggestionDetails.open = true;
     sessionLifecycleDetails.open = true;
     document.getElementById("inputSupportDetails").open = false;
     sanitizeCheckDetails.open = false;
@@ -4520,6 +5121,7 @@
     selectionDetails.open = false;
     forceAssignLayerDetails.open = false;
     metadataAuthoringDetails.open = false;
+    labelDefinitionDetails.open = false;
     configParameterSetDetails.open = false;
     forceXdataDetails.open = false;
     setSecondConditionEnabled(false);
@@ -4528,10 +5130,14 @@
     renderSimulation({ ok: false, note: "Simulation not run yet." });
     configInput.value = JSON.stringify({
       technology_profile: "OPS_S4P4",
-      product_code: "KSKR",
+      family: "VRATA",
+      product: "PPV",
+      part: "",
+      product_code: "PPV",
       parameters: {
-        BRAVA: "TIP1",
-        LIMITATOR: false
+        SIRINA_VRATA: 900,
+        VISINA_VRATA: 2100,
+        TIP_VRATA: "Europa"
       }
     }, null, 2);
     refreshSessionList().catch(() => {});

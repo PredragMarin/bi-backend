@@ -796,6 +796,153 @@ Approved Mother DXF must carry TOPO metadata physically in DXF `999` rows when t
 TOPO syntax and field semantics are owned by `DXF_INSTRUCTIONSET_CONTRACT_v0.md`.
 Session sidecar TOPO state is authoring/runtime convenience only, not canonical approved artifact state.
 
+### 15C. Post-TOPO Micro Shift Rule
+
+Mother DXF supports a document-level post-TOPO rigid offset rule for cases where
+an explicitly selected entity group must move after TOPO materialization.
+
+Document-level:
+
+```text
+999
+RULE:stage=post_topo;id=MICRO_SHIFT_SET_X;geometry=offset;target_group=MICRO_SHIFT_SET;axis=X;value_expr=-SKRACENJE;unit=mm;default=0;post_repair=bounded_trim_rejoin
+```
+
+Entity-level selection marker:
+
+```text
+999
+SEM:post_topo_group=MICRO_SHIFT_SET
+```
+
+Execution order is fixed for v0:
+
+1. document SEM filtering
+2. TOPO LEC/REC movement
+3. post-TOPO rigid offset
+4. preview repair / validation
+
+DBR v0 inherits this behavior through the existing `mother_dxf_v1` child
+generation bridge.
+
+### 15D. Planned Final Orientation Rule
+
+Door parts in S4P4 technology are authored in raw DXF as DX orientation.
+For left-opening doors, selected child DXF outputs must be mirrored as a final
+child-level orientation transform because Lxxx/Sxxx stock has a face/back side
+and produced pieces cannot be physically flipped.
+
+This is planned as a document/profile rule, not entity-level SEM and not TOPO.
+It executes after SEM filtering, TOPO materialization, and post-TOPO micro shift.
+
+Canonical planned rule:
+
+```text
+999
+RULE:stage=final_orientation;id=DOOR_SX_DX_MIRROR;geometry=mirror;axis=Y;when=STRANA_OTVARANJA IN [Lijeva (SX),Inverzna lijeva (INV SX)];normalize_bbox=true
+```
+
+Execution meaning:
+
+- raw DXF coordinate system remains the authoring coordinate system
+- `Desna (DX)` and `Inverzna desna (INV DX)` keep raw orientation
+- `Lijeva (SX)` and `Inverzna lijeva (INV SX)` mirror around the Y axis
+- after mirror, child geometry is normalized so final bbox starts at `minX=0`, `minY=0`
+- future technology-level face/back processing may extend this with an XOR-like
+  effective orientation rule, but `STRANA_OTVARANJA` remains the door-side source parameter
+
+### 15E. Planned S4P4 Child Label Application Rule
+
+S4P4 technology child DXFs may require a label application hit. In production,
+the label is not interpreted as font geometry; it is a downstream label payload
+placed at a controlled X/Y coordinate. OPS treats the label placement like any
+other punch/hit at a coordinate. Mother DXF therefore owns the placement anchor,
+label envelope, rotation, collision/safe-distance semantics, and payload
+template. DBR owns final placeholder materialization during batch processing.
+
+The DXF `TEXT` entity is only the production-tested carrier for the payload.
+TEXT height, color, and alignment are carrier syntax required by the downstream
+chain; they are not the physical label size. Physical label size must be carried
+explicitly by the rule as `label_width` / `label_height` so the authoring UI
+and validation can check placement and collision.
+
+For LBRA, the planned label application rule is authored relative to raw DXF
+coordinates:
+
+```text
+999
+RULE:stage=child_label;id=S4P4_LBRA_LABEL_APPLICATION;operation=apply_label;coordinate_space=raw_part;anchor_transform=through_final_child;x=1276;y=39;z=0;label_width=50;label_height=20;rotation=0;collision_policy=warn;payload_carrier=TEXT;carrier_layer=0;carrier_height=1;carrier_color=1;carrier_h_align=1;carrier_v_align=2;payload_template=;|{{WORKORDERCODE}}|{{TIP_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}};payload_field_DIMENSION_SHORT=format({{SIRINA_VRATA_DIV10}}x{{VISINA_VRATA_DIV10}});payload_field_SIRINA_VRATA_DIV10=number_expr(SIRINA_VRATA/10,integer);payload_field_VISINA_VRATA_DIV10=number_expr(VISINA_VRATA/10,integer);payload_field_OPENING_SIDE_SHORT=map(STRANA_OTVARANJA:{Desna (DX)=D,Lijeva (SX)=L,Inverzna desna (INV DX)=D,Inverzna lijeva (INV SX)=L})
+```
+
+The resolver must treat `coordinate_space=raw_part` as an anchor that follows
+the same child transform chain as the part geometry, including final SX/DX
+orientation and bbox normalization. If a future rule uses
+`coordinate_space=final_child`, the label hit is placed after orientation and
+normalization without additional transform.
+
+The carrier emitted into child DXF is expected to follow this production-tested
+shape after DBR materializes placeholders:
+
+```text
+0
+TEXT
+8
+0
+10
+1276
+11
+1276
+20
+39
+21
+39
+30
+0
+40
+1
+1
+;|26T01V01|PPV30|SPANJA B3|80x196|L
+50
+0
+62
+1
+72
+1
+73
+2
+0
+```
+
+Contractual split:
+
+- label anchor: `x/y/z` in the declared coordinate space
+- label envelope: `label_width` x `label_height`, used for placement preview and collision validation
+- label rotation: production hit rotation and envelope orientation
+- payload carrier: DXF `TEXT` syntax used to transfer payload downstream
+- payload template: output format using direct and derived placeholders
+- payload fields: resolver definitions for derived placeholders such as `DIMENSION_SHORT` and `OPENING_SIDE_SHORT`
+- payload context: merged DBR batch row, document-level `999` metadata, and config parameter set
+- canvas readability: UI-only concern; it must not change child DXF carrier height or production geometry
+
+Payload resolver policy:
+
+- direct placeholders resolve from merged context in this order: DBR batch row overrides document-level `999`, which overrides config parameter set
+- `WORKORDERCODE` and `SOURCE_REFERENCE` are expected from DBR/document metadata context
+- `TIP_VRATA`, `SIRINA_VRATA`, `VISINA_VRATA`, and `STRANA_OTVARANJA` are expected from configurator/catalog context unless DBR provides an override
+- `DIMENSION_SHORT` formats width/height in decimeters as `SIRINA_VRATA/10` + `x` + `VISINA_VRATA/10`
+- `SKRACENJE` is not part of the current production-tested label payload unless a future rule explicitly adds it
+- `OPENING_SIDE_SHORT` must be mapped from controlled enum values; it must not use naive first-letter extraction because inverse values start with `Inverzna`
+
+Planned child generation order becomes:
+
+1. document SEM filtering
+2. TOPO LEC/REC movement
+3. post-TOPO rigid offset
+4. final orientation mirror, when configured
+5. bbox normalization
+6. child label application / transformed raw anchor carrier emission
+7. serialize child DXF
+
 ---
 
 ## 16. Parameter Catalog
@@ -816,6 +963,8 @@ Parameter Catalog is not the same as `Config Parameter Set`.
 
 - Parameter Catalog defines the possible parameter space.
 - Config Parameter Set is one concrete case/sample point in that space.
+- Parameter entries carry `scope.family/products/parts` so the active family/product/part context can filter the catalog.
+- Parameter entries carry `default` so a new session can derive a useful nominal Config Parameter Set directly from the active catalog instead of using ad hoc bootstrap values.
 
 Current status:
 
@@ -1008,8 +1157,7 @@ normative contract sections.
 Open POC debt:
 - Tighten metadata vocabularies after real POC validation, especially `TOPO`
   executable field names and possible compact aliases.
-- Verify `trim_policy=rejoin` on a real DXF case where mover geometry touches
-  anchored geometry.
+- Extend `trim_policy=rejoin` beyond endpoint-follower LINE repair when a real DXF case requires split/merge or non-LINE boolean repair.
 - Keep `follower` as reserved TOPO semantics until a concrete case needs it.
 - Revisit operation ordering only if combined `SEM`, `TOPO`, `9-layer`, or
   material allowance behavior produces a real conflict.

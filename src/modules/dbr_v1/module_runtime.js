@@ -117,7 +117,8 @@ async function runChildGeneratorBlackBox({ partJob, parameterSnapshot }) {
       childGeneratorCall: "executed",
       childGeneratorMode: mode,
       childFile: result.child_file || null,
-      source: "mother_dxf_v1.module_runtime"
+      source: "mother_dxf_v1.module_runtime",
+      generationSummary: result.generation_summary || null
     }
   };
 }

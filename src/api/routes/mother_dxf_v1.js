@@ -35,7 +35,8 @@ function createMotherDxfRouterV1() {
       const result = await motherDxfRuntime.createSession({
         dxfText: String(req.body?.dxf_text || ""),
         sourceName: String(req.body?.source_name || "mother_dxf_input.dxf"),
-        bands: req.body?.bands || {}
+        bands: req.body?.bands || {},
+        forceRefresh: req.body?.force_refresh === true
       });
       res.json({
         ...buildSessionResponse(result.session),
@@ -109,6 +110,21 @@ function createMotherDxfRouterV1() {
     }
   });
 
+  router.post("/sessions/:sessionId/config/reset-from-catalog", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.resetConfigParameterSetFromCatalog({
+        sessionId: String(req.params.sessionId || ""),
+        context: req.body?.context || {}
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_RESET_CONFIG_FROM_CATALOG_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.post("/sessions/:sessionId/document-sem", async (req, res) => {
     try {
       const session = await motherDxfRuntime.updateDocumentSemMetadata({
@@ -126,6 +142,36 @@ function createMotherDxfRouterV1() {
     } catch (err) {
       res.status(400).json({
         error: "MOTHER_DXF_UPDATE_DOCUMENT_SEM_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/label-definition", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.updateLabelDefinition({
+        sessionId: String(req.params.sessionId || ""),
+        payload: req.body || {}
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_UPDATE_LABEL_DEFINITION_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.delete("/sessions/:sessionId/label-definition/:ruleId", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.clearLabelDefinition({
+        sessionId: String(req.params.sessionId || ""),
+        ruleId: String(req.params.ruleId || "")
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_CLEAR_LABEL_DEFINITION_FAILED",
         message: err && err.message ? err.message : String(err)
       });
     }
@@ -205,6 +251,12 @@ function createMotherDxfRouterV1() {
         parameterSet
       });
       const summary = result.generation_summary || {};
+      const artifactState = String(result.session?.artifact_state || "");
+      const sessionStatus = String(result.session?.status || "");
+      const productionSafe = artifactState === "mother_validated" || sessionStatus === "in_review";
+      res.setHeader("X-Mother-DXF-Artifact-State", artifactState);
+      res.setHeader("X-Mother-DXF-Session-Status", sessionStatus);
+      res.setHeader("X-Mother-DXF-Production-Safe", productionSafe ? "true" : "false");
       res.setHeader("Content-Type", "application/dxf; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${req.params.sessionId}_child_no_topo.dxf"`);
       res.setHeader("X-Mother-DXF-Child-Mode", String(summary.mode || "child_no_topo_poc_v0"));
@@ -223,11 +275,19 @@ function createMotherDxfRouterV1() {
   router.post("/sessions/:sessionId/child/topo-poc", async (req, res) => {
     try {
       const parameterSet = req.body?.config_parameter_set || req.body || {};
+      const branchMode = String(req.body?.branch_mode || "ALL").trim() || "ALL";
       const result = await motherDxfRuntime.generateChildDxfTopoPocForSession({
         sessionId: String(req.params.sessionId || ""),
-        parameterSet
+        parameterSet,
+        branchMode
       });
       const summary = result.generation_summary || {};
+      const artifactState = String(result.session?.artifact_state || "");
+      const sessionStatus = String(result.session?.status || "");
+      const productionSafe = artifactState === "mother_validated" || sessionStatus === "in_review";
+      res.setHeader("X-Mother-DXF-Artifact-State", artifactState);
+      res.setHeader("X-Mother-DXF-Session-Status", sessionStatus);
+      res.setHeader("X-Mother-DXF-Production-Safe", productionSafe ? "true" : "false");
       res.setHeader("Content-Type", "application/dxf; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${req.params.sessionId}_child_topo_poc.dxf"`);
       res.setHeader("X-Mother-DXF-Child-Mode", String(summary.mode || "child_topo_poc_v0"));
@@ -248,19 +308,18 @@ function createMotherDxfRouterV1() {
   router.post("/sessions/:sessionId/child/topo-poc/preview", async (req, res) => {
     try {
       const parameterSet = req.body?.config_parameter_set || req.body || {};
-      const result = await motherDxfRuntime.generateChildDxfTopoPocForSession({
+      const branchMode = String(req.body?.branch_mode || "ALL").trim() || "ALL";
+      const result = await motherDxfRuntime.generateChildDxfTopoPocPreviewForSession({
         sessionId: String(req.params.sessionId || ""),
-        parameterSet
-      });
-      const simulationResult = await motherDxfRuntime.simulateSession({
-        sessionId: String(req.params.sessionId || ""),
-        configParameterSet: parameterSet
+        parameterSet,
+        branchMode
       });
       res.json({
         ok: true,
-        session: motherDxfRuntime.projectViewModel(simulationResult.session),
+        session: motherDxfRuntime.projectViewModel(result.session),
         generation_summary: result.generation_summary,
-        simulation: simulationResult.simulation
+        simulation: result.resolver_preview,
+        resolver_preview: result.resolver_preview
       });
     } catch (err) {
       res.status(400).json({
