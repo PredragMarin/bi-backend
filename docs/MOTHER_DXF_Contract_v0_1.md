@@ -29,19 +29,21 @@ As of 2026-04-26, the repository implementation has moved beyond the original fi
 Currently implemented:
 
 - guided metadata authoring in `src/api/ui/mother_dxf.html`
-- canonical `SEM:` metadata generation for presence, geometry role, and operation reference records
-- parser support for `SEM:` key/value records and simple `when` expressions using `==` and `!=`
+- canonical `SEM:` metadata generation for presence, geometry role, operation reference, and post-TOPO group records
+- parser support for `SEM:` key/value records and `when` expressions using `==`, `!=`, `IN`, `>`, `>=`, `<`, `<=`, with shallow `AND` / `OR`
 - parameter catalog exposure from a module contract JSON artifact
 - MXD rule catalog exposure from a module contract JSON artifact
-- pre-child simulation preview for simple `presence=conditional` visibility evaluation
+- document-level `rule_ref` evaluation for current rule catalog entries
+- combined child preview with `SEM`, document rules, `TOPO`, post-TOPO rules, and validation findings
+- child DXF save entrypoints for no-TOPO and TOPO POC modes
+- DBR black-box reuse of existing `mother_dxf_v1` child generation entrypoints
 
 Still not implemented:
 
 - ChildPlan generation
-- rule expression evaluator for catalog rules
-- operation execution / geometry transform engine
-- DBR execution
-- final approval-grade validation engine described later in this document
+- one single consolidated production-grade resolver shared cleanly between `mother_dxf_v1` and `DBR`
+- approval-grade validation completeness across all domain movement cases
+- final extraction of stage policy/orchestration out of `mother_dxf_v1/module_runtime.js`
 
 This snapshot is descriptive of current code state. It does not replace the target architecture.
 
@@ -118,12 +120,23 @@ Responsibilities:
 
 ### Stage 2
 
-Not implemented in v0.1 first useful slice.
+Partially implemented as preview and child-save bridge, but not yet fully
+consolidated as one canonical shared resolver.
 
-Architecture requirement:
+Current practical Stage 2 scope includes:
 
-- Stage 1 exists as contract carrier for later Stage 2
-- future engine must remain layer-driven first, repair second
+- entity inclusion / exclusion through `SEM` metadata
+- document-level rule execution
+- `TOPO` fixed-envelope simulation
+- post-TOPO rigid offset rules
+- child DXF save entrypoints
+- early combined validation warnings
+
+Architecture requirement remains:
+
+- Stage 1 exists as contract carrier for Stage 2
+- future engine must remain layer-driven and metadata-driven first, repair second
+- movement execution must be deterministic and stage-ordered
 
 ---
 
@@ -825,6 +838,343 @@ Execution order is fixed for v0:
 DBR v0 inherits this behavior through the existing `mother_dxf_v1` child
 generation bridge.
 
+### 15F. Canonical Resolver Pipeline Discipline
+
+The repository now treats resolver ordering as a contract topic, not a deferred
+implementation detail.
+
+Canonical resolver pipeline for current Mother DXF / child generation work is:
+
+1. active geometry branch isolation
+2. document-level `SEM` context load
+3. entity-level `SEM` selection / inclusion resolution
+4. entity-level variant gating and placement-by-presence resolution
+5. build initial resolved active geometry for the current parameter set
+6. execute one movement stage
+7. recompute local join graph and active geometry state
+8. apply only stage-allowed repair / rejoin operators
+9. run stage validation
+10. continue to the next declared movement stage
+11. execute post-TOPO and later child rules
+12. serialize child DXF
+
+Normative rules:
+
+- resolver must not search for arbitrary join candidates across the whole DXF
+- resolver must not join across geometry branches
+- movement stages execute one at a time over previously stabilized geometry
+- collision and repair logic operate on resolved active geometry for the same parameter set, not on the full raw DXF universe
+- `SEM recompute` is a reserved future branch, not default behavior
+
+### 15F.1 Resolver Harness and Assertion Checks
+
+Resolver extraction is currently guarded by behavior-parity diagnostics, not by
+a replacement execution engine.
+
+Current commands:
+
+- `npm run resolver:harness`
+  - runs the fixture-based Mother DXF resolver harness
+  - writes per-fixture snapshots under `tests/resolver_harness/output/`
+  - writes human-readable reports, including `resolver_plan_report.md`
+  - writes machine-readable assertion data in `resolver_plan_assertions_report.json`
+  - writes extraction readiness data in `extraction_readiness_report.json`
+- `npm run resolver:assertions`
+  - runs the same harness
+  - reads `resolver_plan_assertions_report.json`
+  - prints a compact assertion summary
+  - default mode is diagnostic-only; existing warning assertions do not fail the command
+- `npm run resolver:parity`
+  - runs the same harness
+  - fails only when extracted/shared parity checks drift
+  - ignores known sequencing warning assertions so safe slices can be gated before sequencing work is complete
+- `npm run resolver:footprint`
+  - prints the current Mother DXF runtime resolver/TOPO/repair footprint
+  - diagnostic-only cleanup inventory; it must not be used as proof that code is safe to delete
+- `npm run resolver:checkpoint`
+  - runs the parity gate and runtime footprint inventory together
+  - produces a pre-cleanup checkpoint summary
+  - passing checkpoint does not approve deletion from Mother DXF runtime; it only confirms rollback/parity guardrails are intact
+- `npm run resolver:cleanup-scope`
+  - reads the latest checkpoint/readiness reports and prints cleanup eligibility by resolver area
+  - diagnostic-only; it must not approve deletion from Mother DXF runtime by itself
+  - expected current result is that repair, preview, child generation, TOPO metadata, and document rules remain `do_not_cleanup`
+- `npm run resolver:activation-candidates`
+  - reads the latest readiness and parity reports and writes `activation_candidate_report.json`
+  - lists only paths that are eligible for a future explicit façade flag
+  - diagnostic-only; it does not activate shared resolver execution
+- `npm run resolver:shadow-parity`
+  - reruns activation candidates with default runtime mode and `activation_candidate_shadow` mode
+  - fails if comparable result, warnings, errors, or config output drift
+  - confirms the shadow flag records trace only and keeps `active=false`
+- `npm run resolver:status`
+  - runs checkpoint, cleanup scope, activation candidate, and shadow parity checks
+  - writes `resolver_extraction_status_report.json` and `resolver_extraction_status_report.md`
+  - final extraction status is report-only; it does not approve production activation or Mother runtime cleanup
+- `npm run resolver:sequencing-risk`
+  - writes `sequencing_risk_report.json` and `sequencing_risk_report.md` for blocked multi-stage movement paths
+  - identifies document-rule Y movement plus TOPO X movement overlap and required stage-stabilization work
+  - diagnostic-only; it does not redefine resolver ordering
+- `npm run resolver:stage-boundaries`
+  - writes `stage_boundary_report.json` and `stage_boundary_report.md` over all harness snapshots
+  - classifies no-boundary, shadow-only candidate, and blocked movement paths
+  - diagnostic-only; it does not execute stage boundary geometry
+- `npm run resolver:slices [slice_id]`
+  - reads the latest extraction readiness report and prints `extraction_slices`
+  - optional slice id filters to one extraction bucket, for example `slice_1_no_movement`
+- `npm run resolver:readiness [candidate|review|blocked] [detail]`
+  - reads the latest extraction readiness report without rerunning the harness
+  - optional status argument filters the printed snapshot list
+  - optional detail argument further filters `candidate` snapshots by candidate kind or `blocked` snapshots by blocker kind
+  - candidate detail values: `no_movement`, `topo_x_only`, `other_candidate`
+  - blocked detail values: `fixture_or_entrypoint_gap`, `sequencing_risk`, `runtime_review`
+- `RESOLVER_ASSERTIONS_STRICT=1 npm run resolver:assertions`
+  - enables future gate behavior
+  - fails when warning-level resolver plan assertions are present
+  - currently expected to fail while known sequencing warnings remain unresolved
+
+Extraction readiness is a diagnostic classification over snapshots:
+
+- `candidate`
+  - no warning-level blockers observed in the snapshot
+  - eligible for future extraction review, not automatic production approval
+
+Readiness report also carries `extraction_slices`:
+
+- `slice_1_no_movement`
+  - first recommended extraction bucket; candidate snapshots with no movement stages
+
+Slice 1 extraction status:
+
+- `src/core_shell/services/dxf_no_movement_summary_service.js` provides shared no-movement summary logic
+- current use is shadow/parity-only inside resolver harness
+- it must not replace Mother DXF runtime behavior until parity is stable and an explicit activation step is approved
+- `resolver_plan_assertions_report.json` includes no-movement parity counts
+- Strict assertion mode also treats no-movement parity mismatches as a gate failure
+- `slice_2_topo_x_only`
+  - second recommended extraction bucket; candidate snapshots with only TOPO X movement
+  - `src/core_shell/services/dxf_topo_x_summary_service.js` provides shared TOPO X-only summary diagnostics
+  - current use is shadow/parity-only inside resolver harness
+  - it must not replace Mother DXF runtime TOPO execution until parity is stable and an explicit activation step is approved
+  - `resolver_plan_assertions_report.json` includes TOPO X-only parity counts
+  - Strict assertion mode also treats TOPO X-only parity mismatches as a gate failure
+- `hold_sequencing_risk`
+  - blocked snapshots that must stay out of execution extraction until sequencing is resolved
+
+Candidate snapshots may expose a diagnostic `candidate_kind`:
+
+- `no_movement`
+  - observed path has no movement stages and is suitable for earliest non-movement parity extraction review
+- `topo_x_only`
+  - observed path has only TOPO simulation movement on X axis
+- `other_candidate`
+  - candidate path that does not fit the two narrow early extraction buckets
+- `review`
+  - no blocking warning, but info-level historical behavior needs explicit review
+- `blocked`
+  - diagnostic error or warning-level sequencing risk is present
+  - execution extraction must not proceed from this snapshot until the blocker is understood
+
+Blocked snapshots may expose a diagnostic `kind`:
+
+- `fixture_or_entrypoint_gap`
+  - fixture cannot exercise the requested runtime path, usually missing executable TOPO metadata
+- `sequencing_risk`
+  - observed execution order needs explicit resolver sequencing/recalculation review
+- `runtime_review`
+  - generic warning-level runtime blocker that is not yet classified more narrowly
+
+Current assertion classes are diagnostic signals over observed runtime behavior:
+
+- `DOCUMENT_RULE_Y_BEFORE_TOPO_X`
+  - observed document-rule Y movement and TOPO X movement in one runtime plan
+  - marks sequencing / recomputation review before movement execution extraction
+- `DOCUMENT_RULE_Y_9P5_NOT_RUNTIME_TOPO_Y`
+  - observed B-layer Y 9.5 document-rule movement that is not exposed as TOPO `moved_entities` Y movement
+  - warns future validation not to rely only on TOPO movement summaries for this stage
+- `POST_TOPO_AXIS_WITH_ZERO_DELTA`
+  - observed post-TOPO rule stage with declared axis but zero `dx/dy` in movement inventory
+  - keeps this historical branch visible before execution logic extraction
+- `REORDER_CANDIDATE`
+  - observed multi-stage plan requiring explicit sequencing review
+
+Contract status:
+
+- these commands must not change Mother DXF runtime behavior
+- they must remain safe to run against fixture snapshots
+- `src/core_shell/services/dxf_resolver_diagnostics_service.js` owns shared resolver diagnostic summary construction
+- `resolveMotherDxfRuntimePlan({ resolverDiagnostics: true })` may return `shared_resolver_diagnostics` for shadow/parity summaries
+- `shared_resolver_diagnostics` is diagnostic-only and must not drive production geometry
+- `dxf_resolver_diagnostics_service.js` also owns shared diagnostics parity comparison helpers
+- resolver harness compares façade `shared_resolver_diagnostics` against local shadow diagnostics through that shared comparison helper and records façade parity counts
+- `resolver:parity` is the current narrow gate for already extracted shared diagnostics; it does not approve sequencing-risk execution extraction
+- strict mode is intentionally opt-in until the resolver execution pipeline is explicit and stable
+- readiness report is machine-readable and may be used by future CI/DBR gates as a diagnostic input
+- future DBR CI can consume the JSON reports, but DBR must not infer production geometry from these diagnostic reports alone
+- after shared resolver activation, Mother DXF runtime cleanup must proceed from an explicit footprint inventory and parity-backed replacement plan, not from ad hoc deletion
+- before any Mother DXF runtime cleanup PR, `npm run resolver:checkpoint` must pass and the cleanup scope must reference the footprint categories being removed or delegated
+- cleanup scope may be reviewed with `npm run resolver:cleanup-scope`; this command is evidence for discussion, not approval to remove runtime code
+- activation candidates may be reviewed with `npm run resolver:activation-candidates`; this command is evidence for a future flag, not the flag itself
+- `resolveMotherDxfRuntimePlan({ sharedResolverMode: "activation_candidate_shadow" })` may record an activation-candidate shadow trace, but it must not replace Mother runtime execution or change geometry
+- shadow parity may be checked with `npm run resolver:shadow-parity`; this is required before any future activation of a shared resolver execution flag
+- final extraction status may be reviewed with `npm run resolver:status`; green status means shadow-only guardrails pass, not that production activation is approved
+- sequencing-risk paths must remain blocked until document-rule movement, geometry stabilization, TOPO movement, and repair validation are explicit stage boundaries
+- `src/core_shell/services/dxf_stage_boundary_service.js` defines the shadow-only Stage Boundary Plan used to describe required checkpoints; it does not execute geometry
+
+### 15F.2 Execution Boundary Implementation Contract
+
+This section is the implementation contract for the next resolver execution slice.
+It is derived from current harness reports and must not be treated as already
+implemented runtime behavior.
+
+Current diagnostic facts:
+
+- `resolver:status` is green only for shadow execution: `green_for_shadow_only`
+- production activation remains `not_approved`
+- cleanup remains `no`
+- stage-boundary report covers 16 snapshots:
+  - `no_boundary_needed`: 6
+  - `candidate_shadow_only`: 2
+  - `blocked`: 8
+- the explicit sequencing blocker is `mother_dxf__SBRA_130526_Europa_B9P5_session_7e6c604d / child_topo_poc`
+- that blocker has stage order `document_rules -> topo_simulation`, axes `Y,X`, and 17 overlapping entity ids between the document-rule stage and the TOPO stage
+
+Required execution semantics for the first real stage-boundary engine:
+
+1. Build resolved active geometry for the current parameter set.
+2. Execute exactly one movement stage.
+3. Stabilize geometry state after that stage.
+4. Recompute local join graph after that stage.
+5. Apply only stage-allowed repair for that stage.
+6. Validate that stage result.
+7. Continue to the next movement stage only after the previous stage is stable.
+8. Serialize child DXF only after all movement stages and validations complete.
+
+For the current sequencing blocker, the required order is:
+
+1. Execute `MXD_LAYER_B_OFFSET_9P5` as explicit document-rule `Y +9.5 mm` stage.
+2. Stabilize and recompute active geometry and local joins.
+3. Execute `LBRA_X_SLIDE` TOPO `X` stages on the stabilized geometry.
+4. Run stage-local repair / rejoin validation after each movement stage.
+5. Only then allow child serialization.
+
+Forbidden implementation shortcuts:
+
+- do not search for repair candidates across the whole DXF universe
+- do not join across geometry branches
+- do not execute document-rule movement and TOPO movement as one merged transform
+- do not let TOPO movement use stale pre-document-rule join graph state
+- do not silently patch geometry with new substitute lines
+- do not treat this contract as approval to remove Mother DXF runtime code
+- do not activate production DBR usage until parity and stage-boundary checks pass
+
+Acceptance criteria for a future implementation PR:
+
+- `npm run resolver:checkpoint` passes
+- `npm run resolver:shadow-parity` passes
+- `npm run resolver:sequencing-risk` either reports zero sequencing blockers or reports the blocker as handled by an explicit execution-boundary implementation
+- `npm run resolver:stage-boundaries` shows the target path no longer blocked by `CROSS_AXIS_OVERLAP` or `MULTI_STAGE_REPAIR` without an execution boundary
+- `npm run resolver:status` remains `behavior_change=false` unless the PR is explicitly approved as a behavior-changing activation PR
+- any behavior-changing activation must be behind an explicit façade flag first
+
+First implementation target:
+
+- create a shared execution-boundary engine behind the façade
+- keep default mode delegated to Mother DXF runtime
+- run the new engine in shadow mode first
+- compare the shadow output against the existing runtime output with volatile timestamp and DXF handle normalization
+- do not clean up legacy runtime paths until the shadow engine proves parity and the domain owner approves activation
+
+Implemented shadow envelope status:
+
+- `src/core_shell/services/dxf_integral_resolver_service.js` now builds `integral_resolver_shadow_v1` as a standalone Core Shell artifact
+- it assembles the observed resolver plan, stage-boundary plan, extraction readiness, blockers, and DBR handoff contract
+- it is diagnostic-only: `production_ready=false`, `activation_allowed=false`, `execution_status=not_executed_shadow`
+- `src/core_shell/services/dxf_no_movement_execution_service.js` executes the first narrow no-movement shadow slice
+- the no-movement execution slice is limited to projected runtime result finalization: no TOPO movement, repair, trim, extend, rejoin, or child DXF serialization
+- `src/core_shell/services/dxf_topo_x_execution_service.js` executes the narrow TOPO X-only shadow slice from the projected runtime result
+- the TOPO X-only execution slice validates movement summary parity only; it does not yet execute coordinate movement, repair, trim, extend, rejoin, block explosion, or child DXF serialization independently
+- `npm run resolver:integral-shadow` writes the standalone report used by `npm run resolver:status`
+- this implementation does not execute movement geometry and does not replace Mother DXF runtime behavior
+
+### 15G. Stage Taxonomy
+
+Current and target resolver discipline recognizes these stage families:
+
+#### `4_BAND_PARAMETER_RESIZE`
+
+Canonical base movement model for freely resizable parts.
+
+- `L` and `R` bands move on `X`
+- `T` and `B` bands move on `Y`
+- `TL`, `TR`, `BL`, `BR` move on both `X` and `Y`
+
+#### `B_LAYER_OFFSET_9P5`
+
+Specialized fixed-envelope preparation stage.
+
+- mover set: functional lower band represented operationally as `B` layer, optionally completed by explicit forced assignment
+- static set: `A` layer neighbors
+- movement: `Y +9.5 mm`
+- expected repair: `A`-layer verticals previously joined to the `B` band are shortened / retrimmed to the new join position exactly `9.5 mm` higher
+- boundary restriction: mover / anchored boundary for this stage may cross only vertical lines
+
+Validation requirements:
+
+- contour closedness
+- no protruding unshortened lines
+- no fake patch lines
+- no non-vertical boundary crossings on that stage boundary
+
+#### `LEC_SLIDE`
+
+Manual left cutout mover stage.
+
+- mover set is selected manually by engineering authoring and may include free entities, block instances, and cutout-linked technology holes
+- movement is isolated `X` slide over previously stabilized geometry
+- all resulting extension / shortening / rejoin distances are tied exactly to the declared slide delta
+- no new geometry, no new gaps, and no substitute patch lines are allowed
+
+Validation requirements:
+
+- old joins relocate by exact stage delta
+- contour remains closed where closure is expected
+- mover swept path must stay free of all entities outside the mover set
+
+#### `REC_SLIDE`
+
+Mirror-equivalent stage to `LEC_SLIDE`.
+
+- may use different parameter sources and nominal references
+- otherwise follows the same movement, join relocation, and validation semantics
+
+### 15H. `SEM` Resolution Forms
+
+Current approved `SEM` execution forms are:
+
+1. `selection`
+   - conditional inclusion / exclusion of a feature or geometry group
+2. `variant_gate`
+   - entity or block stays active only when parameter value matches expected variant id
+3. `placement-by-presence`
+   - multiple pre-drawn alternatives are present in raw DXF and mutually exclusive `presence=conditional` expressions decide which alternative survives for the current parameter set
+4. stage tags
+   - `SEM:post_topo_group=...` and related stage-binding markers
+
+`placement-by-presence` is canonical when:
+
+- both or more geometric alternatives are already drawn in raw DXF
+- the current parameter set should leave exactly one alternative active
+- no extra geometry transform is needed to realize placement
+
+Example pattern:
+
+- lower third-hinge geometry active when `(TRECA_SPOJNICA==Da) AND (VISINA_VRATA<2040)`
+- upper third-hinge geometry active when `(TRECA_SPOJNICA==Da) AND (VISINA_VRATA>=2040)`
+
+This is a valid placement mechanism and does not require a separate Rule Catalog
+entry when the alternatives are already physically drawn in raw DXF.
+
 ### 15D. Planned Final Orientation Rule
 
 Door parts in S4P4 technology are authored in raw DXF as DX orientation.
@@ -1018,18 +1368,19 @@ Current catalog content in `rule_catalog_mxd_door_v0.json` is `MXD`-specific and
 
 ## 18. Current Limitations
 
-The current implementation intentionally stops before execution layers.
+The current implementation no longer stops before all execution layers, but it is
+still not yet a fully consolidated production resolver.
 
-Not implemented:
+Still limited or incomplete:
 
-- ChildPlan derivation
-- rule expression evaluation
-- operation catalog loading
-- operation execution
-- geometry copy / mirror / translate materialization
-- DBR batch execution
+- one shared canonical resolver contract between `mother_dxf_v1` and `DBR`
+- full movement-stage coverage for all domain cases
+- approval-grade validation completeness for all cutout relocation and branch-sensitive situations
+- final reduction of legacy heuristic repair paths inside `mother_dxf_v1/module_runtime.js`
 
-Current metadata authoring can describe intent and references. It does not yet prove that a downstream child DXF can be generated for every authored record.
+Current metadata authoring and child generation are practical and real, but
+they do not yet guarantee universal downstream correctness for every authored
+geometry case.
 
 ---
 
@@ -1157,13 +1508,12 @@ normative contract sections.
 Open POC debt:
 - Tighten metadata vocabularies after real POC validation, especially `TOPO`
   executable field names and possible compact aliases.
-- Extend `trim_policy=rejoin` beyond endpoint-follower LINE repair when a real DXF case requires split/merge or non-LINE boolean repair.
 - Keep `follower` as reserved TOPO semantics until a concrete case needs it.
-- Revisit operation ordering only if combined `SEM`, `TOPO`, `9-layer`, or
-  material allowance behavior produces a real conflict.
 - Define the material allowance resolver concept, for example
   `@FAMILY.RED_GIPS=9.5`, after a POC case requires it.
 - Normalize `family`, `product`, and `part` vocabulary in document-level SEM
   against the future DCM / DBR lifecycle model.
 - Remove or consolidate legacy UI fallback paths once unified enriched preview
   and unified child save are stable across POC parts.
+- Replace remaining ad hoc repair heuristics with deterministic stage-ordered
+  movement, join relocation, and validation rules.

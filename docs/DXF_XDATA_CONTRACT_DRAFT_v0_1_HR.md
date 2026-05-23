@@ -328,6 +328,17 @@ Kad je branch mode aktivan:
 - TOPO mover assignment ne smije slučajno uključiti neaktivnu branch geometriju
 - `Force Assign Layer` ne smije pogađati neaktivnu branch geometriju
 - `Metadata Authoring` mora biti scoped na aktivnu branch geometriju
+- resolver join / repair ne smije tražiti kandidate izvan aktivne branch geometrije
+- swept-path collision provjere moraju gledati samo resolved aktivnu geometriju za isti parameter set
+
+## 6.3A Resolver branch discipline
+
+Kod branch-aware executiona vrijede dodatna normativna pravila:
+
+- aktivni branch je tvrda geometrijska granica za join, repair i collision logiku
+- raw geometrija koja je ugašena `SEM` presence pravilima za isti parameter set ne smije sudjelovati u swept-path collision domeni
+- resolver ne smije "njuškati" po cijelom DXF-u tražeći proizvoljne nove susjede
+- join relocation mora se događati samo nad resolved aktivnom geometrijom prethodnog stagea
 
 ## 6.4 Scope koji eksplicitno izbjegavamo
 

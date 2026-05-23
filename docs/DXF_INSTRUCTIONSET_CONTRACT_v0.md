@@ -28,8 +28,9 @@ As of 2026-04-26, the repository implementation includes the first practical `SE
 Currently implemented:
 
 - `SEM:` key/value parsing
-- simple `when` expression parsing for `==` and `!=`
-- guided UI authoring for presence, geometry role, and operation reference records
+- `when` expression parsing for `==`, `!=`, `IN`, `>`, `>=`, `<`, `<=`
+- shallow `AND` / `OR` composition in guided authoring
+- guided UI authoring for presence, geometry role, operation reference, and post-TOPO group records
 - Parameter Catalog reference through `src/modules/mother_dxf_v1/contracts/parameter_catalog_legacy_door_v0.json`
 - Rule Catalog reference through `src/modules/mother_dxf_v1/contracts/rule_catalog_mxd_door_v0.json`
 - metadata binding to entity `999` comments
@@ -37,7 +38,6 @@ Currently implemented:
 Not yet implemented:
 
 - full document-level `InstructionSet` aggregate object in runtime
-- multi-`SEM:` guided authoring per entity
 - catalog-backed rule expression evaluation
 - Operation Catalog
 - ChildPlan integration
@@ -825,6 +825,7 @@ Tipični `SEM-simple` primjeri su:
 - feature je uključen, a visinski prag bira gornju ili donju varijantu
 - jedan cutout vrijedi za skup varijanti brave, drugi za drugi skup varijanti
 - jedan existing block ostaje aktivan samo kad parametar ili kombinacija nekoliko parametara zadovolji jednostavan uvjet
+- dvije unaprijed nacrtane placement alternative ostaju međusobno isključive kroz `presence=conditional` uvjete za isti feature cluster
 
 Pravilo evaluacije višestrukih `presence=conditional` redova na istom entityju:
 
@@ -842,6 +843,31 @@ SEM:feature=BRAVA;presence=conditional;when=BRAVA==elektricna D-smart
 ```
 
 Rezultat: `BRAVA` je vidljiva ako je `BRAVA==CILINDAR` OR `BRAVA==elektricna D-smart`.
+
+### `Placement-by-presence`
+
+`SEM-simple` u v0 izričito dopušta placement resolved through mutually exclusive
+presence conditions when raw DXF already contains more than one pre-drawn
+alternative.
+
+Canonical example:
+
+```text
+999
+SEM:feature=TRECA_SPOJNICA;presence=conditional;when=(TRECA_SPOJNICA==Da) AND (VISINA_VRATA<2040)
+```
+
+```text
+999
+SEM:feature=TRECA_SPOJNICA;presence=conditional;when=(TRECA_SPOJNICA==Da) AND (VISINA_VRATA>=2040)
+```
+
+Meaning:
+
+- lower third-hinge alternative survives in the low-height range
+- upper third-hinge alternative survives in the high-height range
+- no separate Rule Catalog entry is required when geometry alternatives are
+  already drawn in raw DXF
 
 ### `Rule Catalog`
 
@@ -1056,21 +1082,30 @@ Ovo je authoring contract target za sljedeći POC.
 
 Trenutna implementacija čuva parcijalni `TOPO` metadata.
 
-### Deferred design note: operation ordering
+### Resolver ordering discipline
 
-Operation ordering / geometry pipeline je deferred design topic.
+Operation ordering is no longer treated as a deferred topic.
 
-Current POC smije izvršavati geometry operations u fiksnom implementation orderu.
+Current canonical discipline is:
 
-Ako budući cases zahtijevaju više superponiranih geometry operations čiji rezultat ovisi o redoslijedu, contract može uvesti document-level execution ordering metadata.
+1. document-level `SEM` context load
+2. entity-level `SEM` inclusion / exclusion
+3. entity-level variant gating and placement-by-presence resolution
+4. build resolved active geometry for the current parameter set
+5. execute one movement stage
+6. recompute local join graph and stage-active geometry
+7. apply stage-allowed repair operators
+8. validate stage result
+9. continue to the next declared stage
+10. execute `RULE:stage=post_topo`
+11. execute final child-level rules such as final orientation and label application
 
-Do tada:
+Normative constraints:
 
-- `SEM` ostaje existence / variant filtering
-- `TOPO` ostaje topology behavior definition
-- `RULE:stage=post_topo` smije definirati završni rigidni offset nad
-  eksplicitno označenom `SEM:post_topo_group=...` selekcijom
-- `9-Layer` ostaje zoning / classification model
+- each movement stage runs over previously stabilized geometry
+- no cross-branch pairing is allowed
+- collision and join logic operate on resolved active geometry, not on the full raw DXF set
+- `SEM recompute` remains a reserved future branch and is off by default
 
 ### Post-TOPO rigid group offset
 
@@ -1191,10 +1226,13 @@ TEXT
 Planned ordering extension:
 
 1. document-level `SEM` inclusion / exclusion
-2. `TOPO` fixed-envelope slide
-3. `RULE:stage=post_topo` rigid offset
-4. `RULE:stage=final_orientation` mirror / normalization
-5. `RULE:stage=child_label` label hit / transformed raw anchor carrier emission
+2. placement-by-presence and variant gating
+3. resolved active geometry domain
+4. movement stages one by one with join recompute and validation
+5. `TOPO` fixed-envelope slide where applicable
+6. `RULE:stage=post_topo` rigid offset
+7. `RULE:stage=final_orientation` mirror / normalization
+8. `RULE:stage=child_label` label hit / transformed raw anchor carrier emission
 
 ---
 
