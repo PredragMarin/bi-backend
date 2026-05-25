@@ -1,6 +1,7 @@
 "use strict";
 
-const { bboxFromShapes, translateShape } = require("../geometry");
+const { bboxFromShapes, roundNumber, translateShape } = require("../geometry");
+const { parseWhenExpression } = require("./sem_evaluator_service");
 const {
   collectLineCandidates,
   applyTrimRejoinToTranslatedLine
@@ -121,11 +122,266 @@ function readNumericParameter(parameters, keys, fallback) {
   return fallback;
 }
 
-function standardParametricDeltas(parameters) {
+function normalizeFourBandResizeContract(topoRuntimeModel) {
+  const mode = String(topoRuntimeModel?.mode || "").trim();
+  const keys = topoRuntimeModel?.keys && typeof topoRuntimeModel.keys === "object"
+    ? topoRuntimeModel.keys
+    : {};
+  if (mode !== "4_band_parameter_resize") return null;
+
+  const errors = [];
+  const profile = String(topoRuntimeModel?.profile || keys.profile || "standard_parametric_resize").trim();
+  if (profile !== "standard_parametric_resize") {
+    errors.push({
+      code: "INVALID_TOPO_4BAND_PROFILE",
+      message: "Unsupported 4-band resolver profile: " + (profile || "(missing)")
+    });
+  }
+
+  const bands = {};
+  for (const band of ["l", "r", "t", "b"]) {
+    const upperBand = band.toUpperCase();
+    const expectedAxis = band === "l" || band === "r" ? "X" : "Y";
+    const parameterKey = band + "_parameter";
+    const nominalKey = band + "_nominal";
+    const axisKey = band + "_axis";
+    const deltaFactorKey = band + "_delta_factor";
+    const parameter = String(keys[parameterKey] || "").trim();
+    const nominal = Number(keys[nominalKey]);
+    const axis = String(keys[axisKey] || "").trim().toUpperCase();
+    const deltaFactor = Number(keys[deltaFactorKey]);
+    if (!parameter) {
+      errors.push({
+        code: "MISSING_TOPO_4BAND_PARAMETER",
+        message: "Missing 4-band " + upperBand + " parameter."
+      });
+    }
+    if (!Number.isFinite(nominal)) {
+      errors.push({
+        code: "INVALID_TOPO_4BAND_NOMINAL",
+        message: "Invalid 4-band " + upperBand + " nominal: " + keys[nominalKey]
+      });
+    }
+    if (axis !== expectedAxis) {
+      errors.push({
+        code: "INVALID_TOPO_4BAND_AXIS",
+        message: "Invalid 4-band " + upperBand + " axis: " + keys[axisKey]
+      });
+    }
+    if (!Number.isFinite(deltaFactor)) {
+      errors.push({
+        code: "INVALID_TOPO_4BAND_DELTA_FACTOR",
+        message: "Invalid 4-band " + upperBand + " delta factor: " + keys[deltaFactorKey]
+      });
+    }
+    bands[upperBand] = {
+      parameter,
+      nominal: Number.isFinite(nominal) ? nominal : null,
+      axis: axis || null,
+      delta_factor: Number.isFinite(deltaFactor) ? deltaFactor : null
+    };
+  }
+
+  return {
+    mode,
+    profile,
+    corner_behavior: String(keys.corner_behavior || "derived_from_adjacent_bands").trim(),
+    bands,
+    validation: {
+      ok: errors.length === 0,
+      errors
+    },
+    raw_comment: topoRuntimeModel?.raw_comment || null
+  };
+}
+
+function fourBandOffsetForBand(parameters, band, contract) {
+  const bandContract = contract?.bands?.[band];
+  if (!bandContract) return { dx: 0, dy: 0 };
+  const actual = Number(parameters?.[bandContract.parameter]);
+  const nominal = Number(bandContract.nominal);
+  const factor = Number(bandContract.delta_factor);
+  const delta = Number.isFinite(actual) && Number.isFinite(nominal) && Number.isFinite(factor)
+    ? (actual - nominal) * factor
+    : 0;
+  return {
+    dx: bandContract.axis === "X" ? delta : 0,
+    dy: bandContract.axis === "Y" ? delta : 0,
+    parameter: bandContract.parameter,
+    nominal: Number.isFinite(nominal) ? nominal : null,
+    actual: Number.isFinite(actual) ? actual : null,
+    delta: Number.isFinite(actual) && Number.isFinite(nominal) ? actual - nominal : null,
+    delta_factor: Number.isFinite(factor) ? factor : null
+  };
+}
+
+function conditionMatches(condition, parameters) {
+  if (!condition || typeof condition !== "object") return true;
+  const parameter = String(condition.parameter || "").trim();
+  const operator = String(condition.operator || "").trim().toUpperCase();
+  if (!parameter || !operator) return false;
+  const expected = Object.prototype.hasOwnProperty.call(condition, "value")
+    ? condition.value
+    : Array.isArray(condition.values)
+      ? condition.values
+      : condition.expected;
+  const expression = operator === "IN" && Array.isArray(expected)
+    ? parameter + " IN [" + expected.join(",") + "]"
+    : parameter + operator + String(expected == null ? "" : expected);
+  const parsed = parseWhenExpression(expression);
+  if (!parsed || !Array.isArray(parsed.clauses) || !parsed.clauses.length) return false;
+  return parsed.clauses.every((clause) => {
+    const actual = parameters?.[clause.parameter];
+    if (clause.operator === "IN") {
+      const candidates = Array.isArray(clause.expected_values)
+        ? clause.expected_values
+        : String(clause.expected || "").replace(/^\[/, "").replace(/\]$/, "").split(",").map((item) => item.trim()).filter(Boolean);
+      return candidates.some((candidate) => String(actual == null ? "" : actual).trim().toUpperCase() === String(candidate).trim().toUpperCase());
+    }
+    if (clause.operator === "==" || clause.operator === "!=") {
+      const equal = String(actual == null ? "" : actual).trim().toUpperCase() === String(clause.expected == null ? "" : clause.expected).trim().toUpperCase();
+      return clause.operator === "==" ? equal : !equal;
+    }
+    const actualNumber = Number(actual);
+    const expectedNumber = Number(clause.expected);
+    if (!Number.isFinite(actualNumber) || !Number.isFinite(expectedNumber)) return false;
+    if (clause.operator === ">") return actualNumber > expectedNumber;
+    if (clause.operator === ">=") return actualNumber >= expectedNumber;
+    if (clause.operator === "<") return actualNumber < expectedNumber;
+    if (clause.operator === "<=") return actualNumber <= expectedNumber;
+    return false;
+  });
+}
+
+function topologyDeltaModifierRules(ruleContext) {
+  const rules = ruleContext?.rule_catalog?.rules || ruleContext?.rules || {};
+  const entries = Array.isArray(rules) ? rules : Object.values(rules || {});
+  return entries.filter((rule) => String(rule?.action?.stage || rule?.stage || "").trim().toLowerCase() === "topology_delta_modifier");
+}
+
+function scopeValueMatches(scopeValue, actual) {
+  const normalizedActual = String(actual == null ? "" : actual).trim().toUpperCase();
+  if (!scopeValue) return true;
+  const candidates = Array.isArray(scopeValue) ? scopeValue : [scopeValue];
+  return candidates.some((candidate) => {
+    const normalized = String(candidate == null ? "" : candidate).trim().toUpperCase();
+    return normalized === "*" || normalized === normalizedActual;
+  });
+}
+
+function topologyDeltaRuleProfileMatches(rule, ruleContext) {
+  const profileScope = String(rule?.profile_scope || "").trim().toUpperCase();
+  if (!profileScope) return true;
+  const config = ruleContext?.configParameterSet || ruleContext?.config || {};
+  const profile = String(ruleContext?.technology_profile ?? config.technology_profile ?? "").trim().toUpperCase();
+  return Boolean(profile) && profile === profileScope;
+}
+
+function topologyDeltaRuleScopeMatches(rule, ruleContext) {
+  const scope = rule?.target_scope && typeof rule.target_scope === "object" ? rule.target_scope : null;
+  if (!scope) return true;
+  const config = ruleContext?.configParameterSet || ruleContext?.config || {};
+  const family = ruleContext?.family ?? config.family;
+  const product = ruleContext?.product ?? config.product ?? config.product_code;
+  const part = ruleContext?.part ?? config.part ?? config.product_code;
+  return scopeValueMatches(scope.family ?? scope.families, family)
+    && scopeValueMatches(scope.product ?? scope.products, product)
+    && scopeValueMatches(scope.part ?? scope.parts, part);
+}
+
+function applyTopologyDeltaModifiers(bandOffsets, parameters, ruleContext) {
+  const modifiers = [];
+  const warnings = [];
+  const next = JSON.parse(JSON.stringify(bandOffsets || {}));
+  for (const rule of topologyDeltaModifierRules(ruleContext)) {
+    const action = rule.action || rule;
+    const targetBand = String(action.target_band || rule.target_band || "").trim().toUpperCase();
+    const axis = String(action.axis || rule.axis || "").trim().toUpperCase();
+    const delta = Number(action.delta ?? action.value_mm ?? rule.delta);
+    const cornerScope = String(action.corner_scope || rule.corner_scope || "derived_adjacent").trim();
+    if (!next[targetBand] || !["L", "R", "T", "B"].includes(targetBand) || !["X", "Y"].includes(axis) || !Number.isFinite(delta)) {
+      modifiers.push({ rule_id: rule.rule_id || null, applied: false, reason: "invalid_topology_delta_modifier" });
+      continue;
+    }
+    if (!topologyDeltaRuleProfileMatches(rule, ruleContext)) {
+      modifiers.push({ rule_id: rule.rule_id || null, applied: false, reason: "profile_not_matched" });
+      continue;
+    }
+    if (!topologyDeltaRuleScopeMatches(rule, ruleContext)) {
+      modifiers.push({ rule_id: rule.rule_id || null, applied: false, reason: "scope_not_matched" });
+      continue;
+    }
+    if (!conditionMatches(rule.condition, parameters)) {
+      modifiers.push({ rule_id: rule.rule_id || null, applied: false, reason: "condition_not_matched" });
+      continue;
+    }
+    const offsetKey = axis === "X" ? "dx" : "dy";
+    const baseOffset = Number(next[targetBand][offsetKey] || 0);
+    const warnOnSuperposition = action.warning_on_superposition === true || rule.warning_on_superposition === true;
+    if (warnOnSuperposition && baseOffset !== 0 && delta !== 0 && Math.sign(baseOffset) === Math.sign(delta)) {
+      warnings.push({
+        code: "SUPERPOSED_TOPOLOGY_DELTA",
+        severity: "warning",
+        message: "Topology delta modifier " + (rule.rule_id || "(anonymous)") + " adds " + delta + " mm to existing " + targetBand + "." + axis + " offset " + baseOffset + " mm. Review local clearance before production use.",
+        rule_id: rule.rule_id || null,
+        target_band: targetBand,
+        axis,
+        base_offset: baseOffset,
+        modifier_delta: delta,
+        final_offset: baseOffset + delta
+      });
+    }
+    next[targetBand][offsetKey] = baseOffset + delta;
+    modifiers.push({
+      rule_id: rule.rule_id || null,
+      applied: true,
+      target_band: targetBand,
+      axis,
+      delta,
+      corner_scope: cornerScope
+    });
+  }
+  return { band_offsets: next, modifiers, warnings };
+}
+
+function fourBandParametricDeltas(parameters, contract, ruleContext) {
+  const bandOffsets = {
+    L: fourBandOffsetForBand(parameters, "L", contract),
+    R: fourBandOffsetForBand(parameters, "R", contract),
+    T: fourBandOffsetForBand(parameters, "T", contract),
+    B: fourBandOffsetForBand(parameters, "B", contract)
+  };
+  const modified = applyTopologyDeltaModifiers(bandOffsets, parameters, ruleContext);
+  return {
+    profile: "standard_parametric_resize",
+    mapping_source: "topo_metadata_4_band",
+    inference_policy: "explicit_layer_only",
+    topo_contract: contract,
+    band_offsets: modified.band_offsets,
+    base_band_offsets: bandOffsets,
+    topology_delta_modifiers: modified.modifiers,
+    topology_delta_warnings: modified.warnings
+  };
+}
+
+function standardParametricDeltas(parameters, topoRuntimeModel, ruleContext) {
+  const fourBandContract = normalizeFourBandResizeContract(topoRuntimeModel);
+  if (fourBandContract) {
+    if (!fourBandContract.validation.ok) {
+      const error = new Error("Invalid 4-band standard_parametric_resize TOPO contract.");
+      error.code = "INVALID_TOPO_4BAND_CONTRACT";
+      error.validation = fourBandContract.validation;
+      throw error;
+    }
+    return fourBandParametricDeltas(parameters, fourBandContract, ruleContext);
+  }
+
   const height = readNumericParameter(parameters, ["VISINA", "VISINA_VRATA"], 2100);
   const width = readNumericParameter(parameters, ["SIRINA", "SIRINA_VRATA"], 900);
   const shortening = readNumericParameter(parameters, ["SKRACENJE"], 0);
   return {
+    profile: "standard_parametric_resize",
+    mapping_source: "legacy_standard_defaults",
     height_delta: height - 2100,
     width_half_delta: (width - 900) / 2,
     shortening_delta: shortening
@@ -134,6 +390,33 @@ function standardParametricDeltas(parameters) {
 
 function standardLayerOffset(layer, deltas) {
   const normalizedLayer = String(layer || "").trim().toUpperCase();
+  if (deltas?.mapping_source === "topo_metadata_4_band") {
+    const offsets = deltas.band_offsets || {};
+    const l = offsets.L || { dx: 0, dy: 0 };
+    const r = offsets.R || { dx: 0, dy: 0 };
+    const t = offsets.T || { dx: 0, dy: 0 };
+    const b = offsets.B || { dx: 0, dy: 0 };
+    switch (normalizedLayer) {
+      case "L":
+        return { dx: Number(l.dx || 0), dy: Number(l.dy || 0) };
+      case "R":
+        return { dx: Number(r.dx || 0), dy: Number(r.dy || 0) };
+      case "T":
+        return { dx: Number(t.dx || 0), dy: Number(t.dy || 0) };
+      case "B":
+        return { dx: Number(b.dx || 0), dy: Number(b.dy || 0) };
+      case "TL":
+        return { dx: Number(l.dx || 0) + Number(t.dx || 0), dy: Number(l.dy || 0) + Number(t.dy || 0) };
+      case "TR":
+        return { dx: Number(r.dx || 0) + Number(t.dx || 0), dy: Number(r.dy || 0) + Number(t.dy || 0) };
+      case "BL":
+        return { dx: Number(l.dx || 0) + Number(b.dx || 0), dy: Number(l.dy || 0) + Number(b.dy || 0) };
+      case "BR":
+        return { dx: Number(r.dx || 0) + Number(b.dx || 0), dy: Number(r.dy || 0) + Number(b.dy || 0) };
+      default:
+        return { dx: 0, dy: 0 };
+    }
+  }
   const dxHeight = -Number(deltas?.height_delta || 0);
   const dxShortening = Number(deltas?.shortening_delta || 0);
   const dyWidth = Number(deltas?.width_half_delta || 0);
@@ -160,13 +443,35 @@ function standardLayerOffset(layer, deltas) {
   }
 }
 
-function runStandardParametricResizePreview({ objects, parameters }) {
-  const deltas = standardParametricDeltas(parameters);
+function horizontalInferenceOffsets(deltas) {
+  if (deltas?.mapping_source === "topo_metadata_4_band") {
+    return { dx_left: 0, dx_right: 0 };
+  }
+  return {
+    dx_left: -Number(deltas?.height_delta || 0),
+    dx_right: Number(deltas?.shortening_delta || 0)
+  };
+}
+
+function verticalInferenceOffsets(deltas) {
+  if (deltas?.mapping_source === "topo_metadata_4_band") {
+    return { dy_top: 0, dy_bottom: 0 };
+  }
+  return {
+    dy_top: Number(deltas?.width_half_delta || 0),
+    dy_bottom: -Number(deltas?.width_half_delta || 0)
+  };
+}
+
+function runStandardParametricResizePreview({ objects, parameters, topoRuntimeModel, ruleContext }) {
+  const deltas = standardParametricDeltas(parameters, topoRuntimeModel, ruleContext);
   const bandContext = buildHorizontalBandContext(objects);
   const verticalBandContext = buildVerticalBandContext(objects);
   const lineCandidates = collectLineCandidates(objects);
   const objectMap = new Map();
   const simulatedShapeMap = new Map();
+  const horizontalOffsets = horizontalInferenceOffsets(deltas);
+  const verticalOffsets = verticalInferenceOffsets(deltas);
 
   for (const object of Array.isArray(objects) ? objects : []) {
     const baseOffset = standardLayerOffset(object?.primary_layer, deltas);
@@ -174,19 +479,21 @@ function runStandardParametricResizePreview({ objects, parameters }) {
     const originalShapes = cloneShapes(object?.shapes);
     const simulatedShapes = originalShapes.map((shape, shapeIndex) => {
       const inferredX = inferredRigidXOffsetForHorizontalBand(shape, object?.primary_layer, {
-        dx_left: -Number(deltas?.height_delta || 0),
-        dx_right: Number(deltas?.shortening_delta || 0)
+        dx_left: horizontalOffsets.dx_left,
+        dx_right: horizontalOffsets.dx_right
       }, bandContext);
       const inferredY = inferredRigidYOffsetForVerticalBand(shape, object?.primary_layer, {
-        dy_top: Number(deltas?.width_half_delta || 0),
-        dy_bottom: -Number(deltas?.width_half_delta || 0)
+        dy_top: verticalOffsets.dy_top,
+        dy_bottom: verticalOffsets.dy_bottom
       }, verticalBandContext);
       const translatedShape = translateShape(shape, baseOffset.dx + inferredX, baseOffset.dy + inferredY);
       simulatedShapeMap.set(`${object.id}:${shapeIndex}`, translatedShape);
       return translatedShape;
     });
     objectMap.set(object.id, {
-      geometry_simulation_mode: "none_topology_standard_parametric_v0",
+      geometry_simulation_mode: deltas?.mapping_source === "topo_metadata_4_band"
+        ? "core_shell_4_band_parameter_resize_shadow_visualization_v1"
+        : "none_topology_standard_parametric_v0",
       simulated_shapes: simulatedShapes,
       simulated_bbox: simulatedShapes.length ? bboxFromShapes(simulatedShapes) : (object?.bbox ? JSON.parse(JSON.stringify(object.bbox)) : null),
       applied_offset: baseOffset,
@@ -242,16 +549,86 @@ function runStandardParametricResizePreview({ objects, parameters }) {
   return objectMap;
 }
 
-function runResolverPreview({ profile, objects, configParameterSet, parameters }) {
+function runResolverPreview({ profile, objects, configParameterSet, parameters, topoRuntimeModel, ruleContext }) {
   const normalizedProfile = String(profile || "").trim().toLowerCase();
   const effectiveParameters = parameters || configParameterSet?.parameters || {};
   if (normalizedProfile === "standard_parametric_resize") {
     return runStandardParametricResizePreview({
       objects,
-      parameters: effectiveParameters
+      parameters: effectiveParameters,
+      topoRuntimeModel,
+      ruleContext
     });
   }
   throw new Error(`Unsupported resolver preview profile: ${profile}`);
+}
+
+function offsetDiff(left, right) {
+  return {
+    dx: roundNumber(Number(left?.dx || 0) - Number(right?.dx || 0), 6),
+    dy: roundNumber(Number(left?.dy || 0) - Number(right?.dy || 0), 6)
+  };
+}
+
+function summarizeFourBandShadowPreview({ shadowMap, activeSimulationMap, objects }) {
+  const items = [];
+  let mismatchCount = 0;
+  let referenceDeltas = null;
+  for (const object of Array.isArray(objects) ? objects : []) {
+    const shadow = shadowMap?.get(object.id) || null;
+    if (!referenceDeltas && shadow?.reference_deltas) {
+      referenceDeltas = shadow.reference_deltas;
+    }
+    const active = activeSimulationMap?.get ? activeSimulationMap.get(object.id) : null;
+    const shadowOffset = shadow?.applied_offset || { dx: 0, dy: 0 };
+    const activeOffset = active?.applied_offset || { dx: 0, dy: 0 };
+    const diff = offsetDiff(shadowOffset, activeOffset);
+    const mismatch = diff.dx !== 0 || diff.dy !== 0;
+    if (mismatch) mismatchCount += 1;
+    items.push({
+      object_id: object.id || null,
+      entity_id: object.entity_id || null,
+      primary_layer: object.primary_layer || null,
+      shadow_offset: shadowOffset,
+      active_offset: active?.applied_offset || null,
+      offset_diff: diff,
+      mismatch
+    });
+  }
+  return {
+    mode: "core_shell_4_band_parameter_resize_shadow_v1",
+    active: false,
+    diagnostic_only: true,
+    behavior_change: false,
+    checked_count: items.length,
+    mismatch_count: mismatchCount,
+    parity_target: "current_runtime_preview",
+    production_activation_status: "not_approved",
+    cleanup_approval: "no",
+    reference_deltas: referenceDeltas,
+    topology_delta_modifiers: referenceDeltas?.topology_delta_modifiers || [],
+    topology_delta_warnings: referenceDeltas?.topology_delta_warnings || [],
+    items
+  };
+}
+
+function runFourBandParameterResizeShadowPreview({ objects, parameters, configParameterSet, topoRuntimeModel, activeSimulationMap, ruleContext }) {
+  const shadowMap = runResolverPreview({
+    profile: "standard_parametric_resize",
+    objects,
+    parameters,
+    configParameterSet,
+    topoRuntimeModel,
+    ruleContext
+  });
+  return {
+    shadow_map: shadowMap,
+    summary: summarizeFourBandShadowPreview({
+      shadowMap,
+      activeSimulationMap,
+      objects
+    })
+  };
 }
 
 function nowIso() {
@@ -498,6 +875,31 @@ function loadMotherDxfRuntime() {
   return require("../../modules/mother_dxf_v1/module_runtime");
 }
 
+function envFlagEnabled(name) {
+  const value = String(process.env[name] || "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+function isCoreShellStrictMode(sharedResolverMode) {
+  return String(sharedResolverMode || "").trim() === "core_shell_strict" || envFlagEnabled("CORE_RESOLVER_STRICT");
+}
+
+function coreShellStrictUnsupportedError({ session, configParameterSet, mode, branchMode }) {
+  const error = new Error("Core Shell strict resolver refused legacy Mother DXF fallback: native session projection is not implemented for this mode yet.");
+  error.code = "CORE_RESOLVER_STRICT_UNSUPPORTED";
+  error.resolver_entrypoint = "core_shell";
+  error.execution_owner = "core_shell_native";
+  error.legacy_fallback_used = false;
+  error.legacy_fallback_reason = null;
+  error.strict_mode = true;
+  error.unsupported_reason = "native_session_projection_not_implemented";
+  error.mode = String(mode || "").trim() || null;
+  error.session_id = session?.session_id || null;
+  error.has_config_parameter_set = Boolean(configParameterSet);
+  error.branch_mode = branchMode || null;
+  return error;
+}
+
 async function callMotherRuntime({ runtime, session, configParameterSet, mode, branchMode }) {
   if (!session || typeof session !== "object") {
     throw new Error("resolveMotherDxfRuntimePlan requires a session object.");
@@ -562,15 +964,68 @@ async function resolveMotherDxfRuntimePlan({
 }) {
   const normalizedMode = String(mode || "").trim();
   const normalizedSemEvaluatorMode = String(semEvaluatorMode || "runtime").trim();
-  const normalizedSharedResolverMode = String(sharedResolverMode || "runtime").trim();
-  const allowedSharedResolverModes = new Set(["runtime", "activation_candidate_shadow"]);
+  const normalizedSharedResolverMode = isCoreShellStrictMode(sharedResolverMode)
+    ? "core_shell_strict"
+    : String(sharedResolverMode || "runtime").trim();
+  const allowedSharedResolverModes = new Set(["runtime", "activation_candidate_shadow", "core_shell_strict"]);
   if (!allowedSharedResolverModes.has(normalizedSharedResolverMode)) {
     throw new Error(`Unsupported shared resolver mode: ${sharedResolverMode}`);
   }
   const normalizedConfig = normalizeFacadeConfig(session, configParameterSet);
-  const runtime = loadMotherDxfRuntime();
   const start = nowIso();
   const startedAtMs = Date.now();
+  if (normalizedSharedResolverMode === "core_shell_strict") {
+    const strictError = coreShellStrictUnsupportedError({
+      session,
+      configParameterSet: normalizedConfig,
+      mode: normalizedMode,
+      branchMode
+    });
+    const end = nowIso();
+    strictError.pipeline_trace = {
+      mode: normalizedMode,
+      entrypoint: "core_shell_strict",
+      parameters: {
+        branchMode: branchMode || null,
+        has_config_parameter_set: Boolean(normalizedConfig),
+        session_id: session?.session_id || null,
+        sem_evaluator_mode: normalizedSemEvaluatorMode,
+        shared_resolver_mode: normalizedSharedResolverMode,
+        core_resolver_strict: true
+      },
+      steps: [
+        {
+          name: "core_shell_strict_native_entrypoint",
+          start,
+          end,
+          duration_ms: Date.now() - startedAtMs,
+          delegated: false,
+          active: true,
+          diagnostic_only: false
+        },
+        {
+          name: "legacy_fallback_guard",
+          start,
+          end,
+          duration_ms: 0,
+          delegated: false,
+          active: true,
+          legacy_fallback_used: false
+        },
+        {
+          name: "native_session_projection",
+          start,
+          end,
+          duration_ms: 0,
+          delegated: false,
+          active: false,
+          status: "not_implemented"
+        }
+      ]
+    };
+    throw strictError;
+  }
+  const runtime = loadMotherDxfRuntime();
   let result;
   let caughtError = null;
 
@@ -614,7 +1069,8 @@ async function resolveMotherDxfRuntimePlan({
       has_config_parameter_set: Boolean(normalizedConfig),
       session_id: session?.session_id || null,
       sem_evaluator_mode: normalizedSemEvaluatorMode,
-      shared_resolver_mode: normalizedSharedResolverMode
+      shared_resolver_mode: normalizedSharedResolverMode,
+      core_resolver_strict: false
     },
     steps: [
       {
@@ -745,6 +1201,10 @@ async function resolveMotherDxfRuntimePlan({
     config_parameter_set: resultConfig(effectiveResult, normalizedConfig),
     sem_evaluator_mode: normalizedSemEvaluatorMode,
     shared_resolver_mode: normalizedSharedResolverMode,
+    resolver_entrypoint: "core_shell_facade",
+    execution_owner: "mother_runtime_legacy",
+    legacy_fallback_used: true,
+    legacy_fallback_reason: normalizedSharedResolverMode === "runtime" ? "configured_runtime_mode" : "activation_candidate_shadow_delegates_to_runtime",
     shared_resolver_activation: sharedResolverActivation,
     shared_sem_activation: sharedSemActivation,
     sem_diagnostics,
@@ -756,7 +1216,9 @@ async function resolveMotherDxfRuntimePlan({
 
 module.exports = {
   loadSharedSemEvaluatorService,
+  normalizeFourBandResizeContract,
   resolveMotherDxfRuntimePlan,
+  runFourBandParameterResizeShadowPreview,
   runResolverPreview,
   runStandardParametricResizePreview
 };

@@ -809,6 +809,136 @@ Approved Mother DXF must carry TOPO metadata physically in DXF `999` rows when t
 TOPO syntax and field semantics are owned by `DXF_INSTRUCTIONSET_CONTRACT_v0.md`.
 Session sidecar TOPO state is authoring/runtime convenience only, not canonical approved artifact state.
 
+## 15B.1 Metadata Authoring IA Recovery
+
+Current Mother DXF `Metadata Authoring` UI is no longer a generic topology authoring surface.
+It has drifted into a specialized `fixed_envelope_slide` authoring form.
+
+Observed hard constraints in the current UI/runtime:
+
+- `topoMode` is hardcoded to `fixed_envelope_slide`
+- `topoAxis` is hardcoded to `X`
+- file-level TOPO input is generated only from `LEC` / `REC` parameter pairs
+- entity-level TOPO input is generated only as `role=mover` with `zone=LEC|REC`
+- runtime validation currently accepts only `mode=fixed_envelope_slide`
+- runtime executable TOPO path currently accepts only `axis=X`
+
+This means the current Stage 1 panel is operationally a:
+
+- `fixed envelope slide authoring panel`
+
+and not a:
+
+- generic `TOPO` authoring panel
+- generic `4_BAND_PARAMETER_RESIZE` authoring panel
+
+Because of that, historical parts such as `KSKR` cannot be ergonomically or honestly re-authored through the current Stage 1 form.
+
+### Required IA Split
+
+Stage 1 must be reorganized around explicit topology family selection before any mode-specific fields appear.
+
+Required top-level choice:
+
+- `Topology Family`
+- allowed v1 values:
+- `4-band parameter resize`
+- `fixed envelope slide`
+- `none / skip topology`
+
+Everything below that choice must be family-specific instead of globally shared.
+
+### Shared Stage 1 Surface
+
+The following controls may stay shared:
+
+- topology family selector
+- topology summary / saved state
+- generated file-level `999` preview
+- save / clear actions
+- target inspector entrypoint
+
+The following controls must stop being globally hardcoded:
+
+- `Mode`
+- `Axis`
+- `Group`
+- side parameter inputs
+- mover role semantics
+
+### Family-Specific UI: `4-band parameter resize`
+
+When `Topology Family = 4-band parameter resize`, Stage 1 must show:
+
+- nominal reference summary
+- parameter mapping for `L`, `R`, `T`, `B`
+- derived corner behavior note for `TL`, `TR`, `BL`, `BR`
+- band assignment workflow wording
+- target inspector grouped by:
+- `L`
+- `R`
+- `T`
+- `B`
+- `TL`
+- `TR`
+- `BL`
+- `BR`
+
+The authoring language for this family must be:
+
+- `band`
+- `corner band`
+- `parameter mapping`
+- `nominal delta`
+
+and must not use:
+
+- `LEC`
+- `REC`
+- `slide`
+
+### Family-Specific UI: `fixed envelope slide`
+
+When `Topology Family = fixed envelope slide`, Stage 1 may continue to show:
+
+- group
+- axis
+- `LEC` parameter + nominal
+- `REC` parameter + nominal
+- delta factors
+- trim policy
+- mover role
+- zone
+- `LEC` / `REC` target inspector
+
+The authoring language for this family must stay:
+
+- `LEC`
+- `REC`
+- `mover`
+- `slide`
+
+### Non-Negotiable UX Rule
+
+Stage 1 must never present one topology family through another family's vocabulary.
+
+Specifically:
+
+- `KSKR` / `4-band` authoring must not be forced through `LEC/REC`
+- `fixed envelope slide` authoring must not be forced through `L/R/T/B/TL/TR/BL/BR`
+
+### Delivery Strategy
+
+This reorganization is approved as an incremental IA recovery, not a full UX rewrite.
+
+Recommended order:
+
+1. keep current `fixed_envelope_slide` path working
+2. introduce explicit topology family selector
+3. isolate current form under `fixed envelope slide`
+4. add a new `4-band parameter resize` Stage 1 form
+5. only after both flows are explicit, simplify shared chrome and inspector behavior
+
 ### 15C. Post-TOPO Micro Shift Rule
 
 Mother DXF supports a document-level post-TOPO rigid offset rule for cases where
@@ -1094,6 +1224,8 @@ Implemented shadow envelope status:
 - the no-movement execution slice is limited to projected runtime result finalization: no TOPO movement, repair, trim, extend, rejoin, or child DXF serialization
 - `src/core_shell/services/dxf_topo_x_execution_service.js` executes the narrow TOPO X-only shadow slice from the projected runtime result
 - the TOPO X-only execution slice validates movement summary parity only; it does not yet execute coordinate movement, repair, trim, extend, rejoin, block explosion, or child DXF serialization independently
+- `CORE_RESOLVER_STRICT=1` / `sharedResolverMode=core_shell_strict` refuses legacy Mother runtime fallback before loading Mother runtime
+- `npm run resolver:strict-probe` verifies that strict mode currently fails honestly with `legacy_fallback_used=false` until native session projection is implemented
 - `npm run resolver:integral-shadow` writes the standalone report used by `npm run resolver:status`
 - this implementation does not execute movement geometry and does not replace Mother DXF runtime behavior
 
@@ -1104,6 +1236,32 @@ Current and target resolver discipline recognizes these stage families:
 #### `4_BAND_PARAMETER_RESIZE`
 
 Canonical base movement model for freely resizable parts.
+
+#### 4-band Core Shell / DBR Contract Status
+
+Current rounded-off authoring and preview contract:
+
+- Mother DXF can author a dedicated 4-band metadata record without using fixed-envelope `LEC/REC` vocabulary. The UI must not imply that SEM executes after TOPO; SEM presence/variant filters define effective geometry before 4-band resolver movement.
+- Saved file-level metadata uses `TOPO:mode=4_band_parameter_resize` with `profile=standard_parametric_resize`.
+- The required base band keys are `l/r/t/b_parameter`, `l/r/t/b_nominal`, `l/r/t/b_axis`, and `l/r/t/b_delta_factor`.
+- Corner bands `TL/TR/BL/BR` are derived from adjacent base bands and are not separately parameterized in this authoring slice.
+
+Confirmed Core Shell preview resolver mapping:
+
+- Core Shell accepts the projected `4_band_parameter_resize` runtime model as explicit input to the shared `standard_parametric_resize` preview path.
+- Band offsets are metadata-driven: `(actual - nominal) * delta_factor` on `l/r/t/b_axis`.
+- Corner bands continue to be derived from adjacent base bands.
+- `topology_delta_modifier` catalog rules may modify final base-band offsets before 4-band movement execution. In this KSKR slice, `HIDRAULICKI_ZATVARAC==Skriveni` adds `+5` mm to the `L` band on `X`, and `VANJSKA_VRATA==Da` adds `-30` mm to the `R` band on `X`; `TL/BL` and `TR/BR` inherit through adjacent-band composition. Core Shell emits `SUPERPOSED_TOPOLOGY_DELTA` warnings for catalog rules marked with `warning_on_superposition=true` when that modifier reinforces an existing offset on the same band/axis.
+- 4-band resolver movement is explicit-layer-only: follower movement for circle/arc/insert entities requires deterministic authoring through the effective primary layer, not resolver proximity inference.
+- Mother DXF can surface `core_shell_4_band_shadow` diagnostics for parity inspection.
+- Mother DXF `/simulate` resolves SEM presence/variant filters before the Core Shell 4-band shadow resolver, then renders the shadow map as preview-only `simulated_shapes`.
+- Mother DXF may export `core_shell_4_band_shadow_child_dxf_v0` as a diagnostic DXF for external viewer validation; this must stay marked diagnostic-only and must not drive DBR production child generation yet.
+
+DBR boundary:
+
+- this record is a Core Shell resolver contract input, not a Mother DXF private UI convention;
+- DBR must resolve it through Core Shell resolver services when production activation is approved;
+- current status is confirmed Core Shell preview resolver, not DBR production activation.
 
 - `L` and `R` bands move on `X`
 - `T` and `B` bands move on `Y`
@@ -1185,19 +1343,21 @@ and produced pieces cannot be physically flipped.
 This is planned as a document/profile rule, not entity-level SEM and not TOPO.
 It executes after SEM filtering, TOPO materialization, and post-TOPO micro shift.
 
-Canonical planned rule:
+Canonical planned rules:
 
 ```text
 999
-RULE:stage=final_orientation;id=DOOR_SX_DX_MIRROR;geometry=mirror;axis=Y;when=STRANA_OTVARANJA IN [Lijeva (SX),Inverzna lijeva (INV SX)];normalize_bbox=true
+RULE:stage=final_orientation;id=DOOR_SX_DX_MIRROR_X_UNSTACKED;geometry=mirror;axis=X;when=STRANA_OTVARANJA IN [Lijeva (SX),Inverzna lijeva (INV SX)];parts=[KSKR,OBRA,OSPY,OBRIT,OMET];normalize_bbox=true
+RULE:stage=final_orientation;id=DOOR_SX_DX_MIRROR_Y_STACKED;geometry=mirror;axis=Y;when=STRANA_OTVARANJA IN [Lijeva (SX),Inverzna lijeva (INV SX)];parts=[LBRA,LBRIT,LHOR,LMET,SBRA,SBRIT,SHOR,KDDV,KDLV,KDHOR,PS];normalize_bbox=true
 ```
 
 Execution meaning:
 
 - raw DXF coordinate system remains the authoring coordinate system
 - `Desna (DX)` and `Inverzna desna (INV DX)` keep raw orientation
-- `Lijeva (SX)` and `Inverzna lijeva (INV SX)` mirror around the Y axis
+- `Lijeva (SX)` and `Inverzna lijeva (INV SX)` mirror around the explicit catalog axis: X for unstacked parts and Y for stacked parts
 - after mirror, child geometry is normalized so final bbox starts at `minX=0`, `minY=0`
+- Mother DXF preview emits `MISSING_FINAL_ORIENTATION_RULE` when `STRANA_OTVARANJA` and part scope match one of these rules but the document has no explicit active `rule_ref` for it
 - future technology-level face/back processing may extend this with an XOR-like
   effective orientation rule, but `STRANA_OTVARANJA` remains the door-side source parameter
 
@@ -1290,7 +1450,7 @@ Planned child generation order becomes:
 3. post-TOPO rigid offset
 4. final orientation mirror, when configured
 5. bbox normalization
-6. child label application / transformed raw anchor carrier emission
+6. child label application / transformed raw anchor carrier emission after orientation so emitted TEXT is not mirrored
 7. serialize child DXF
 
 ---

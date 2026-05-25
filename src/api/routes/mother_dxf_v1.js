@@ -243,6 +243,34 @@ function createMotherDxfRouterV1() {
     }
   });
 
+  router.post("/sessions/:sessionId/child/core-shell-shadow", async (req, res) => {
+    try {
+      const parameterSet = req.body?.config_parameter_set || req.body || {};
+      const result = await motherDxfRuntime.generateCoreShellFourBandShadowChildDxfForSession({
+        sessionId: String(req.params.sessionId || ""),
+        parameterSet
+      });
+      const summary = result.generation_summary || {};
+      res.setHeader("X-Mother-DXF-Artifact-State", String(result.session?.artifact_state || ""));
+      res.setHeader("X-Mother-DXF-Session-Status", String(result.session?.status || ""));
+      res.setHeader("X-Mother-DXF-Production-Safe", "false");
+      res.setHeader("X-Mother-DXF-Diagnostic-Only", "true");
+      res.setHeader("Content-Type", "application/dxf; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${req.params.sessionId}_core_shell_4_band_shadow_child.dxf"`);
+      res.setHeader("X-Mother-DXF-Child-Mode", String(summary.mode || "core_shell_4_band_shadow_child_dxf_v0"));
+      res.setHeader("X-Mother-DXF-Included-Count", String(summary.included_count ?? ""));
+      res.setHeader("X-Mother-DXF-Excluded-Count", String(summary.excluded_count ?? ""));
+      res.setHeader("X-Mother-DXF-Updated-Entity-Count", String(summary.updated_entity_count ?? ""));
+      res.setHeader("X-Mother-DXF-Removed-Entity-Count", String(summary.removed_entity_count ?? ""));
+      res.send(result.dxf_text);
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_CORE_SHELL_SHADOW_CHILD_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.post("/sessions/:sessionId/child/no-topo", async (req, res) => {
     try {
       const parameterSet = req.body?.config_parameter_set || req.body || {};
@@ -374,7 +402,8 @@ function createMotherDxfRouterV1() {
         operation: String(req.body?.operation || ""),
         parameter: String(req.body?.parameter || ""),
         expectedValue: req.body?.expected_value,
-        semanticComment: req.body?.semantic_comment
+        semanticComment: req.body?.semantic_comment,
+        replaceSemanticComment: req.body?.replace_semantic_comment
       });
       res.json({
         ...buildSessionResponse(result.session),

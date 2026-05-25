@@ -52,8 +52,22 @@ function compareInstructionValues(actual, expected, operator) {
   return false;
 }
 
+function trimWrappingParens(rawClause) {
+  const text = String(rawClause || "").trim();
+  if (!text.startsWith("(") || !text.endsWith(")")) return text;
+  let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (depth < 0) return text;
+    if (depth === 0 && index < text.length - 1) return text;
+  }
+  return depth === 0 ? text.slice(1, -1).trim() : text;
+}
+
 function parseWhenClause(rawClause) {
-  const raw = String(rawClause || "").trim().replace(/^\(/, "").replace(/\)$/, "").trim();
+  const raw = trimWrappingParens(rawClause);
   const inMatch = raw.match(/^(.+?)\s+IN\s+\[(.+)\]$/i);
   if (inMatch) {
     const parameter = String(inMatch[1] || "").trim();

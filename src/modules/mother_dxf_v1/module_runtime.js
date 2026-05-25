@@ -27,6 +27,7 @@ const {
   applyTrimRejoinToTranslatedLine
 } = require("../../core_shell/services/dxf_line_repair_service");
 const {
+  runFourBandParameterResizeShadowPreview,
   runResolverPreview
 } = require("../../core_shell/services/dxf_resolver_service");
 const {
@@ -288,6 +289,11 @@ function normalizeParameterCatalogSnapshot(input) {
   return cloneJson(source);
 }
 
+function isModuleOwnedRuleCatalog(source) {
+  const catalogId = String(source?.catalog_id || "").trim();
+  return !catalogId || catalogId === String(DEFAULT_RULE_CATALOG.catalog_id || "").trim();
+}
+
 function normalizeRuleCatalogSnapshot(input) {
   const source = input && typeof input === "object" ? input : null;
   const rules = source && source.rules && typeof source.rules === "object"
@@ -295,6 +301,17 @@ function normalizeRuleCatalogSnapshot(input) {
     : null;
   if (!source || !rules || !Object.keys(rules).length) {
     return cloneJson(DEFAULT_RULE_CATALOG);
+  }
+  if (isModuleOwnedRuleCatalog(source)) {
+    const normalized = cloneJson({
+      ...DEFAULT_RULE_CATALOG,
+      ...source,
+      rules: {
+        ...(source.rules || {}),
+        ...(DEFAULT_RULE_CATALOG.rules || {})
+      }
+    });
+    return normalized;
   }
   return cloneJson(source);
 }
@@ -561,8 +578,22 @@ function compareInstructionValues(actual, expected, operator) {
   return false;
 }
 
+function trimWrappingParens(rawClause) {
+  const text = String(rawClause || "").trim();
+  if (!text.startsWith("(") || !text.endsWith(")")) return text;
+  let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (depth < 0) return text;
+    if (depth === 0 && index < text.length - 1) return text;
+  }
+  return depth === 0 ? text.slice(1, -1).trim() : text;
+}
+
 function parseWhenClause(rawClause) {
-  const raw = String(rawClause || "").trim().replace(/^\(/, "").replace(/\)$/, "").trim();
+  const raw = trimWrappingParens(rawClause);
   const inMatch = raw.match(/^(.+?)\s+IN\s+\[(.+)\]$/i);
   if (inMatch) {
     const parameter = String(inMatch[1] || "").trim();
@@ -1737,6 +1768,53 @@ function validateTopoBlock(topoObject) {
       errors
     };
   }
+  if (mode === "4_band_parameter_resize") {
+    const profile = String(keys.profile || "standard_parametric_resize").trim();
+    if (profile !== "standard_parametric_resize") {
+      errors.push({
+        code: "INVALID_TOPO_4BAND_PROFILE",
+        message: "Unsupported 4-band TOPO profile: " + keys.profile
+      });
+    }
+    for (const band of ["l", "r", "t", "b"]) {
+      const upperBand = band.toUpperCase();
+      const parameterKey = band + "_parameter";
+      const nominalKey = band + "_nominal";
+      const axisKey = band + "_axis";
+      const deltaFactorKey = band + "_delta_factor";
+      if (!String(keys[parameterKey] || "").trim()) {
+        errors.push({
+          code: "MISSING_TOPO_4BAND_PARAMETER",
+          message: "Missing 4-band " + upperBand + " parameter."
+        });
+      }
+      if (!Number.isFinite(Number(keys[nominalKey]))) {
+        errors.push({
+          code: "INVALID_TOPO_4BAND_NOMINAL",
+          message: "Invalid 4-band " + upperBand + " nominal: " + keys[nominalKey]
+        });
+      }
+      const axis = String(keys[axisKey] || "").trim().toUpperCase();
+      const expectedAxis = band === "l" || band === "r" ? "X" : "Y";
+      if (axis !== expectedAxis) {
+        errors.push({
+          code: "INVALID_TOPO_4BAND_AXIS",
+          message: "Invalid 4-band " + upperBand + " axis: " + keys[axisKey]
+        });
+      }
+      if (!Number.isFinite(Number(keys[deltaFactorKey]))) {
+        errors.push({
+          code: "INVALID_TOPO_4BAND_DELTA_FACTOR",
+          message: "Invalid 4-band " + upperBand + " delta factor: " + keys[deltaFactorKey]
+        });
+      }
+    }
+    return {
+      ok: errors.length === 0,
+      errors
+    };
+  }
+
   const hasExecutableDraftFields = Boolean(
     keys.group || keys.axis
     || keys.lec_parameter || keys.lec_nominal || keys.rec_parameter || keys.rec_nominal
@@ -1852,11 +1930,13 @@ function normalizeTopoRuntimeModel(topoObjects) {
   return {
     family: "TOPO",
     mode: firstValid.topo.mode,
+    profile: firstValid.topo.keys?.profile || null,
     sliding_band: firstValid.topo.sliding_band,
     fixed_dimension: firstValid.topo.fixed_dimension,
     inner_side: firstValid.topo.inner_side,
     outer_side: firstValid.topo.outer_side,
     raw_comment: firstValid.topo.raw_comment,
+    keys: cloneJson(firstValid.topo.keys || {}),
     source_count: items.length,
     validation: firstValid.validation
   };
@@ -2031,7 +2111,7 @@ function clearFileLevelTopoComment(session) {
   session.topo_comments = [];
 }
 
-function upsertSemanticComment(document, entityId, rawComment) {
+function upsertSemanticComment(document, entityId, rawComment, replaceComment = "") {
   const entity = findEntity(document, entityId);
   if (!entity) {
     throw new Error(`Unknown entity id: ${entityId}`);
@@ -2045,6 +2125,8 @@ function upsertSemanticComment(document, entityId, rawComment) {
     if (String(pair?.code) !== "999") return true;
     const value = String(pair?.value || "").trim();
     if (!value.toUpperCase().startsWith("SEM:")) return true;
+    const oldComment = String(replaceComment || "").trim();
+    if (oldComment && value === oldComment) return false;
     return value !== nextComment;
   });
   nextPreComments.push({ code: "999", value: nextComment });
@@ -3223,6 +3305,41 @@ function evaluateChildEntityInclusion(object, parameters) {
   };
 }
 
+function buildSemEffectiveGeometryFilter(objects, parameters) {
+  const inclusionByObjectId = new Map();
+  const includedObjects = [];
+  const excludedObjects = [];
+  for (const object of Array.isArray(objects) ? objects : []) {
+    const inclusion = evaluateChildEntityInclusion(object, parameters);
+    inclusionByObjectId.set(object.id, inclusion);
+    if (inclusion.included) {
+      includedObjects.push(object);
+    } else {
+      excludedObjects.push({
+        object_id: object.id,
+        entity_id: object.entity_id,
+        exclusion_reason: inclusion.exclusion_reason,
+        presence_reason: inclusion.presence?.visibility_reason || null,
+        variant: inclusion.variant?.variant || null,
+        variant_feature: inclusion.variant?.feature || null
+      });
+    }
+  }
+  return {
+    mode: "sem_effective_geometry_before_topo_v1",
+    inclusion_by_object_id: inclusionByObjectId,
+    included_objects: includedObjects,
+    excluded_objects: excludedObjects,
+    summary: {
+      mode: "sem_effective_geometry_before_topo_v1",
+      input_count: Array.isArray(objects) ? objects.length : 0,
+      included_count: includedObjects.length,
+      excluded_count: excludedObjects.length,
+      excluded_objects: excludedObjects.slice(0, 25)
+    }
+  };
+}
+
 function assertNoTopoKskrChildScope(session, config) {
   const productCode = String(config?.product_code || "").trim().toUpperCase();
   if (productCode !== "KSKR") {
@@ -3281,6 +3398,7 @@ function pruneUnusedBlocks(document) {
 function materializeChildDocumentNoTopo(session, config) {
   const view = assertNoTopoKskrChildScope(session, config);
   const parameters = config.parameters || {};
+  const sourceObjects = Array.isArray(view.objects) ? view.objects : [];
   const outputDocument = cloneJson(session.document);
   const documentRuleExecution = materializeDocumentRulesOnDocument(outputDocument, session, view.objects, parameters);
   const decisionsByEntityId = new Map();
@@ -3325,7 +3443,7 @@ function materializeChildDocumentNoTopo(session, config) {
       return !decision || decision.included;
     });
   pruneUnusedBlocks(outputDocument);
-  const finalChildExecution = finalizeChildDocument(outputDocument, session, config, repairContext);
+  const finalChildExecution = finalizeChildDocument(outputDocument, session, config, null);
 
   return {
     document: outputDocument,
@@ -3937,6 +4055,10 @@ function mirrorAngleAcrossYAxis(angle) {
   return normalizeChildAngleDeg(180 - Number(angle || 0));
 }
 
+function mirrorAngleAcrossXAxis(angle) {
+  return normalizeChildAngleDeg(360 - Number(angle || 0));
+}
+
 function mirrorEntityAcrossYAxis(entity) {
   const type = String(entity?.type || "").toUpperCase();
   if (type === "LINE") {
@@ -3972,6 +4094,146 @@ function mirrorEntityAcrossYAxis(entity) {
     return true;
   }
   return false;
+}
+
+function mirrorEntityAcrossXAxis(entity) {
+  const type = String(entity?.type || "").toUpperCase();
+  if (type === "LINE") {
+    for (const code of ["20", "21"]) {
+      const value = Number(pairValue(entity, code, "NaN"));
+      if (Number.isFinite(value)) setRuntimePairValue(entity, code, String(roundNumber(-value, 3)));
+    }
+    return true;
+  }
+  if (type === "CIRCLE") {
+    const value = Number(pairValue(entity, "20", "NaN"));
+    if (Number.isFinite(value)) setRuntimePairValue(entity, "20", String(roundNumber(-value, 3)));
+    return Number.isFinite(value);
+  }
+  if (type === "ARC") {
+    const value = Number(pairValue(entity, "20", "NaN"));
+    const start = Number(pairValue(entity, "50", "NaN"));
+    const end = Number(pairValue(entity, "51", "NaN"));
+    if (Number.isFinite(value)) setRuntimePairValue(entity, "20", String(roundNumber(-value, 3)));
+    if (Number.isFinite(start) && Number.isFinite(end)) {
+      setRuntimePairValue(entity, "50", String(mirrorAngleAcrossXAxis(end)));
+      setRuntimePairValue(entity, "51", String(mirrorAngleAcrossXAxis(start)));
+    }
+    return Number.isFinite(value);
+  }
+  if (type === "TEXT") {
+    for (const code of ["20", "21"]) {
+      const value = Number(pairValue(entity, code, "NaN"));
+      if (Number.isFinite(value)) setRuntimePairValue(entity, code, String(roundNumber(-value, 3)));
+    }
+    const rotation = Number(pairValue(entity, "50", "NaN"));
+    if (Number.isFinite(rotation)) setRuntimePairValue(entity, "50", String(mirrorAngleAcrossXAxis(rotation)));
+    return true;
+  }
+  return false;
+}
+
+function mirrorEntityAcrossAxis(entity, axis) {
+  return String(axis || "").trim().toUpperCase() === "X"
+    ? mirrorEntityAcrossXAxis(entity)
+    : mirrorEntityAcrossYAxis(entity);
+}
+
+function mirrorPreviewShapeAcrossAxis(shape, axis) {
+  const normalizedAxis = String(axis || "").trim().toUpperCase();
+  if (!shape || typeof shape !== "object") return shape;
+  if (normalizedAxis === "X") {
+    if (shape.kind === "line") return { ...shape, y1: -Number(shape.y1), y2: -Number(shape.y2) };
+    if (shape.kind === "circle") return { ...shape, centerY: -Number(shape.centerY) };
+    if (shape.kind === "arc") return {
+      ...shape,
+      centerY: -Number(shape.centerY),
+      startAngle: mirrorAngleAcrossXAxis(shape.endAngle),
+      endAngle: mirrorAngleAcrossXAxis(shape.startAngle)
+    };
+    if (shape.kind === "insert") return { ...shape, y: -Number(shape.y) };
+    return { ...shape };
+  }
+  if (shape.kind === "line") return { ...shape, x1: -Number(shape.x1), x2: -Number(shape.x2) };
+  if (shape.kind === "circle") return { ...shape, centerX: -Number(shape.centerX) };
+  if (shape.kind === "arc") return {
+    ...shape,
+    centerX: -Number(shape.centerX),
+    startAngle: mirrorAngleAcrossYAxis(shape.endAngle),
+    endAngle: mirrorAngleAcrossYAxis(shape.startAngle)
+  };
+  if (shape.kind === "insert") return { ...shape, x: -Number(shape.x) };
+  return { ...shape };
+}
+
+function simulationMapBBox(simulationMap) {
+  const shapes = [];
+  for (const preview of simulationMap?.values ? simulationMap.values() : []) {
+    shapes.push(...(Array.isArray(preview?.simulated_shapes) ? preview.simulated_shapes : []));
+  }
+  return bboxFromShapes(shapes);
+}
+
+function clonePreviewWithShapes(preview, shapes, appliedOffset = null) {
+  const nextShapes = cloneShapes(shapes);
+  return {
+    ...preview,
+    simulated_shapes: nextShapes,
+    simulated_bbox: nextShapes.length ? bboxFromShapes(nextShapes) : null,
+    final_orientation_offset: appliedOffset || preview?.final_orientation_offset || null
+  };
+}
+
+function applyFinalOrientationRulesToSimulationMap(session, config, sourceMap) {
+  const rules = executableFinalOrientationRules(session, config);
+  if (!rules.length || !sourceMap?.entries) {
+    return { simulation_map: sourceMap, applied_rules: [], bbox_normalization: { applied: false, dx: 0, dy: 0, bbox_before: null, bbox_after: null } };
+  }
+  let nextMap = new Map(sourceMap);
+  const appliedRules = [];
+  for (const rule of rules) {
+    let affectedCount = 0;
+    const mirrored = new Map();
+    for (const [objectId, preview] of nextMap.entries()) {
+      const shapes = Array.isArray(preview?.simulated_shapes) ? preview.simulated_shapes : [];
+      const nextShapes = shapes.map((shape) => mirrorPreviewShapeAcrossAxis(shape, rule.axis));
+      affectedCount += nextShapes.length ? 1 : 0;
+      mirrored.set(objectId, clonePreviewWithShapes(preview, nextShapes));
+    }
+    nextMap = mirrored;
+    appliedRules.push({
+      rule_id: rule.rule_id,
+      geometry: "mirror",
+      axis: rule.axis,
+      affected_count: affectedCount,
+      normalize_bbox: rule.normalize_bbox,
+      text_policy: rule.text_policy
+    });
+  }
+  const bboxBefore = simulationMapBBox(nextMap);
+  const dx = bboxBefore ? -Number(bboxBefore.minX || 0) : 0;
+  const dy = bboxBefore ? -Number(bboxBefore.minY || 0) : 0;
+  const shouldNormalize = bboxBefore && (Math.abs(dx) > 0.0005 || Math.abs(dy) > 0.0005);
+  if (shouldNormalize) {
+    const normalized = new Map();
+    for (const [objectId, preview] of nextMap.entries()) {
+      const shapes = Array.isArray(preview?.simulated_shapes) ? preview.simulated_shapes : [];
+      normalized.set(objectId, clonePreviewWithShapes(preview, shapes.map((shape) => translateShape(shape, dx, dy)), { dx, dy }));
+    }
+    nextMap = normalized;
+  }
+  const bboxAfter = simulationMapBBox(nextMap);
+  return {
+    simulation_map: nextMap,
+    applied_rules: appliedRules,
+    bbox_normalization: {
+      applied: Boolean(shouldNormalize),
+      dx: roundNumber(dx, 3),
+      dy: roundNumber(dy, 3),
+      bbox_before: bboxBefore,
+      bbox_after: bboxAfter
+    }
+  };
 }
 
 function documentRuntimeBBox(document, options = {}) {
@@ -4031,13 +4293,13 @@ function catalogRuleTargetMatchesContext(rule, documentSem, config) {
     && scopeMatchesValue(scope.parts, documentSem?.part || config?.part);
 }
 
-function executableFinalOrientationRules(session, config) {
+function finalOrientationRuleCandidates(session, config) {
   const catalog = normalizeRuleCatalogSnapshot(session?.rule_catalog);
   const catalogRules = catalog && catalog.rules && typeof catalog.rules === "object" ? catalog.rules : {};
   const documentSem = collectDocumentSemMetadata(session?.document);
   const parameters = config?.parameters || {};
   const technologyProfile = String(config?.technology_profile || DEFAULT_CONFIG_CONTEXT.technology_profile || "").trim().toUpperCase();
-  const rules = [];
+  const candidates = [];
   for (const rule of Object.values(catalogRules)) {
     if (!rule || typeof rule !== "object") continue;
     const action = rule.action && typeof rule.action === "object" ? rule.action : {};
@@ -4045,18 +4307,48 @@ function executableFinalOrientationRules(session, config) {
     const geometry = String(action.geometry || "").trim().toLowerCase();
     const axis = String(action.axis || "").trim().toUpperCase();
     const profileScope = String(rule.profile_scope || "").trim().toUpperCase();
-    if (stage !== "final_orientation" || geometry !== "mirror" || axis !== "Y") continue;
+    if (rule.ui_hidden === true || String(rule.status || "").trim().toLowerCase() === "deprecated") continue;
+    if (stage !== "final_orientation" || geometry !== "mirror" || !["X", "Y"].includes(axis)) continue;
     if (profileScope && technologyProfile && profileScope !== technologyProfile) continue;
     if (!catalogRuleTargetMatchesContext(rule, documentSem, config)) continue;
     if (rule.condition && !evaluateCatalogRuleCondition(rule.condition, parameters)) continue;
-    rules.push({
+    candidates.push({
       rule_id: String(rule.rule_id || "").trim(),
       axis,
       normalize_bbox: action.normalize_bbox !== false,
-      text_policy: String(action.text_policy || "").trim() || null
+      text_policy: String(action.text_policy || "").trim() || null,
+      label: rule.label || null
     });
   }
-  return rules;
+  return candidates.filter((rule) => rule.rule_id);
+}
+
+function executableFinalOrientationRules(session, config) {
+  const activeRefs = new Set(activeRuleRefs(session));
+  return finalOrientationRuleCandidates(session, config)
+    .filter((rule) => activeRefs.has(rule.rule_id))
+    .map((rule) => ({
+      rule_id: rule.rule_id,
+      axis: rule.axis,
+      normalize_bbox: rule.normalize_bbox,
+      text_policy: rule.text_policy
+    }));
+}
+
+function missingFinalOrientationWarnings(session, config, appliedRules = []) {
+  if (Array.isArray(appliedRules) && appliedRules.length) return [];
+  const activeRefs = new Set(activeRuleRefs(session));
+  const candidates = finalOrientationRuleCandidates(session, config)
+    .filter((rule) => !activeRefs.has(rule.rule_id));
+  if (!candidates.length) return [];
+  return [{
+    code: "MISSING_FINAL_ORIENTATION_RULE",
+    severity: "warning",
+    message: "Opening side matches final orientation mirror rule(s), but none are active in Document SEM. Add one explicit document rule_ref before trusting Combined Child Preview.",
+    candidate_rule_refs: candidates.map((rule) => rule.rule_id),
+    candidate_axes: candidates.map((rule) => ({ rule_id: rule.rule_id, axis: rule.axis })),
+    active_rule_refs: Array.from(activeRefs)
+  }];
 }
 
 function materializeFinalOrientationRulesOnDocument(outputDocument, session, config) {
@@ -4065,7 +4357,7 @@ function materializeFinalOrientationRulesOnDocument(outputDocument, session, con
   for (const rule of rules) {
     let affectedCount = 0;
     for (const entity of Array.isArray(outputDocument?.entities) ? outputDocument.entities : []) {
-      if (mirrorEntityAcrossYAxis(entity)) affectedCount += 1;
+      if (mirrorEntityAcrossAxis(entity, rule.axis)) affectedCount += 1;
     }
     applied.push({
       rule_id: rule.rule_id,
@@ -4340,7 +4632,7 @@ function materializeChildLabelsOnDocument(outputDocument, session) {
     const keys = group.info.keys || {};
     const rotation = Number(keys.rotation || action.rotation || 0);
     const textEntityId = nextRuntimeEntityId(outputDocument);
-    const payload = String(action.payload_template || ";|{{WORKORDERCODE}}|{{MODEL}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}");
+    const payload = String(action.payload_template || ";|{{WORKORDERCODE}}|{{TIP_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}").replaceAll("{{MODEL}}", "{{TIP_VRATA}}");
     const textEntity = makeRuntimeTextEntity({
       id: textEntityId,
       x: center.x,
@@ -4399,6 +4691,31 @@ function setLineRuntimeEntityShape(entity, shape) {
   setRuntimePairValue(entity, "11", roundNumber(values[2], 3));
   setRuntimePairValue(entity, "21", roundNumber(values[3], 3));
   return true;
+}
+
+function setRuntimeEntityShape(entity, shape) {
+  if (!entity || !shape) return false;
+  const type = String(entity.type || "").toUpperCase();
+  if (type === "LINE" && shape.kind === "line") {
+    return setLineRuntimeEntityShape(entity, shape);
+  }
+  if ((type === "CIRCLE" || type === "ARC") && (shape.kind === "circle" || shape.kind === "arc")) {
+    const centerX = Number(shape.centerX);
+    const centerY = Number(shape.centerY);
+    const radius = Number(shape.radius);
+    if (![centerX, centerY, radius].every(Number.isFinite)) return false;
+    setRuntimePairValue(entity, "10", roundNumber(centerX, 3));
+    setRuntimePairValue(entity, "20", roundNumber(centerY, 3));
+    setRuntimePairValue(entity, "40", roundNumber(Math.abs(radius), 3));
+    if (type === "ARC" && shape.kind === "arc") {
+      const startAngle = Number(shape.startAngle);
+      const endAngle = Number(shape.endAngle);
+      if (Number.isFinite(startAngle)) setRuntimePairValue(entity, "50", roundNumber(startAngle, 3));
+      if (Number.isFinite(endAngle)) setRuntimePairValue(entity, "51", roundNumber(endAngle, 3));
+    }
+    return true;
+  }
+  return false;
 }
 
 function lineEndpointPoint(shape, endpointName) {
@@ -5370,6 +5687,13 @@ function validateCombinedPreviewGeometry(objects, items, topologyMode) {
 function simulateChildPreview(session) {
   const view = projectViewModel(session);
   const config = normalizeConfigParameterSet(session.config_parameter_set);
+  const resolverRuleContext = {
+    rule_catalog: normalizeRuleCatalogSnapshot(session.rule_catalog),
+    configParameterSet: config,
+    family: config.family,
+    product: config.product,
+    part: config.part
+  };
   const topoRuntime = view.topo_metadata && view.topo_metadata.runtime_model
     ? view.topo_metadata.runtime_model
     : null;
@@ -5378,13 +5702,16 @@ function simulateChildPreview(session) {
     ? runResolverPreview({
       profile: "standard_parametric_resize",
       objects: view.objects,
-      configParameterSet: config
+      configParameterSet: config,
+      ruleContext: resolverRuleContext
     })
     : buildIdentitySimulationMap(view.objects, topologyMode);
   let documentRuleExecution = { applied_rules: [] };
   let postTopoRuleExecution = { applied_rules: [] };
   let topoSimulationMap = null;
   let activeSimulationMap = standardSimulationMap;
+  let coreShellFourBandShadow = null;
+  let semEffectiveGeometryFilter = null;
 
   if (topologyMode === "none") {
     documentRuleExecution = applyDocumentRulesToSimulationMap(
@@ -5410,6 +5737,35 @@ function simulateChildPreview(session) {
       standardSimulationMap
     );
     activeSimulationMap = topoSimulationMap || standardSimulationMap;
+    if (topologyMode === "4_band_parameter_resize" && topoRuntime?.profile === "standard_parametric_resize") {
+      try {
+        semEffectiveGeometryFilter = buildSemEffectiveGeometryFilter(view.objects, config.parameters);
+        const coreShellFourBandShadowResult = runFourBandParameterResizeShadowPreview({
+          objects: semEffectiveGeometryFilter.included_objects,
+          configParameterSet: config,
+          topoRuntimeModel: topoRuntime,
+          activeSimulationMap,
+          ruleContext: resolverRuleContext
+        });
+        coreShellFourBandShadow = {
+          ...coreShellFourBandShadowResult.summary,
+          preview_visualization: true,
+          effective_geometry_filter: semEffectiveGeometryFilter.summary
+        };
+        activeSimulationMap = coreShellFourBandShadowResult.shadow_map;
+      } catch (err) {
+        coreShellFourBandShadow = {
+          mode: "core_shell_4_band_parameter_resize_shadow_v1",
+          active: false,
+          diagnostic_only: true,
+          behavior_change: false,
+          production_activation_status: "not_approved",
+          cleanup_approval: "no",
+          error: err?.message || String(err),
+          validation: err?.validation || null
+        };
+      }
+    }
   }
   postTopoRuleExecution = applyPostTopoRulesToSimulationMap(
     session,
@@ -5417,7 +5773,8 @@ function simulateChildPreview(session) {
     config.parameters,
     activeSimulationMap
   );
-  const finalSimulationMap = activeSimulationMap;
+  const finalOrientationPreview = applyFinalOrientationRulesToSimulationMap(session, config, activeSimulationMap);
+  const finalSimulationMap = finalOrientationPreview.simulation_map;
   const limitator = normalizeBooleanLike(config.parameters.LIMITATOR);
   const brava = config.parameters.BRAVA == null ? null : String(config.parameters.BRAVA);
   const items = view.objects.map((object) => {
@@ -5425,23 +5782,14 @@ function simulateChildPreview(session) {
     const firstSem = parsedSemRecords.length ? parsedSemRecords[0] : null;
     const semKeys = firstSem?.keys || {};
     const partHint = semKeys.part || semKeys.target || config.product_code || null;
-    const presenceEval = evaluatePresenceInstruction(parsedSemRecords, config.parameters);
-    const variantEval = presenceEval.included
-      ? evaluateVariantInstruction(parsedSemRecords, config.parameters)
-      : {
-          record: null,
-          included: true,
-          exclusion_reason: null,
-          variant: null,
-          feature: null,
-          actual: null
-        };
-    const geometryOps = presenceEval.included && variantEval.included
-      ? collectGeometryOperations(parsedSemRecords)
-      : [];
+    const childInclusion = semEffectiveGeometryFilter?.inclusion_by_object_id.get(object.id)
+      || evaluateChildEntityInclusion(object, config.parameters);
+    const presenceEval = childInclusion.presence;
+    const variantEval = childInclusion.variant;
+    const geometryOps = childInclusion.geometry_ops;
     const aggregated = {
-      included: presenceEval.included && variantEval.included,
-      exclusion_reason: presenceEval.included ? variantEval.exclusion_reason : presenceEval.exclusion_reason,
+      included: childInclusion.included,
+      exclusion_reason: childInclusion.exclusion_reason,
       geometry_ops: geometryOps
     };
     const opHint = presenceEval.operation_hint || semKeys.presence || null;
@@ -5505,6 +5853,38 @@ function simulateChildPreview(session) {
   });
 
   const validation = validateCombinedPreviewGeometry(view.objects, items, topologyMode);
+  const topologyDeltaWarnings = Array.isArray(coreShellFourBandShadow?.topology_delta_warnings)
+    ? coreShellFourBandShadow.topology_delta_warnings
+    : [];
+  for (const warning of topologyDeltaWarnings) {
+    validation.warnings.push({
+      code: warning.code || "TOPOLOGY_DELTA_WARNING",
+      severity: "warning",
+      message: warning.message || "Topology delta modifier warning.",
+      object_id: null,
+      entity_id: null,
+      display_label: "Core Shell 4-band resolver",
+      details: cloneJson(warning)
+    });
+  }
+  const finalOrientationWarnings = missingFinalOrientationWarnings(
+    session,
+    config,
+    finalOrientationPreview.applied_rules
+  );
+  for (const warning of finalOrientationWarnings) {
+    validation.warnings.push({
+      code: warning.code || "FINAL_ORIENTATION_WARNING",
+      severity: "warning",
+      message: warning.message || "Final orientation warning.",
+      object_id: null,
+      entity_id: null,
+      display_label: "Final orientation resolver",
+      details: cloneJson(warning)
+    });
+  }
+  validation.counts.warnings = validation.warnings.length;
+  validation.ok = validation.errors.length === 0;
 
   return {
     session_id: session.session_id,
@@ -5520,8 +5900,103 @@ function simulateChildPreview(session) {
       sem_bound_count: items.filter((item) => (item.semantic_metadata?.raw_comments || []).length > 0).length,
       document_rules_applied: documentRuleExecution.applied_rules || [],
       post_topo_rules_applied: postTopoRuleExecution.applied_rules || [],
+      final_orientation_rules_applied: finalOrientationPreview.applied_rules || [],
+      final_orientation_warnings: finalOrientationWarnings,
+      final_orientation_bbox_normalization: finalOrientationPreview.bbox_normalization || null,
+      core_shell_4_band_shadow: coreShellFourBandShadow,
       validation_counts: validation.counts
     }
+  };
+}
+
+function materializeCoreShellFourBandShadowDocument(session, parameterSet) {
+  const config = normalizeConfigParameterSet(parameterSet || session.config_parameter_set || DEFAULT_KSKR_EXECUTION_CHECK_PARAMETER_SET);
+  const simulation = simulateChildPreview({
+    ...session,
+    config_parameter_set: config
+  });
+  if (simulation.topology_mode !== "4_band_parameter_resize") {
+    throw new Error("Core Shell shadow DXF export requires 4-band topology metadata.");
+  }
+  const shadowSummary = simulation.summary?.core_shell_4_band_shadow || null;
+  if (!shadowSummary || shadowSummary.active !== false) {
+    throw new Error("Core Shell 4-band shadow summary is missing or not in diagnostic mode.");
+  }
+
+  const outputDocument = materializeDocumentForExport(session);
+  const itemByEntityId = new Map((simulation.items || []).map((item) => [String(item.entity_id || ""), item]));
+  const removedEntityIds = [];
+  const updatedEntityIds = [];
+  const skippedEntityIds = [];
+  outputDocument.entities = (Array.isArray(outputDocument.entities) ? outputDocument.entities : []).filter((entity) => {
+    const item = itemByEntityId.get(String(entity.id || ""));
+    if (!item) return true;
+    if (item.preview?.visible === false || item.preview?.included === false) {
+      removedEntityIds.push(entity.id);
+      return false;
+    }
+    return true;
+  });
+
+  const outputEntities = entityMapById(outputDocument);
+  for (const item of simulation.items || []) {
+    if (item.preview?.visible === false || item.preview?.included === false) continue;
+    const entity = outputEntities.get(String(item.entity_id || ""));
+    if (!entity) {
+      skippedEntityIds.push(item.entity_id);
+      continue;
+    }
+    const shapes = Array.isArray(item.preview?.simulated_shapes) ? item.preview.simulated_shapes : [];
+    if (shapes.length !== 1) {
+      skippedEntityIds.push(item.entity_id);
+      continue;
+    }
+    if (setRuntimeEntityShape(entity, shapes[0])) {
+      updatedEntityIds.push(item.entity_id);
+    } else {
+      skippedEntityIds.push(item.entity_id);
+    }
+  }
+
+  const finalChildExecution = finalizeChildDocument(outputDocument, session, config);
+  return {
+    document: outputDocument,
+    simulation,
+    generation_summary: {
+      mode: "core_shell_4_band_shadow_child_dxf_v0",
+      diagnostic_only: true,
+      production_activation_status: "not_approved",
+      cleanup_approval: "no",
+      topology_mode: simulation.topology_mode,
+      object_count: simulation.summary?.object_count ?? simulation.items.length,
+      included_count: simulation.items.filter((item) => item.preview?.included !== false).length,
+      excluded_count: simulation.items.filter((item) => item.preview?.included === false).length,
+      removed_entity_count: removedEntityIds.length,
+      updated_entity_count: updatedEntityIds.length,
+      skipped_entity_count: Array.from(new Set(skippedEntityIds.filter(Boolean))).length,
+      removed_entity_ids: removedEntityIds,
+      updated_entity_ids: Array.from(new Set(updatedEntityIds.filter(Boolean))),
+      skipped_entity_ids: Array.from(new Set(skippedEntityIds.filter(Boolean))),
+      core_shell_4_band_shadow: shadowSummary,
+      block_explosion: finalChildExecution.block_explosion,
+      final_orientation_rules_applied: finalChildExecution.final_orientation.applied_rules || [],
+      bbox_normalization: finalChildExecution.bbox_normalization,
+      final_gap_repair: finalChildExecution.final_gap_repair,
+      child_label_rules_applied: finalChildExecution.child_label.applied_rules || [],
+      child_label_removed_anchor_entities: finalChildExecution.child_label.removed_anchor_entities || [],
+      child_label_emitted_text_entities: finalChildExecution.child_label.emitted_text_entities || [],
+      layer_policy: finalChildExecution.layer_policy,
+      metadata_cleanup: finalChildExecution.metadata_cleanup
+    }
+  };
+}
+
+function generateCoreShellFourBandShadowChildDxf(session, parameterSet) {
+  const materialized = materializeCoreShellFourBandShadowDocument(session, parameterSet);
+  return {
+    config_parameter_set: materialized.simulation.config_parameter_set,
+    generation_summary: materialized.generation_summary,
+    dxf_text: serializeDocument(materialized.document)
   };
 }
 
@@ -5944,7 +6419,7 @@ async function updateSessionMeta({ sessionId, title, status, storeRoot }) {
   return session;
 }
 
-async function authorSemanticMetadata({ sessionId, entityId, entityIds, operation, parameter, expectedValue, semanticComment, storeRoot }) {
+async function authorSemanticMetadata({ sessionId, entityId, entityIds, operation, parameter, expectedValue, semanticComment, replaceSemanticComment, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
   const rawComment = buildSemanticCommentFromRule({
     operation,
@@ -5959,8 +6434,9 @@ async function authorSemanticMetadata({ sessionId, entityId, entityIds, operatio
   if (!normalizedIds.length) {
     throw new Error("Select one or more entities before applying semantic metadata.");
   }
+  const replaceComment = String(replaceSemanticComment || "").trim();
   for (const targetEntityId of normalizedIds) {
-    upsertSemanticComment(session.document, targetEntityId, rawComment);
+    upsertSemanticComment(session.document, targetEntityId, rawComment, replaceComment);
   }
   appendSessionActivity(session, {
     type: "semantic_metadata_assigned",
@@ -5971,7 +6447,8 @@ async function authorSemanticMetadata({ sessionId, entityId, entityIds, operatio
     details: {
       entity_count: normalizedIds.length,
       sample_entity_ids: sampleValues(normalizedIds),
-      semantic_comment: rawComment
+      semantic_comment: rawComment,
+      replaced_semantic_comment: replaceComment || null
     }
   });
   session.updated_at = new Date().toISOString();
@@ -6083,6 +6560,31 @@ async function runKskrExecutionCheck({ sessionId, parameterSet, storeRoot }) {
         ...(parameterSet && typeof parameterSet === "object" ? parameterSet : {})
       }
     })
+  };
+}
+
+async function generateCoreShellFourBandShadowChildDxfForSession({ sessionId, parameterSet, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const config = normalizeConfigParameterSet(parameterSet || session.config_parameter_set || DEFAULT_KSKR_EXECUTION_CHECK_PARAMETER_SET);
+  const result = generateCoreShellFourBandShadowChildDxf(session, config);
+  appendSessionActivity(session, {
+    type: "core_shell_4_band_shadow_child_dxf_exported",
+    severity: "warn",
+    summary: "Core Shell 4-band shadow DXF exported for external viewer validation.",
+    details: {
+      mode: result.generation_summary?.mode || "core_shell_4_band_shadow_child_dxf_v0",
+      diagnostic_only: true,
+      production_activation_status: "not_approved",
+      updated_entity_count: result.generation_summary?.updated_entity_count ?? null,
+      removed_entity_count: result.generation_summary?.removed_entity_count ?? null
+    }
+  });
+  session.updated_at = new Date().toISOString();
+  session.artifact_state = "mother_draft";
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return {
+    session,
+    ...result
   };
 }
 
@@ -6211,6 +6713,8 @@ module.exports = {
   updateEntityXdataMetadata,
   simulateSession,
   runKskrExecutionCheck,
+  generateCoreShellFourBandShadowChildDxf,
+  generateCoreShellFourBandShadowChildDxfForSession,
   generateChildDxfNoTopo,
   generateChildDxfNoTopoForSession,
   generateChildDxfTopoPoc,

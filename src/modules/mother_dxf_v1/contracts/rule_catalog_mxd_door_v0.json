@@ -22,7 +22,7 @@
       },
       "action": {
         "geometry": "offset",
-        "axis": "Y",
+        "axis": "X",
         "value_mm": 9.5,
         "post_repair": "bounded_trim_rejoin"
       },
@@ -98,7 +98,7 @@
         "carrier_color": 1,
         "carrier_h_align": 1,
         "carrier_v_align": 2,
-        "payload_template": ";|{{WORKORDERCODE}}|{{MODEL}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}",
+        "payload_template": ";|{{WORKORDERCODE}}|{{TIP_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}",
         "payload_fields": {
           "DIMENSION_SHORT": "format({{SIRINA_VRATA_DIV10}}x{{VISINA_VRATA_DIV10}})",
           "SIRINA_VRATA_DIV10": "number_expr(SIRINA_VRATA/10,integer)",
@@ -110,9 +110,9 @@
     },
     "DOOR_SX_DX_MIRROR": {
       "rule_id": "DOOR_SX_DX_MIRROR",
-      "label": "Door SX/DX final orientation mirror",
+      "label": "Deprecated alias - use explicit X/Y SX-DX mirror rule",
       "profile_scope": "OPS_S4P4",
-      "description": "Raw DXF je DX orijentacija. Za Lijeva (SX) i Inverzna lijeva (INV SX) child geometrija se finalno mirror-a oko Y osi i zatim normalizira u bbox ishodište.",
+      "description": "Deprecated compatibility alias for older sessions. New authoring must choose DOOR_SX_DX_MIRROR_X_UNSTACKED or DOOR_SX_DX_MIRROR_Y_STACKED explicitly.",
       "target_scope": {
         "family": "VRATA",
         "products": [
@@ -134,11 +134,149 @@
         "stage": "final_orientation",
         "priority": 100,
         "geometry": "mirror",
-        "axis": "Y",
+        "axis": "X",
         "normalize_bbox": true,
         "text_policy": "keep_upright"
       },
+      "status": "deprecated",
+      "ui_hidden": true
+    },
+    "KSKR_HIDDEN_CLOSER_LEFT_SHORTEN": {
+      "rule_id": "KSKR_HIDDEN_CLOSER_LEFT_SHORTEN",
+      "label": "KSKR hidden closer left band +5 mm",
+      "profile_scope": "OPS_S4P4",
+      "description": "Za KSKR, ako je HIDRAULICKI_ZATVARAC Skriveni, korigiraj finalni 4-band L offset za dodatnih +5 mm po X osi prije egzekucije band movementa.",
+      "target_scope": {
+        "family": "VRATA",
+        "products": [
+          "PPV"
+        ],
+        "parts": [
+          "KSKR"
+        ]
+      },
+      "condition": {
+        "parameter": "HIDRAULICKI_ZATVARAC",
+        "operator": "==",
+        "value": "Skriveni"
+      },
+      "action": {
+        "stage": "topology_delta_modifier",
+        "target_band": "L",
+        "axis": "X",
+        "delta": 5,
+        "unit": "mm",
+        "corner_scope": "derived_adjacent"
+      },
       "status": "draft"
+    },
+    "KSKR_EXTERNAL_DOOR_RIGHT_SHORTEN": {
+      "rule_id": "KSKR_EXTERNAL_DOOR_RIGHT_SHORTEN",
+      "label": "KSKR external door right band -30 mm",
+      "profile_scope": "OPS_S4P4",
+      "description": "Za KSKR, ako je VANJSKA_VRATA Da, korigiraj finalni 4-band R offset za dodatnih -30 mm po X osi prije egzekucije band movementa.",
+      "target_scope": {
+        "family": "VRATA",
+        "products": [
+          "PPV"
+        ],
+        "parts": [
+          "KSKR"
+        ]
+      },
+      "condition": {
+        "parameter": "VANJSKA_VRATA",
+        "operator": "==",
+        "value": "Da"
+      },
+      "action": {
+        "stage": "topology_delta_modifier",
+        "target_band": "R",
+        "axis": "X",
+        "delta": -30,
+        "unit": "mm",
+        "corner_scope": "derived_adjacent",
+        "warning_on_superposition": true
+      },
+      "status": "draft"
+    },
+    "DOOR_SX_DX_MIRROR_X_UNSTACKED": {
+      "rule_id": "DOOR_SX_DX_MIRROR_X_UNSTACKED",
+      "label": "Door SX/DX mirror X - unstacked parts",
+      "profile_scope": "OPS_S4P4",
+      "condition": {
+        "parameter": "STRANA_OTVARANJA",
+        "operator": "IN",
+        "values": [
+          "Lijeva (SX)",
+          "Inverzna lijeva (INV SX)"
+        ]
+      },
+      "target_scope": {
+        "family": "VRATA",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "KSKR",
+          "OBRA",
+          "OSPY",
+          "OBRIT",
+          "OMET"
+        ]
+      },
+      "status": "draft",
+      "description": "Za nestackirane partove KSKR/OBRA/OSPY/OBRIT/OMET, Lijeva (SX) i Inverzna lijeva (INV SX) finalno mirroraju child geometriju oko X osi radi downstream left/right koordinatne konvencije.",
+      "action": {
+        "stage": "final_orientation",
+        "priority": 100,
+        "geometry": "mirror",
+        "axis": "X",
+        "normalize_bbox": true,
+        "text_policy": "keep_upright"
+      }
+    },
+    "DOOR_SX_DX_MIRROR_Y_STACKED": {
+      "rule_id": "DOOR_SX_DX_MIRROR_Y_STACKED",
+      "label": "Door SX/DX mirror Y - stacked parts",
+      "profile_scope": "OPS_S4P4",
+      "condition": {
+        "parameter": "STRANA_OTVARANJA",
+        "operator": "IN",
+        "values": [
+          "Lijeva (SX)",
+          "Inverzna lijeva (INV SX)"
+        ]
+      },
+      "target_scope": {
+        "family": "VRATA",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "LBRA",
+          "LBRIT",
+          "LHOR",
+          "LMET",
+          "SBRA",
+          "SBRIT",
+          "SHOR",
+          "KDDV",
+          "KDLV",
+          "KDHOR",
+          "PS"
+        ]
+      },
+      "status": "draft",
+      "description": "Za stackirane partove LBRA/LBRIT/LHOR/LMET/SBRA/SBRIT/SHOR/KDDV/KDLV/KDHOR/PS, Lijeva (SX) i Inverzna lijeva (INV SX) finalno mirroraju child geometriju oko Y osi radi downstream nesting konvencije.",
+      "action": {
+        "stage": "final_orientation",
+        "priority": 100,
+        "geometry": "mirror",
+        "axis": "Y",
+        "normalize_bbox": true,
+        "text_policy": "keep_upright"
+      }
     }
   }
 }

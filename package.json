@@ -34,7 +34,8 @@
     "resolver:status": "node tests/resolver_harness/show_resolver_extraction_status.js",
     "resolver:sequencing-risk": "node tests/resolver_harness/show_resolver_sequencing_risk.js",
     "resolver:stage-boundaries": "node tests/resolver_harness/show_resolver_stage_boundaries.js",
-    "resolver:integral-shadow": "node tests/resolver_harness/show_integral_resolver_shadow.js"
+    "resolver:integral-shadow": "node tests/resolver_harness/show_integral_resolver_shadow.js",
+    "resolver:strict-probe": "node tests/resolver_harness/check_core_shell_strict_probe.js"
   },
   "keywords": [],
   "author": "",

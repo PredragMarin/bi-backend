@@ -249,7 +249,60 @@ What should remain inside module domain logic:
 - module-specific artifact interpretation
 - module-specific parsing that is not clearly reusable platform behavior
 
-## 10. Known Gaps and Non-goals
+## 10. DXF Resolver Contract Addendum
+
+This addendum captures completed shared resolver functionality as it is rounded off, so Mother DXF and future DBR batch processing do not drift into separate resolver semantics.
+
+### Mother DXF / DBR Resolver Boundary
+
+- Mother DXF is the operator-facing authoring, inspection, and preview UI.
+- DBR is the future headless batch consumer and must not depend on Mother DXF UI/runtime internals.
+- Core Shell resolver services are the shared engine boundary between them.
+- Completed resolver capabilities must be written here before DBR production use is approved.
+
+### 4-band Parameter Resize Slice
+
+Status: Core Shell 4-band preview resolver confirmed for shadow visualization; DBR production activation remains not approved.
+
+Current completed contract surface:
+
+- file-level metadata mode: `TOPO:mode=4_band_parameter_resize`
+- resolver profile: `profile=standard_parametric_resize`
+- required base band mapping keys: `l_parameter`, `r_parameter`, `t_parameter`, `b_parameter`
+- required nominal keys: `l_nominal`, `r_nominal`, `t_nominal`, `b_nominal`
+- required axis keys: `l_axis=X`, `r_axis=X`, `t_axis=Y`, `b_axis=Y`
+- required factor keys: `l_delta_factor`, `r_delta_factor`, `t_delta_factor`, `b_delta_factor`
+- corner behavior: `TL/TR/BL/BR` are derived from adjacent base band deltas
+
+Confirmed Core Shell preview resolver slice:
+
+- Core Shell now normalizes the saved `4_band_parameter_resize` runtime model into `standard_parametric_resize` band offsets when the runtime model is passed explicitly.
+- `L/R/T/B` offsets are computed from `(parameter actual - nominal) * delta_factor` on the declared axis.
+- `TL/TR/BL/BR` offsets are derived by adding adjacent base-band offsets.
+- Optional `RULE:stage=topology_delta_modifier` catalog rules may adjust final base-band offsets after base 4-band delta calculation and before movement execution. They target a base band (`L`, `R`, `T`, or `B`) and axis, and corner bands inherit through the normal adjacent-band composition.
+- KSKR-specific draft catalog rules are accepted in shadow/diagnostic mode: `KSKR_HIDDEN_CLOSER_LEFT_SHORTEN` applies `L.X += +5` when `HIDRAULICKI_ZATVARAC==Skriveni`; Core Shell emits `SUPERPOSED_TOPOLOGY_DELTA` warnings for catalog rules marked with `warning_on_superposition=true` when that modifier adds to an existing band offset in the same direction; `KSKR_EXTERNAL_DOOR_RIGHT_SHORTEN` applies `R.X += -30` when `VANJSKA_VRATA==Da`.
+- 4-band inference policy is `explicit_layer_only`: circle/arc/insert follower behavior must come from explicit primary layer assignment such as `BL/BR/TL/TR`, not from geometric proximity heuristics.
+- Mother DXF `/simulate` resolves entity-level `SEM` presence/variant filters into an effective geometry set before invoking the Core Shell 4-band shadow resolver.
+- The Core Shell 4-band shadow map is rendered as preview-only `simulated_shapes` for operator inspection.
+- Mother DXF may export a diagnostic `core_shell_4_band_shadow_child_dxf_v0` DXF for external viewer validation; it must carry `diagnostic_only=true` and `production_activation_status=not_approved` and must not be treated as DBR production child generation.
+- Final child materialization order is SEM effective geometry, TOPO movement, post-TOPO offsets, final orientation mirror, bbox normalization to minX=0/minY=0, then child label TEXT emission. This keeps label text from being mirrored.
+- Final orientation mirror is now explicit by axis. `DOOR_SX_DX_MIRROR_X_UNSTACKED` mirrors unstacked parts (`KSKR`, `OBRA`, `OSPY`, `OBRIT`, `OMET`) around X. `DOOR_SX_DX_MIRROR_Y_STACKED` mirrors stacked parts (`LBRA`, `LBRIT`, `LHOR`, `LMET`, `SBRA`, `SBRIT`, `SHOR`, `KDDV`, `KDLV`, `KDHOR`, `PS`) around Y. Deprecated `DOOR_SX_DX_MIRROR` remains only as a compatibility alias for older sessions. Mother DXF preview must emit `MISSING_FINAL_ORIENTATION_RULE` when parameters and part scope match a final-orientation candidate but no explicit document `rule_ref` is active.
+- This preview visualization remains diagnostic-only and must not be treated as DBR child DXF generation or production activation.
+- The shadow summary must report `active=false`, `diagnostic_only=true`, `behavior_change=false`, `production_activation_status=not_approved`, and `cleanup_approval=no`.
+
+Boundary rule:
+
+- Mother DXF may author and save this metadata.
+- Core Shell owns the shared resolver profile semantics.
+- DBR must consume this through Core Shell resolver entry points, not by importing Mother DXF runtime.
+
+Not yet approved:
+
+- strict Core Shell native session projection for this slice
+- DBR child DXF generation from this slice
+- removal of legacy Mother DXF fallback behavior
+
+## 11. Known Gaps and Non-goals
 
 Known gaps:
 - runtime contract is still hybrid
@@ -265,7 +318,7 @@ Non-goals of this draft:
 - pretending that auth, roles, logging, or job orchestration are already solved
 - forcing all filesystem writes into one abstraction immediately
 
-## 11. Near-term Implementation Implications
+## 12. Near-term Implementation Implications
 
 For ongoing work, this draft implies:
 - new shared/platform capability work should prefer `src/core_shell/*`

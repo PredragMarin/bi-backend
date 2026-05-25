@@ -11,6 +11,7 @@ const READINESS_REPORT_PATH = path.join(REPORT_DIR, "extraction_readiness_report
 const ACTIVATION_REPORT_PATH = path.join(REPORT_DIR, "activation_candidate_report.json");
 const SHADOW_REPORT_PATH = path.join(REPORT_DIR, "shadow_parity_report.json");
 const INTEGRAL_SHADOW_REPORT_PATH = path.join(REPORT_DIR, "integral_resolver_shadow_report.json");
+const STRICT_PROBE_REPORT_PATH = path.join(REPORT_DIR, "core_shell_strict_probe_report.json");
 const STATUS_REPORT_PATH = path.join(REPORT_DIR, "resolver_extraction_status_report.json");
 const STATUS_MD_PATH = path.join(REPORT_DIR, "resolver_extraction_status_report.md");
 
@@ -21,7 +22,8 @@ const CHECKS = [
   { id: "shadow_parity", script: "check_resolver_shadow_parity.js" },
   { id: "sequencing_risk", script: "show_resolver_sequencing_risk.js" },
   { id: "stage_boundaries", script: "show_resolver_stage_boundaries.js" },
-  { id: "integral_shadow", script: "show_integral_resolver_shadow.js" }
+  { id: "integral_shadow", script: "show_integral_resolver_shadow.js" },
+  { id: "strict_probe", script: "check_core_shell_strict_probe.js" }
 ];
 
 function numeric(value) {
@@ -76,7 +78,7 @@ function cleanupApprovalFrom(assertions) {
   return "review_required";
 }
 
-function buildStatus({ checkResults, assertions, activation, shadow, integralShadow }) {
+function buildStatus({ checkResults, assertions, activation, shadow, integralShadow, strictProbe }) {
   const extraction = assertions?.extraction_readiness || {};
   const blockerKinds = extraction.blocker_kind_counts || {};
   const plan = assertions?.resolver_plan || {};
@@ -160,6 +162,11 @@ function buildStatus({ checkResults, assertions, activation, shadow, integralSha
         manual_review: numeric(integralShadow?.summary?.manual_review),
         blocked: numeric(integralShadow?.summary?.blocked),
         category_counts: integralShadow?.summary?.category_counts || {}
+      },
+      strict_probe: {
+        checked: numeric(strictProbe?.summary?.checked),
+        strict_refusals_without_legacy: numeric(strictProbe?.summary?.strict_refusals_without_legacy),
+        failures: numeric(strictProbe?.summary?.failures)
       }
     },
     source_reports: {
@@ -167,7 +174,8 @@ function buildStatus({ checkResults, assertions, activation, shadow, integralSha
       readiness: path.relative(ROOT, READINESS_REPORT_PATH),
       activation_candidates: path.relative(ROOT, ACTIVATION_REPORT_PATH),
       shadow_parity: path.relative(ROOT, SHADOW_REPORT_PATH),
-      integral_shadow: path.relative(ROOT, INTEGRAL_SHADOW_REPORT_PATH)
+      integral_shadow: path.relative(ROOT, INTEGRAL_SHADOW_REPORT_PATH),
+      strict_probe: path.relative(ROOT, STRICT_PROBE_REPORT_PATH)
     },
     next_recommended_step: sequencingBlockers > 0
       ? "Address sequencing-risk path before production activation or cleanup."
@@ -221,7 +229,8 @@ function main() {
   const activation = readJsonIfExists(ACTIVATION_REPORT_PATH);
   const shadow = readJsonIfExists(SHADOW_REPORT_PATH);
   const integralShadow = readJsonIfExists(INTEGRAL_SHADOW_REPORT_PATH);
-  const report = buildStatus({ checkResults, assertions, activation, shadow, integralShadow });
+  const strictProbe = readJsonIfExists(STRICT_PROBE_REPORT_PATH);
+  const report = buildStatus({ checkResults, assertions, activation, shadow, integralShadow, strictProbe });
   fs.writeFileSync(STATUS_REPORT_PATH, JSON.stringify(report, null, 2) + "\n");
   fs.writeFileSync(STATUS_MD_PATH, markdown(report));
 
@@ -237,6 +246,7 @@ function main() {
   console.log("- shadow parity: " + report.summary.shadow_parity.passed + "/" + report.summary.shadow_parity.checked + " passed");
   console.log("- readiness candidates/review/blocked: " + report.summary.readiness.candidates + "/" + report.summary.readiness.review + "/" + report.summary.readiness.blocked);
   console.log("- integral shadow candidates/review/blocked: " + report.summary.integral_resolver_shadow.candidates + "/" + report.summary.integral_resolver_shadow.manual_review + "/" + report.summary.integral_resolver_shadow.blocked);
+  console.log("- strict probe refusals/failures: " + report.summary.strict_probe.strict_refusals_without_legacy + "/" + report.summary.strict_probe.failures);
   console.log("- next: " + report.next_recommended_step);
 
   const failed = checkResults.filter((item) => !item.ok);

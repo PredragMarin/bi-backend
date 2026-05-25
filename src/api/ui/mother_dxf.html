@@ -335,86 +335,166 @@
             </div>
           </div>
           <div id="authoringStageToolbar" class="toolbar" style="margin-bottom:12px">
-            <button id="authoringStageTopoBtn" type="button" class="secondary">Stage 1: TOPO</button>
-            <button id="authoringStageSemBtn" type="button" class="secondary">Stage 2: SEM</button>
+            <button id="authoringStageTopoBtn" type="button" class="secondary">TOPO Setup</button>
+            <button id="authoringStageSemBtn" type="button" class="secondary">SEM Filters</button>
           </div>
-          <div id="authoringStageMeta" class="meta" style="margin-bottom:10px">Stage 1 definira part topology. Stage 2 otvara entity-level `SEM` authoring.</div>
+          <div id="authoringStageMeta" class="meta" style="margin-bottom:10px">Execution order: SEM presence/variant filters define effective geometry before TOPO resolver preview.</div>
           <div id="topoStagePanel">
             <div id="topoMeta" class="meta" style="margin-bottom:8px">No active TOPO metadata.</div>
             <div class="grid-2">
-              <label>Mode
-                <input id="topoMode" type="text" value="fixed_envelope_slide" readonly />
-              </label>
-              <label>Group
-                <input id="topoGroup" type="text" value="LBRA_X_SLIDE" />
-              </label>
-            </div>
-            <div class="grid-2" style="margin-top:10px">
-              <label>Axis
-                <input id="topoAxis" type="text" value="X" readonly />
-              </label>
-            </div>
-            <div id="topoParameterRowA" class="grid-2" style="margin-top:10px">
-              <label>LEC parameter
-                <select id="topoLecParameter">
-                  <option value="">No catalog loaded</option>
+              <label>Topology Family
+                <select id="topoFamily">
+                  <option value="fixed_envelope_slide">fixed envelope slide</option>
+                  <option value="four_band_parameter_resize">4-band parameter resize</option>
+                  <option value="none">none / skip topology</option>
                 </select>
               </label>
-              <label>LEC nominal
-                <input id="topoLecNominal" type="number" step="0.001" />
-              </label>
+              <div class="meta" id="topoFamilyMeta" style="display:flex;align-items:end">
+                Choose the topology family for this session. 4-band uses L/R/T/B mapping; fixed-envelope uses LEC/REC mover authoring.
+              </div>
             </div>
-            <div id="topoParameterRowB" class="grid-2" style="margin-top:10px">
-              <label>REC parameter
-                <select id="topoRecParameter">
-                  <option value="">No catalog loaded</option>
-                </select>
-              </label>
-              <label>REC nominal
-                <input id="topoRecNominal" type="number" step="0.001" />
-              </label>
-            </div>
-            <div class="grid-2" style="margin-top:10px">
-              <label>Delta rule
-                <input id="topoDeltaRule" type="text" value="config_minus_nominal" readonly />
-              </label>
-              <label>Trim policy
-                <input id="topoTrimPolicy" type="text" value="rejoin" readonly />
-              </label>
-            </div>
-            <div class="grid-2" style="margin-top:10px">
-              <label>lec_delta_factor
-                <input id="topoLecDeltaFactor" type="number" step="0.1" value="-1.0" />
-              </label>
-              <label>rec_delta_factor
-                <input id="topoRecDeltaFactor" type="number" step="0.1" value="1.0" />
-              </label>
-            </div>
-            <label style="margin-top:10px;display:block">Generated file-level `999`
-              <textarea id="topoInput" style="min-height:88px" readonly></textarea>
-            </label>
-            <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
-              <div id="topoEntityMeta" class="meta" style="margin-bottom:8px">Select one entity for entity-level TOPO role preview.</div>
-              <div class="grid-2">
-                <label>Role
-                  <select id="topoEntityRole">
-                    <option value="none">none</option>
-                    <option value="mover">mover</option>
-                  </select>
+            <div id="topoFixedEnvelopePanel">
+              <div class="grid-2" style="margin-top:10px">
+                <label>Mode
+                  <input id="topoMode" type="text" value="fixed_envelope_slide" readonly />
                 </label>
-                <label>Zone
-                  <select id="topoEntityZone">
-                    <option value="LEC">LEC</option>
-                    <option value="REC">REC</option>
-                  </select>
+                <label>Group
+                  <input id="topoGroup" type="text" value="LBRA_X_SLIDE" />
                 </label>
               </div>
-              <label style="margin-top:10px;display:block">Group reference
-                <input id="topoEntityGroup" type="text" value="LBRA_X_SLIDE" readonly />
+              <div class="grid-2" style="margin-top:10px">
+                <label>Axis
+                  <input id="topoAxis" type="text" value="X" readonly />
+                </label>
+              </div>
+              <div id="topoParameterRowA" class="grid-2" style="margin-top:10px">
+                <label>LEC parameter
+                  <select id="topoLecParameter">
+                    <option value="">No catalog loaded</option>
+                  </select>
+                </label>
+                <label>LEC nominal
+                  <input id="topoLecNominal" type="number" step="0.001" />
+                </label>
+              </div>
+              <div id="topoParameterRowB" class="grid-2" style="margin-top:10px">
+                <label>REC parameter
+                  <select id="topoRecParameter">
+                    <option value="">No catalog loaded</option>
+                  </select>
+                </label>
+                <label>REC nominal
+                  <input id="topoRecNominal" type="number" step="0.001" />
+                </label>
+              </div>
+              <div class="grid-2" style="margin-top:10px">
+                <label>Delta rule
+                  <input id="topoDeltaRule" type="text" value="config_minus_nominal" readonly />
+                </label>
+                <label>Trim policy
+                  <input id="topoTrimPolicy" type="text" value="rejoin" readonly />
+                </label>
+              </div>
+              <div class="grid-2" style="margin-top:10px">
+                <label>lec_delta_factor
+                  <input id="topoLecDeltaFactor" type="number" step="0.1" value="-1.0" />
+                </label>
+                <label>rec_delta_factor
+                  <input id="topoRecDeltaFactor" type="number" step="0.1" value="1.0" />
+                </label>
+              </div>
+              <label style="margin-top:10px;display:block">Generated file-level `999`
+                <textarea id="topoInput" style="min-height:88px" readonly></textarea>
               </label>
-              <label style="margin-top:10px;display:block">Generated entity-level `999`
-                <textarea id="topoEntityInput" style="min-height:72px" readonly></textarea>
+              <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
+                <div id="topoEntityMeta" class="meta" style="margin-bottom:8px">Select one entity for entity-level TOPO role preview.</div>
+                <div class="grid-2">
+                  <label>Role
+                    <select id="topoEntityRole">
+                      <option value="none">none</option>
+                      <option value="mover">mover</option>
+                    </select>
+                  </label>
+                  <label>Zone
+                    <select id="topoEntityZone">
+                      <option value="LEC">LEC</option>
+                      <option value="REC">REC</option>
+                    </select>
+                  </label>
+                </div>
+                <label style="margin-top:10px;display:block">Group reference
+                  <input id="topoEntityGroup" type="text" value="LBRA_X_SLIDE" readonly />
+                </label>
+                <label style="margin-top:10px;display:block">Generated entity-level `999`
+                  <textarea id="topoEntityInput" style="min-height:72px" readonly></textarea>
+                </label>
+              </div>
+            </div>
+            <div id="topoFourBandPanel" style="display:none;border:1px dashed var(--line);border-radius:8px;padding:12px;margin-top:10px">
+              <div class="meta"><strong>4-band parameter resize</strong></div>
+              <div class="meta" style="margin-top:6px">
+                Ovaj family koristi kanonski `L/R/T/B/TL/TR/BL/BR` resize model. Primary semantic layer određuje kojem bandu entitet pripada, a mapping ispod definira koji parametar i koja nominala pokreću pojedini band.
+              </div>
+              <div class="grid-2" style="margin-top:10px">
+                <label>Mode
+                  <input id="topoFourBandMode" type="text" value="4_band_parameter_resize" readonly />
+                </label>
+                <label>Profile
+                  <input id="topoFourBandProfile" type="text" value="standard_parametric_resize" readonly />
+                </label>
+              </div>
+              <div class="meta" style="margin-top:10px">
+                Band assignment source: postojeći primary semantic layers. Za klasifikaciju koristi `Selection` i `Force Assign Layer`; ovdje definiraš samo parameter mapping i nominal delta logiku.
+              </div>
+              <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+                <div class="meta" style="margin-bottom:8px"><strong>Parameter mapping</strong></div>
+                <div style="display:grid;grid-template-columns:minmax(48px,64px) minmax(54px,64px) minmax(160px,1fr) minmax(110px,140px) minmax(110px,140px);gap:8px;align-items:end">
+                  <div class="meta"><strong>Band</strong></div>
+                  <div class="meta"><strong>Axis</strong></div>
+                  <div class="meta"><strong>Parameter</strong></div>
+                  <div class="meta"><strong>Nominal</strong></div>
+                  <div class="meta"><strong>Factor</strong></div>
+
+                  <div class="meta"><strong>L</strong></div>
+                  <input id="topo4BandAxisL" type="text" value="X" readonly />
+                  <select id="topo4BandParameterL"><option value="">No numeric catalog parameters</option></select>
+                  <input id="topo4BandNominalL" type="number" step="0.001" />
+                  <input id="topo4BandFactorL" type="number" step="0.1" value="-1.0" />
+
+                  <div class="meta"><strong>R</strong></div>
+                  <input id="topo4BandAxisR" type="text" value="X" readonly />
+                  <select id="topo4BandParameterR"><option value="">No numeric catalog parameters</option></select>
+                  <input id="topo4BandNominalR" type="number" step="0.001" />
+                  <input id="topo4BandFactorR" type="number" step="0.1" value="1.0" />
+
+                  <div class="meta"><strong>T</strong></div>
+                  <input id="topo4BandAxisT" type="text" value="Y" readonly />
+                  <select id="topo4BandParameterT"><option value="">No numeric catalog parameters</option></select>
+                  <input id="topo4BandNominalT" type="number" step="0.001" />
+                  <input id="topo4BandFactorT" type="number" step="0.1" value="0.5" />
+
+                  <div class="meta"><strong>B</strong></div>
+                  <input id="topo4BandAxisB" type="text" value="Y" readonly />
+                  <select id="topo4BandParameterB"><option value="">No numeric catalog parameters</option></select>
+                  <input id="topo4BandNominalB" type="number" step="0.001" />
+                  <input id="topo4BandFactorB" type="number" step="0.1" value="0.5" />
+                </div>
+              </div>
+              <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+                <div class="meta"><strong>Derived corner behavior</strong></div>
+                <div class="meta" style="margin-top:6px">
+                  `TL = L + T`, `TR = R + T`, `BL = L + B`, `BR = R + B`. Kutni bandovi nasljeđuju pomak oba susjedna banda; ovdje se ne authoraju zasebni corner parametri.
+                </div>
+              </div>
+              <label style="margin-top:10px;display:block">Generated draft `999`
+                <textarea id="topoFourBandPreview" style="min-height:96px" readonly></textarea>
               </label>
+            </div>
+            <div id="topoNonePanel" style="display:none;border:1px dashed var(--line);border-radius:8px;padding:12px;margin-top:10px">
+              <div class="meta"><strong>No topology authoring</strong></div>
+              <div class="meta" style="margin-top:6px">
+                Odaberi ovu opciju ako za session želiš preskočiti TOPO i prijeći na SEM nakon spremanja ili preskakanja Stage 1.
+              </div>
             </div>
             <label style="margin-top:10px;display:block">Saved TOPO state
               <pre id="topoOut">{"ok":false,"note":"TOPO not loaded yet."}</pre>
@@ -427,7 +507,7 @@
                   <button id="focusAllLecTopoTargetsBtn" class="secondary" type="button">Focus all LEC</button>
                   <button id="focusAllRecTopoTargetsBtn" class="secondary" type="button">Focus all REC</button>
                 </div>
-                <div class="grid-2">
+                <div id="topoInspectorFixedEnvelopeGrid" class="grid-2">
                   <div>
                     <div class="meta" style="margin-bottom:6px"><strong>LEC targets</strong></div>
                     <div id="topoInspectorLecList" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div>
@@ -436,6 +516,16 @@
                     <div class="meta" style="margin-bottom:6px"><strong>REC targets</strong></div>
                     <div id="topoInspectorRecList" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div>
                   </div>
+                </div>
+                <div id="topoInspectorFourBandGrid" style="display:none;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+                  <div><div class="meta" style="margin-bottom:6px"><strong>L</strong></div><div id="topoInspectorBandL" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div></div>
+                  <div><div class="meta" style="margin-bottom:6px"><strong>R</strong></div><div id="topoInspectorBandR" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div></div>
+                  <div><div class="meta" style="margin-bottom:6px"><strong>T</strong></div><div id="topoInspectorBandT" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div></div>
+                  <div><div class="meta" style="margin-bottom:6px"><strong>B</strong></div><div id="topoInspectorBandB" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div></div>
+                  <div><div class="meta" style="margin-bottom:6px"><strong>TL</strong></div><div id="topoInspectorBandTL" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div></div>
+                  <div><div class="meta" style="margin-bottom:6px"><strong>TR</strong></div><div id="topoInspectorBandTR" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div></div>
+                  <div><div class="meta" style="margin-bottom:6px"><strong>BL</strong></div><div id="topoInspectorBandBL" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div></div>
+                  <div><div class="meta" style="margin-bottom:6px"><strong>BR</strong></div><div id="topoInspectorBandBR" class="selection-box" style="min-height:88px;max-height:180px;overflow:auto"></div></div>
                 </div>
               </label>
             </div>
@@ -548,6 +638,8 @@
               <button id="applyMetadataBtn" class="secondary" disabled>Apply Metadata</button>
               <button id="assignMicroShiftSetBtn" class="secondary" disabled>Assign MICRO_SHIFT_SET to Selection</button>
               <button id="clearMetadataBtn" class="secondary" disabled>Clear Metadata</button>
+              <button id="focusSameMetadataBtn" class="secondary" disabled>Focus Same Metadata</button>
+              <button id="loadMetadataEditBtn" class="secondary" disabled>Load Metadata for Edit</button>
             </div>
             <div id="microShiftSetStatus" class="meta" style="margin-top:8px">MICRO_SHIFT_SET assignment not run yet.</div>
           </details>
@@ -655,6 +747,7 @@
             </div>
             <div class="measure-cluster">
               <button id="measureToggleBtn" type="button" class="secondary">Measure</button>
+              <button id="hashToggleBtn" type="button" class="secondary">HASH</button>
               <div id="measureBox" class="selection measure-box"><div class="meta">Measure mode off.</div></div>
             </div>
           </div>
@@ -684,6 +777,9 @@
         pointA: null,
         pointB: null,
         hoverPoint: null
+      },
+      hashLabels: {
+        enabled: false
       },
       xdata: {
         mode: "assign",
@@ -722,7 +818,10 @@
         activeMode: "ALL"
       },
       sessionSummaries: [],
-      microShiftAssigning: false
+      microShiftAssigning: false,
+      metadataEdit: {
+        replaceSemanticComment: null
+      }
     };
 
     const LAYERS = ["L","R","T","B","TL","TR","BL","BR","A"];
@@ -835,10 +934,31 @@
     const ruleCatalogOut = document.getElementById("ruleCatalogOut");
     const measureBox = document.getElementById("measureBox");
     const measureToggleBtn = document.getElementById("measureToggleBtn");
+    const hashToggleBtn = document.getElementById("hashToggleBtn");
     const viewerModeBadge = document.getElementById("viewerModeBadge");
     const topoInput = document.getElementById("topoInput");
     const topoMeta = document.getElementById("topoMeta");
     const topoOut = document.getElementById("topoOut");
+    const topoFamily = document.getElementById("topoFamily");
+    const topoFamilyMeta = document.getElementById("topoFamilyMeta");
+    const topoFixedEnvelopePanel = document.getElementById("topoFixedEnvelopePanel");
+    const topoFourBandPanel = document.getElementById("topoFourBandPanel");
+    const topoNonePanel = document.getElementById("topoNonePanel");
+    const topoFourBandMode = document.getElementById("topoFourBandMode");
+    const topoFourBandProfile = document.getElementById("topoFourBandProfile");
+    const topoFourBandParameterL = document.getElementById("topo4BandParameterL");
+    const topoFourBandParameterR = document.getElementById("topo4BandParameterR");
+    const topoFourBandParameterT = document.getElementById("topo4BandParameterT");
+    const topoFourBandParameterB = document.getElementById("topo4BandParameterB");
+    const topoFourBandNominalL = document.getElementById("topo4BandNominalL");
+    const topoFourBandNominalR = document.getElementById("topo4BandNominalR");
+    const topoFourBandNominalT = document.getElementById("topo4BandNominalT");
+    const topoFourBandNominalB = document.getElementById("topo4BandNominalB");
+    const topoFourBandFactorL = document.getElementById("topo4BandFactorL");
+    const topoFourBandFactorR = document.getElementById("topo4BandFactorR");
+    const topoFourBandFactorT = document.getElementById("topo4BandFactorT");
+    const topoFourBandFactorB = document.getElementById("topo4BandFactorB");
+    const topoFourBandPreview = document.getElementById("topoFourBandPreview");
     const topoMode = document.getElementById("topoMode");
     const topoGroup = document.getElementById("topoGroup");
     const topoParameterRowA = document.getElementById("topoParameterRowA");
@@ -858,8 +978,18 @@
     const topoEntityGroup = document.getElementById("topoEntityGroup");
     const topoEntityInput = document.getElementById("topoEntityInput");
     const topoInspectorMeta = document.getElementById("topoInspectorMeta");
+    const topoInspectorFixedEnvelopeGrid = document.getElementById("topoInspectorFixedEnvelopeGrid");
+    const topoInspectorFourBandGrid = document.getElementById("topoInspectorFourBandGrid");
     const topoInspectorLecList = document.getElementById("topoInspectorLecList");
     const topoInspectorRecList = document.getElementById("topoInspectorRecList");
+    const topoInspectorBandL = document.getElementById("topoInspectorBandL");
+    const topoInspectorBandR = document.getElementById("topoInspectorBandR");
+    const topoInspectorBandT = document.getElementById("topoInspectorBandT");
+    const topoInspectorBandB = document.getElementById("topoInspectorBandB");
+    const topoInspectorBandTL = document.getElementById("topoInspectorBandTL");
+    const topoInspectorBandTR = document.getElementById("topoInspectorBandTR");
+    const topoInspectorBandBL = document.getElementById("topoInspectorBandBL");
+    const topoInspectorBandBR = document.getElementById("topoInspectorBandBR");
     const documentSemSummaryPanel = document.getElementById("documentSemSummaryPanel");
     const documentSemEditorPanel = document.getElementById("documentSemEditorPanel");
     const documentSemMeta = document.getElementById("documentSemMeta");
@@ -1253,11 +1383,18 @@
     function rawRefLabel(rawRef) {
       if (!rawRef || typeof rawRef !== "object") return "";
       const parts = [];
-      if (rawRef.handle) parts.push(`H=${rawRef.handle}`);
-      if (rawRef.line_start) parts.push(`Ln${rawRef.line_start}`);
-      if (rawRef.block_name) parts.push(`block=${rawRef.block_name}`);
-      if (rawRef.parent_insert_handle) parts.push(`parentH=${rawRef.parent_insert_handle}`);
+      if (rawRef.handle) parts.push("H=" + rawRef.handle);
+      if (rawRef.line_start) parts.push("Ln" + rawRef.line_start);
+      if (rawRef.block_name) parts.push("block=" + rawRef.block_name);
+      if (rawRef.parent_insert_handle) parts.push("parentH=" + rawRef.parent_insert_handle);
       return parts.join(" | ");
+    }
+
+    function rawHashLabel(rawRef) {
+      if (!rawRef || typeof rawRef !== "object") return "";
+      if (rawRef.handle) return String(rawRef.handle);
+      if (rawRef.parent_insert_handle) return String(rawRef.parent_insert_handle);
+      return "";
     }
 
     function isObjectVisibleInVariantContext(object) {
@@ -1675,6 +1812,11 @@
       };
     }
 
+    function renderHashToggleButton() {
+      hashToggleBtn.textContent = state.hashLabels.enabled ? "HASH ON" : "HASH";
+      hashToggleBtn.classList.toggle("good", state.hashLabels.enabled);
+    }
+
     function renderMeasurementBox() {
       const { enabled, pointA, pointB } = state.measure;
       if (!enabled) {
@@ -1699,6 +1841,60 @@
         `<div class="selection-item"><strong>${esc(pointBInfo)}</strong></div>`,
         `<div class="selection-item"><strong>${esc(metrics)}</strong></div>`
       ].join("");
+    }
+
+    function shapeHashLabelAnchor(shape) {
+      if (!shape) return null;
+      if (shape.kind === "line") {
+        return { x: (Number(shape.x1) + Number(shape.x2)) / 2, y: (Number(shape.y1) + Number(shape.y2)) / 2 };
+      }
+      if (shape.kind === "circle") {
+        return { x: Number(shape.centerX), y: Number(shape.centerY) };
+      }
+      if (shape.kind === "arc") {
+        const midAngle = (Number(shape.startAngle) + Number(shape.endAngle)) / 2;
+        return arcPoint(shape, midAngle);
+      }
+      return null;
+    }
+
+    function objectHashLabelAnchor(object) {
+      const shapes = effectiveShapesForObject(object);
+      if (shapes.length === 1) return shapeHashLabelAnchor(shapes[0]);
+      const bbox = effectiveBBoxForObject(object);
+      if (!bbox) return null;
+      return { x: (bbox.minX + bbox.maxX) / 2, y: (bbox.minY + bbox.maxY) / 2 };
+    }
+
+    function drawHashLabelsOverlay() {
+      if (!state.hashLabels.enabled || !state.session) return;
+      ctx.save();
+      ctx.font = "bold 14px Segoe UI";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = 1;
+      for (const object of effectiveRenderObjects() || []) {
+        if (!isObjectVisibleInSimulation(object.id)) continue;
+        if (!isObjectVisibleInVariantContext(object)) continue;
+        const label = rawHashLabel(object.raw_ref) || object.display_label || object.id;
+        if (!label) continue;
+        const anchor = objectHashLabelAnchor(object);
+        if (!anchor) continue;
+        const screen = worldToScreen(anchor);
+        if (screen.x < -40 || screen.x > canvas.clientWidth + 40 || screen.y < -40 || screen.y > canvas.clientHeight + 40) continue;
+        const paddingX = 4;
+        const metrics = ctx.measureText(label);
+        const width = Math.ceil(metrics.width + paddingX * 2);
+        const height = 18;
+        const x = Math.max(paddingX, Math.min(canvas.clientWidth - width + paddingX, screen.x - width / 2 + paddingX));
+        const y = Math.max(10, Math.min(canvas.clientHeight - 10, screen.y - 10));
+        ctx.fillStyle = "rgba(255,255,255,0.82)";
+        ctx.fillRect(x - paddingX, y - height / 2, width, height);
+        ctx.strokeStyle = "rgba(17,24,39,0.22)";
+        ctx.strokeRect(x - paddingX, y - height / 2, width, height);
+        ctx.fillStyle = state.selectedIds.has(object.id) ? "#dc2626" : "#111827";
+        ctx.fillText(label, x, y + 0.5);
+      }
+      ctx.restore();
     }
 
     function drawMeasurementOverlay() {
@@ -2187,7 +2383,7 @@
       labelValidationBox.textContent = validation.message;
       labelValidationBox.style.color = validation.tone === "error" ? "#b42318" : validation.tone === "ok" ? "#166534" : "#92400e";
       labelGenerated999.value = labelGeneratedComment(payload) ? `999\n${labelGeneratedComment(payload)}` : "";
-      labelPayloadPreview.textContent = "Payload template: ;|{{WORKORDERCODE}}|{{MODEL}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}";
+      labelPayloadPreview.textContent = "Payload template: ;|{{WORKORDERCODE}}|{{TIP_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}";
       saveLabelDefinitionBtn.disabled = validation.tone === "error" || !Number.isFinite(payload.x) || !Number.isFinite(payload.y);
       clearLabelDefinitionBtn.disabled = !state.session || !saved;
       pickLabelPositionBtn.textContent = state.labelDefinition.pickMode ? "Picking... click canvas" : "Pick Label Position";
@@ -2943,7 +3139,11 @@
         feature: item.feature,
         variant: item.applies_to_variant,
         expression: item.expression,
-        status: item.status
+        status: item.status,
+        stage: item.action?.stage || null,
+        axis: item.action?.axis || null,
+        target_parts: Array.isArray(item.target_scope?.parts) ? item.target_scope.parts : null,
+        ui_hidden: item.ui_hidden === true
       })), null, 2);
       metadataRuleRef.innerHTML = [`<option value="">No rule ref</option>`]
         .concat(rules.map((item) => `<option value="${esc(item.rule_id)}">${esc(item.rule_id)} | ${esc(item.label || "")}</option>`))
@@ -2974,15 +3174,44 @@
       return inferPartFromSourceName(state.session?.source_name || "");
     }
 
+    function ruleStageAxisLabel(rule) {
+      const action = rule && typeof rule.action === "object" ? rule.action : {};
+      const stage = String(action.stage || "").trim();
+      const axis = String(action.axis || "").trim();
+      if (stage && axis) return `${stage} axis=${axis}`;
+      if (axis) return `axis=${axis}`;
+      return stage || "";
+    }
+
+    function ruleScopeLabel(rule) {
+      const scope = rule && typeof rule.target_scope === "object" ? rule.target_scope : {};
+      const parts = Array.isArray(scope.parts) ? scope.parts.join(",") : String(scope.parts || "").trim();
+      return parts ? `parts=${parts}` : "";
+    }
+
+    function ruleOptionLabel(rule) {
+      const bits = [rule.rule_id, rule.label, ruleStageAxisLabel(rule), ruleScopeLabel(rule)]
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+      return bits.join(" | ");
+    }
+
+    function isRuleHiddenForAuthoring(rule) {
+      const status = String(rule?.status || "").trim().toLowerCase();
+      return rule?.ui_hidden === true || status === "deprecated";
+    }
+
     function availableDocumentRules() {
       const rules = currentRuleEntries();
       const profileId = String(state.session?.rule_catalog?.profile_id || "").trim().toUpperCase();
+      const technologyProfile = String(state.session?.config_parameter_set?.technology_profile || "").trim().toUpperCase();
       return rules.filter((rule) => {
+        if (isRuleHiddenForAuthoring(rule)) return false;
         const scope = String(rule?.profile_scope || "").trim().toUpperCase();
         if (!scope || scope === "GENERIC") return true;
         if (scope === "MXD" && profileId.includes("MXD")) return true;
         if (scope === "INOX" && profileId.includes("INOX")) return true;
-        return !profileId || profileId.includes(scope);
+        return !profileId || profileId.includes(scope) || technologyProfile === scope || technologyProfile.includes(scope);
       });
     }
 
@@ -2994,7 +3223,7 @@
     function syncDocumentSemRuleOptions() {
       const rules = availableDocumentRules();
       documentSemRuleRef.innerHTML = [`<option value="">No rule ref</option>`]
-        .concat(rules.map((rule) => `<option value="${esc(rule.rule_id)}">${esc(rule.rule_id)} | ${esc(rule.label || "")}</option>`))
+        .concat(rules.map((rule) => `<option value="${esc(rule.rule_id)}">${esc(ruleOptionLabel(rule))}</option>`))
         .join("");
     }
 
@@ -3145,8 +3374,26 @@
       return Boolean(topo && Array.isArray(topo.raw_comments) && topo.raw_comments.length);
     }
 
+    function activeTopoRuntimeModel() {
+      return state.session && state.session.topo_metadata
+        ? state.session.topo_metadata.runtime_model || null
+        : null;
+    }
+
+    function activeTopoMode() {
+      return String(activeTopoRuntimeModel()?.mode || "").trim();
+    }
+
+    function isFixedEnvelopeTopoConfigured() {
+      return hasTopoConfigured() && activeTopoMode() === "fixed_envelope_slide";
+    }
+
+    function isFourBandTopoConfigured() {
+      return hasTopoConfigured() && activeTopoMode() === "4_band_parameter_resize";
+    }
+
     function canOpenSemStage() {
-      return Boolean(state.session) && hasDocumentSemConfigured() && (hasTopoConfigured() || state.authoring.topoSkipped);
+      return Boolean(state.session) && hasDocumentSemConfigured();
     }
 
     function parseMetadataPairs(rawValue, prefix) {
@@ -3223,12 +3470,132 @@
       return `TOPO:role=${role};group=${String(topoGroup.value || "LBRA_X_SLIDE").trim()};zone=${String(topoEntityZone.value || "LEC").trim()}`;
     }
 
+    function activeTopoFamily() {
+      return String(topoFamily?.value || "fixed_envelope_slide").trim() || "fixed_envelope_slide";
+    }
+
+    function renderTopoFamilyPanels() {
+      const family = activeTopoFamily();
+      const isFixedEnvelope = family === "fixed_envelope_slide";
+      topoFixedEnvelopePanel.style.display = isFixedEnvelope ? "block" : "none";
+      topoFourBandPanel.style.display = family === "four_band_parameter_resize" ? "block" : "none";
+      topoNonePanel.style.display = family === "none" ? "block" : "none";
+      if (family === "four_band_parameter_resize") {
+        topoFamilyMeta.textContent = "4-band authoring is active: map L/R/T/B bands to catalog parameters and use Preview Enriched Child for Core Shell shadow visualization.";
+      } else if (family === "none") {
+        topoFamilyMeta.textContent = "TOPO authoring je preskočen u UI prikazu; možeš prijeći na SEM nakon spremanja ili Skip akcije.";
+      } else {
+        topoFamilyMeta.textContent = "Fixed-envelope authoring is active: use LEC/REC parameter pairs and entity mover roles for the legacy TOPO child preview path.";
+      }
+    }
+
+    function currentNumericCatalogParameters() {
+      return currentCatalogParameters().filter((item) => String(item?.type || "").trim().toLowerCase() === "number");
+    }
+
+    function buildTopoParameterOptionHtml(parameters) {
+      return parameters
+        .map((item) => `<option value="${esc(item.key)}">${esc(item.code || item.key)} | ${esc(item.label || "")}</option>`)
+        .join("");
+    }
+
+    function ensureSelectValue(select, value, fallback) {
+      const next = String(value || "").trim();
+      const normalizedFallback = String(fallback || "").trim();
+      if (next && Array.from(select.options).some((option) => option.value === next)) {
+        select.value = next;
+        return;
+      }
+      if (normalizedFallback && Array.from(select.options).some((option) => option.value === normalizedFallback)) {
+        select.value = normalizedFallback;
+        return;
+      }
+      select.value = select.options[0]?.value || "";
+    }
+
+    function syncTopoFourBandParameterOptions() {
+      const parameters = currentNumericCatalogParameters();
+      const selects = [topoFourBandParameterL, topoFourBandParameterR, topoFourBandParameterT, topoFourBandParameterB];
+      if (!parameters.length) {
+        selects.forEach((select) => {
+          select.innerHTML = `<option value="">No numeric catalog parameters</option>`;
+        });
+        return;
+      }
+      const options = buildTopoParameterOptionHtml(parameters);
+      selects.forEach((select) => {
+        const previous = select.value;
+        select.innerHTML = options;
+        ensureSelectValue(select, previous, "");
+      });
+      ensureSelectValue(topoFourBandParameterL, topoFourBandParameterL.value, "VISINA_VRATA");
+      ensureSelectValue(topoFourBandParameterR, topoFourBandParameterR.value, "SKRACENJE");
+      ensureSelectValue(topoFourBandParameterT, topoFourBandParameterT.value, "SIRINA_VRATA");
+      ensureSelectValue(topoFourBandParameterB, topoFourBandParameterB.value, "SIRINA_VRATA");
+    }
+
+    function buildGeneratedTopoFourBandComment() {
+      return [
+        "TOPO:mode=4_band_parameter_resize",
+        "profile=standard_parametric_resize",
+        `l_parameter=${String(topoFourBandParameterL.value || "").trim()}` ,
+        `l_nominal=${numberText(topoFourBandNominalL.value, state.session?.document_sem?.nominal_height || 2100)}` ,
+        "l_axis=X",
+        `l_delta_factor=${numberText(topoFourBandFactorL.value, -1.0)}` ,
+        `r_parameter=${String(topoFourBandParameterR.value || "").trim()}` ,
+        `r_nominal=${numberText(topoFourBandNominalR.value, 0)}` ,
+        "r_axis=X",
+        `r_delta_factor=${numberText(topoFourBandFactorR.value, 1.0)}` ,
+        `t_parameter=${String(topoFourBandParameterT.value || "").trim()}` ,
+        `t_nominal=${numberText(topoFourBandNominalT.value, state.session?.document_sem?.nominal_width || 900)}` ,
+        "t_axis=Y",
+        `t_delta_factor=${numberText(topoFourBandFactorT.value, 0.5)}` ,
+        `b_parameter=${String(topoFourBandParameterB.value || "").trim()}` ,
+        `b_nominal=${numberText(topoFourBandNominalB.value, state.session?.document_sem?.nominal_width || 900)}` ,
+        "b_axis=Y",
+        `b_delta_factor=${numberText(topoFourBandFactorB.value, 0.5)}` ,
+        "corner_behavior=derived_from_adjacent_bands"
+      ].join(";");
+    }
+
+    function syncTopoFourBandDefaults() {
+      syncTopoFourBandParameterOptions();
+      if (!String(topoFourBandNominalL.value || "").trim()) topoFourBandNominalL.value = state.session?.document_sem?.nominal_height || 2100;
+      if (!String(topoFourBandNominalR.value || "").trim()) topoFourBandNominalR.value = 0;
+      if (!String(topoFourBandNominalT.value || "").trim()) topoFourBandNominalT.value = state.session?.document_sem?.nominal_width || 900;
+      if (!String(topoFourBandNominalB.value || "").trim()) topoFourBandNominalB.value = state.session?.document_sem?.nominal_width || 900;
+      if (!String(topoFourBandFactorL.value || "").trim()) topoFourBandFactorL.value = "-1.0";
+      if (!String(topoFourBandFactorR.value || "").trim()) topoFourBandFactorR.value = "1.0";
+      if (!String(topoFourBandFactorT.value || "").trim()) topoFourBandFactorT.value = "0.5";
+      if (!String(topoFourBandFactorB.value || "").trim()) topoFourBandFactorB.value = "0.5";
+      topoFourBandPreview.value = buildGeneratedTopoFourBandComment() ? `999\n${buildGeneratedTopoFourBandComment()}` : "";
+    }
+
+    function fourBandTargetsByLayer() {
+      const sessionObjects = state.session && Array.isArray(state.session.objects) ? state.session.objects : [];
+      const bands = ["L", "R", "T", "B", "TL", "TR", "BL", "BR"];
+      const result = Object.fromEntries(bands.map((band) => [band, []]));
+      sessionObjects.forEach((object) => {
+        const layer = String(object?.primary_layer || "").trim().toUpperCase();
+        if (result[layer]) result[layer].push(object);
+      });
+      return result;
+    }
     function syncTopoFormFromSession() {
       const raw = state.session && state.session.topo_metadata && Array.isArray(state.session.topo_metadata.raw_comments)
-        ? state.session.topo_metadata.raw_comments.find((value) => String(value || "").includes("mode=fixed_envelope_slide")) || ""
+        ? state.session.topo_metadata.raw_comments.find((value) => String(value || "").includes("mode=4_band_parameter_resize"))
+          || state.session.topo_metadata.raw_comments.find((value) => String(value || "").includes("mode=fixed_envelope_slide"))
+          || ""
         : "";
       const parsed = parseMetadataPairs(raw, "TOPO");
       syncTopoParameterOptions(parsed.lec_parameter, parsed.rec_parameter);
+      if (raw && parsed.mode === "4_band_parameter_resize") {
+        topoFamily.value = "four_band_parameter_resize";
+      } else if (raw) {
+        topoFamily.value = "fixed_envelope_slide";
+      } else if (!["fixed_envelope_slide", "four_band_parameter_resize", "none"].includes(activeTopoFamily())) {
+        topoFamily.value = "fixed_envelope_slide";
+      }
       topoMode.value = "fixed_envelope_slide";
       topoGroup.value = parsed.group || "LBRA_X_SLIDE";
       topoAxis.value = "X";
@@ -3244,9 +3611,26 @@
       topoTrimPolicy.value = "rejoin";
       topoLecDeltaFactor.value = parsed.lec_delta_factor || "-1.0";
       topoRecDeltaFactor.value = parsed.rec_delta_factor || "1.0";
+      if (parsed.mode === "4_band_parameter_resize") {
+        syncTopoFourBandParameterOptions();
+        ensureSelectValue(topoFourBandParameterL, parsed.l_parameter, "VISINA_VRATA");
+        ensureSelectValue(topoFourBandParameterR, parsed.r_parameter, "SKRACENJE");
+        ensureSelectValue(topoFourBandParameterT, parsed.t_parameter, "SIRINA_VRATA");
+        ensureSelectValue(topoFourBandParameterB, parsed.b_parameter, "SIRINA_VRATA");
+        topoFourBandNominalL.value = parsed.l_nominal || state.session?.document_sem?.nominal_height || 2100;
+        topoFourBandNominalR.value = parsed.r_nominal || 0;
+        topoFourBandNominalT.value = parsed.t_nominal || state.session?.document_sem?.nominal_width || 900;
+        topoFourBandNominalB.value = parsed.b_nominal || state.session?.document_sem?.nominal_width || 900;
+        topoFourBandFactorL.value = parsed.l_delta_factor || "-1.0";
+        topoFourBandFactorR.value = parsed.r_delta_factor || "1.0";
+        topoFourBandFactorT.value = parsed.t_delta_factor || "0.5";
+        topoFourBandFactorB.value = parsed.b_delta_factor || "0.5";
+      }
       syncTopoZoneOptions();
       topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
       topoInput.value = buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
+      syncTopoFourBandDefaults();
+      renderTopoFamilyPanels();
       syncTopoEntityInput();
     }
 
@@ -3254,6 +3638,8 @@
       syncTopoZoneOptions();
       topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
       topoInput.value = buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
+      syncTopoFourBandDefaults();
+      renderTopoFamilyPanels();
       syncTopoEntityInput();
       if (state.session) renderTopoInspector();
     }
@@ -3270,6 +3656,21 @@
     }
 
     function setTopoControlsDisabled(disabled) {
+      topoFamily.disabled = disabled;
+      topoFourBandMode.disabled = disabled;
+      topoFourBandProfile.disabled = disabled;
+      topoFourBandParameterL.disabled = disabled;
+      topoFourBandParameterR.disabled = disabled;
+      topoFourBandParameterT.disabled = disabled;
+      topoFourBandParameterB.disabled = disabled;
+      topoFourBandNominalL.disabled = disabled;
+      topoFourBandNominalR.disabled = disabled;
+      topoFourBandNominalT.disabled = disabled;
+      topoFourBandNominalB.disabled = disabled;
+      topoFourBandFactorL.disabled = disabled;
+      topoFourBandFactorR.disabled = disabled;
+      topoFourBandFactorT.disabled = disabled;
+      topoFourBandFactorB.disabled = disabled;
       topoMode.disabled = disabled;
       topoGroup.disabled = disabled;
       topoAxis.disabled = disabled;
@@ -3296,18 +3697,19 @@
       }
       topoStagePanel.style.display = state.authoring.activeStage === "topo" ? "block" : "none";
       semStagePanel.style.display = state.authoring.activeStage === "sem" ? "block" : "none";
-      authoringStageTopoBtn.textContent = hasTopoConfigured() ? "Edit TOPO" : "Stage 1: TOPO";
-      authoringStageSemBtn.textContent = "Stage 2: SEM";
+      authoringStageTopoBtn.textContent = hasTopoConfigured() ? "Edit TOPO Setup" : "TOPO Setup";
+      authoringStageSemBtn.textContent = "SEM Filters";
       authoringStageSemBtn.disabled = !semEnabled;
       document.getElementById("skipTopoBtn").disabled = !state.session || !hasDocumentSemConfigured();
+      renderTopoFamilyPanels();
       if (state.authoring.activeStage === "topo") {
         authoringStageMeta.textContent = hasDocumentSemConfigured()
-          ? "Stage 1 definira file-level TOPO metadata za part topology prije entity-level SEM authoringa."
+          ? "TOPO setup definira topology contract. Execution preview resolves SEM presence/variant filters into effective geometry before the 4-band TOPO resolver."
           : "Prvo spremi Document SEM identity; TOPO authoring je zaključan dok document-level SEM ne postoji.";
       } else {
         authoringStageMeta.textContent = hasTopoConfigured()
-          ? "Stage 2 koristi spremljeni TOPO context i otvara entity-level SEM authoring."
-          : "Stage 2 je otvoren bez TOPO metadata jer je topology setup preskočen za ovaj session.";
+          ? "SEM filters define presence/variant effective geometry before TOPO resolver movement. This is the elimination step used by 4-band shadow preview."
+          : "SEM filters can be authored before or without TOPO; resolver preview applies them as effective geometry when TOPO is active.";
       }
     }
 
@@ -3379,12 +3781,43 @@
     }
 
     function renderTopoInspector() {
+      const family = activeTopoFamily();
+      const focusSelectedBtn = document.getElementById("focusSelectedTopoTargetsBtn");
+      const focusAllLecBtn = document.getElementById("focusAllLecTopoTargetsBtn");
+      const focusAllRecBtn = document.getElementById("focusAllRecTopoTargetsBtn");
       if (!state.session) {
         topoInspectorMeta.textContent = "No TOPO target overview yet.";
-        topoInspectorLecList.innerHTML = `<div class="selection-item">No active session.</div>`;
-        topoInspectorRecList.innerHTML = `<div class="selection-item">No active session.</div>`;
+        topoInspectorFixedEnvelopeGrid.style.display = family === "fixed_envelope_slide" ? "grid" : "none";
+        topoInspectorFourBandGrid.style.display = family === "four_band_parameter_resize" ? "grid" : "none";
+        [topoInspectorLecList, topoInspectorRecList, topoInspectorBandL, topoInspectorBandR, topoInspectorBandT, topoInspectorBandB, topoInspectorBandTL, topoInspectorBandTR, topoInspectorBandBL, topoInspectorBandBR].forEach((container) => {
+          if (container) container.innerHTML = `<div class="selection-item">No active session.</div>`;
+        });
         return;
       }
+      if (family === "four_band_parameter_resize") {
+        topoInspectorFixedEnvelopeGrid.style.display = "none";
+        topoInspectorFourBandGrid.style.display = "grid";
+        focusAllLecBtn.style.display = "none";
+        focusAllRecBtn.style.display = "none";
+        focusSelectedBtn.style.display = "inline-flex";
+        const targets = fourBandTargetsByLayer();
+        const total = Object.values(targets).reduce((sum, items) => sum + items.length, 0);
+        topoInspectorMeta.textContent = `4-band classified targets ${total} entiteta | L=${targets.L.length} | R=${targets.R.length} | T=${targets.T.length} | B=${targets.B.length} | TL=${targets.TL.length} | TR=${targets.TR.length} | BL=${targets.BL.length} | BR=${targets.BR.length}`;
+        renderTopoTargetList(topoInspectorBandL, targets.L, "L");
+        renderTopoTargetList(topoInspectorBandR, targets.R, "R");
+        renderTopoTargetList(topoInspectorBandT, targets.T, "T");
+        renderTopoTargetList(topoInspectorBandB, targets.B, "B");
+        renderTopoTargetList(topoInspectorBandTL, targets.TL, "TL");
+        renderTopoTargetList(topoInspectorBandTR, targets.TR, "TR");
+        renderTopoTargetList(topoInspectorBandBL, targets.BL, "BL");
+        renderTopoTargetList(topoInspectorBandBR, targets.BR, "BR");
+        return;
+      }
+      topoInspectorFixedEnvelopeGrid.style.display = "grid";
+      topoInspectorFourBandGrid.style.display = "none";
+      focusAllLecBtn.style.display = "inline-flex";
+      focusAllRecBtn.style.display = "inline-flex";
+      focusSelectedBtn.style.display = "inline-flex";
       const group = String(topoGroup.value || "").trim();
       const targets = topoTargetsForActiveGroup();
       const lecTargets = sortTopoTargets(targets.filter((object) => String(object?.topo_role_metadata?.keys?.zone || "").trim().toUpperCase() === "LEC"));
@@ -3738,6 +4171,159 @@
         : (selectedCount > 0 ? `Assign MICRO_SHIFT_SET to ${selectedCount} selected` : "Assign MICRO_SHIFT_SET to Selection");
     }
 
+    function metadataRecordsForFocus(object) {
+      const records = [];
+      for (const raw of Array.isArray(object?.semantic_metadata?.raw_comments) ? object.semantic_metadata.raw_comments : []) {
+        const value = String(raw || "").trim();
+        if (value) records.push({ kind: "SEM", value });
+      }
+      for (const raw of Array.isArray(object?.topo_role_metadata?.raw_comments) ? object.topo_role_metadata.raw_comments : []) {
+        const value = String(raw || "").trim();
+        if (value) records.push({ kind: "TOPO", value });
+      }
+      return records;
+    }
+
+    function selectedMetadataRecordForFocus(object) {
+      return metadataRecordsForFocus(object)[0] || null;
+    }
+
+    function objectHasMetadataRecord(object, target) {
+      if (!target) return false;
+      return metadataRecordsForFocus(object).some((record) => record.kind === target.kind && record.value === target.value);
+    }
+
+    function focusSameMetadataEntities() {
+      const object = selectedObject();
+      const target = selectedMetadataRecordForFocus(object);
+      if (!state.session || !object || !target) {
+        setStatus("Select an entity that already has SEM or TOPO metadata.", "error");
+        return;
+      }
+      const matches = (Array.isArray(state.session.objects) ? state.session.objects : [])
+        .filter((candidate) => objectHasMetadataRecord(candidate, target));
+      if (!matches.length) {
+        setStatus("No matching metadata members found.", "error");
+        return;
+      }
+      focusObjectsByIds(matches.map((candidate) => candidate.id));
+      setStatus("Focused " + matches.length + " entitet(a) with same " + target.kind + ": " + target.value, "ok");
+    }
+
+
+    function ensureSelectValue(select, value) {
+      const normalized = String(value || "").trim();
+      if (!normalized) return;
+      if (!Array.from(select.options || []).some((option) => option.value === normalized)) {
+        const option = document.createElement("option");
+        option.value = normalized;
+        option.textContent = normalized;
+        select.appendChild(option);
+      }
+      select.value = normalized;
+    }
+
+    function stripOuterParens(value) {
+      let text = String(value || "").trim();
+      while (text.startsWith("(") && text.endsWith(")")) {
+        text = text.slice(1, -1).trim();
+      }
+      return text;
+    }
+
+    function parseSemConditionClause(value) {
+      const text = stripOuterParens(value);
+      const match = text.match(/^([A-Za-z0-9_]+)\s*(==|!=|>=|<=|>|<|IN)\s*(.+)$/);
+      if (!match) return null;
+      return { parameter: match[1], operator: match[2], expected: match[3] };
+    }
+
+    function splitSemWhenExpression(value) {
+      const text = String(value || "").trim();
+      const grouped = text.match(/^\((.*)\)\s+(AND|OR)\s+\((.*)\)$/i);
+      if (grouped) return { primary: grouped[1], logical: grouped[2].toUpperCase(), secondary: grouped[3] };
+      const plain = text.match(/^(.+)\s+(AND|OR)\s+(.+)$/i);
+      if (plain) return { primary: plain[1], logical: plain[2].toUpperCase(), secondary: plain[3] };
+      return { primary: text, logical: null, secondary: null };
+    }
+
+    function setExpectedEditorValue(parameterKey, operator, expected, parameterSelect, operatorSelect, expectedSelect, expectedMultiSelect, expectedNumber, syncFn) {
+      ensureSelectValue(parameterSelect, parameterKey);
+      ensureSelectValue(operatorSelect, operator);
+      syncFn();
+      const parameterDef = selectedCatalogParameterByKey(parameterKey);
+      const expectedValue = String(expected || "").trim();
+      if (isNumericCatalogParameter(parameterDef)) {
+        expectedNumber.value = expectedValue;
+        return;
+      }
+      if (operator === "IN") {
+        const values = expectedValue.split(",").map((item) => item.trim()).filter(Boolean);
+        Array.from(expectedMultiSelect.options || []).forEach((option) => {
+          option.selected = values.includes(option.value);
+        });
+        return;
+      }
+      ensureSelectValue(expectedSelect, expectedValue);
+    }
+
+    function loadPresenceMetadataForEdit(rawComment, keys) {
+      metadataMode.value = "presence";
+      metadataRawOverride.value = "";
+      const split = splitSemWhenExpression(keys.when || "");
+      const primary = parseSemConditionClause(split.primary);
+      if (!primary) {
+        metadataDebugDetails.open = true;
+        metadataRawOverride.value = rawComment;
+        renderMetadataPreview();
+        return;
+      }
+      setExpectedEditorValue(primary.parameter, primary.operator, primary.expected, metadataParameter, metadataOperation, metadataExpectedValue, metadataExpectedValueMulti, metadataExpectedValueNumber, syncMetadataExpectedValueFromSelection);
+      const secondary = split.secondary ? parseSemConditionClause(split.secondary) : null;
+      setSecondConditionEnabled(Boolean(secondary));
+      if (secondary) {
+        metadataLogicalOperator.value = split.logical || "AND";
+        setExpectedEditorValue(secondary.parameter, secondary.operator, secondary.expected, metadataParameterSecondary, metadataOperationSecondary, metadataExpectedValueSecondary, metadataExpectedValueSecondaryMulti, metadataExpectedValueSecondaryNumber, syncMetadataSecondaryExpectedValueFromSelection);
+      }
+      renderMetadataPreview();
+    }
+
+    function loadSelectedMetadataForEdit() {
+      const object = selectedObject();
+      const target = selectedMetadataRecordForFocus(object);
+      if (!target || target.kind !== "SEM") {
+        setStatus("Select an entity with SEM metadata to edit. TOPO edit stays in TOPO Setup.", "error");
+        return;
+      }
+      const keys = parseMetadataPairs(target.value, "SEM");
+      state.metadataEdit.replaceSemanticComment = target.value;
+      if (keys.presence) {
+        loadPresenceMetadataForEdit(target.value, keys);
+      } else if (keys.role) {
+        metadataMode.value = "geometry_role";
+        metadataParameter.value = keys.feature || metadataParameter.value;
+        metadataRole.value = keys.role || metadataRole.value;
+        metadataVariant.value = keys.variant || "";
+        metadataRuleRef.value = keys.rule_ref || "";
+        renderMetadataPreview();
+      } else if (keys.operation_ref) {
+        metadataMode.value = "operation_ref";
+        metadataParameter.value = keys.feature || metadataParameter.value;
+        metadataVariant.value = keys.operation_ref || "";
+        renderMetadataPreview();
+      } else if (keys.post_topo_group) {
+        metadataMode.value = "post_topo_group";
+        metadataVariant.value = keys.post_topo_group || "";
+        renderMetadataPreview();
+      } else {
+        metadataDebugDetails.open = true;
+        metadataRawOverride.value = target.value;
+        renderMetadataPreview();
+      }
+      metadataPreviewSummary.textContent = "Editing existing SEM. Apply Metadata will replace this exact old record on the current selection.";
+      setStatus("Metadata loaded for edit. Adjust the form, keep the focused selection, then Apply Metadata.", "ok");
+    }
+
     function renderMetadataTarget() {
       const object = selectedObject();
       if (!object) {
@@ -3745,6 +4331,8 @@
         document.getElementById("applyMetadataBtn").disabled = true;
         updateMicroShiftSetButtonState();
         document.getElementById("clearMetadataBtn").disabled = true;
+        document.getElementById("focusSameMetadataBtn").disabled = true;
+        document.getElementById("loadMetadataEditBtn").disabled = true;
         return;
       }
       const semantic = object.semantic_metadata && Array.isArray(object.semantic_metadata.raw_comments) && object.semantic_metadata.raw_comments.length
@@ -3755,6 +4343,8 @@
       document.getElementById("applyMetadataBtn").disabled = !metadataPreview.value;
       updateMicroShiftSetButtonState();
       document.getElementById("clearMetadataBtn").disabled = false;
+      document.getElementById("focusSameMetadataBtn").disabled = !selectedMetadataRecordForFocus(object);
+      document.getElementById("loadMetadataEditBtn").disabled = !selectedMetadataRecordForFocus(object);
     }
 
     function renderSessionOptions(sessions) {
@@ -3805,6 +4395,7 @@
       renderSelectionTower();
       renderXdataPanel();
       renderMeasurementBox();
+      renderHashToggleButton();
       focusSelectedEntityInInput();
       renderSessionMeta();
       renderParameterCatalog();
@@ -3876,6 +4467,7 @@
         state.geometryHygiene.markers = [];
         state.geometryHygiene.hoverIssueIndex = -1;
       }
+      drawHashLabelsOverlay();
       drawMeasurementOverlay();
     }
 
@@ -4222,25 +4814,45 @@
         setStatus("Prvo spremi Document SEM.", "error");
         return;
       }
+      const family = activeTopoFamily();
       const topoConfigOk = Boolean(
         String(topoLecParameter.value || "").trim()
         && Number.isFinite(Number(topoLecNominal.value))
         && String(topoRecParameter.value || "").trim()
         && Number.isFinite(Number(topoRecNominal.value))
       );
-      if (!String(topoGroup.value || "").trim() || !topoConfigOk) {
+      const fourBandConfigOk = Boolean(
+        String(topoFourBandParameterL.value || "").trim()
+        && String(topoFourBandParameterR.value || "").trim()
+        && String(topoFourBandParameterT.value || "").trim()
+        && String(topoFourBandParameterB.value || "").trim()
+        && [topoFourBandNominalL, topoFourBandNominalR, topoFourBandNominalT, topoFourBandNominalB, topoFourBandFactorL, topoFourBandFactorR, topoFourBandFactorT, topoFourBandFactorB]
+          .every((input) => Number.isFinite(Number(input.value)))
+      );
+      if (family === "none") {
+        setStatus("Za no topology koristi Continue Without TOPO.", "error");
+        return;
+      }
+      if (family === "fixed_envelope_slide" && (!String(topoGroup.value || "").trim() || !topoConfigOk)) {
         setStatus("TOPO traži group, LEC/REC parameter i LEC/REC nominal.", "error");
         return;
       }
+      if (family === "four_band_parameter_resize" && !fourBandConfigOk) {
+        setStatus("4-band TOPO traži L/R/T/B parameter, nominal i factor vrijednosti.", "error");
+        return;
+      }
+      const topoText = family === "four_band_parameter_resize"
+        ? String(topoFourBandPreview.value || "")
+        : String(topoInput.value || "");
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/topo`, {
         method: "POST",
-        body: JSON.stringify({ topo_text: String(topoInput.value || "") })
+        body: JSON.stringify({ topo_text: topoText })
       });
       state.session = data.session;
       syncCurrentDxfText(data.dxf_text);
-      const selectedObjects = Array.from(state.selectedIds)
-        .map((id) => objectById(id))
-        .filter(Boolean);
+      const selectedObjects = family === "fixed_envelope_slide"
+        ? Array.from(state.selectedIds).map((id) => objectById(id)).filter(Boolean)
+        : [];
       for (const object of selectedObjects) {
         const roleData = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/entities/${encodeURIComponent(object.entity_id)}/topo-role`, {
           method: "POST",
@@ -4261,7 +4873,11 @@
       refreshArrangementStatus();
       render();
       const topoTargets = state.session?.arrangement_snapshot?.topo_target_count ?? selectedObjects.length;
-      setStatus(selectedObjects.length ? `TOPO metadata saved: ${topoTargets} targeta ukupno, ${selectedObjects.length} selected entiteta updated.` : "TOPO metadata saved to DXF document.", "ok");
+      if (family === "four_band_parameter_resize") {
+        setStatus("4-band TOPO metadata saved to DXF document.", "ok");
+      } else {
+        setStatus(selectedObjects.length ? `TOPO metadata saved: ${topoTargets} targeta ukupno, ${selectedObjects.length} selected entiteta updated.` : "TOPO metadata saved to DXF document.", "ok");
+      }
     }
 
     async function clearSelectedTopoMetadata() {
@@ -4416,7 +5032,8 @@
           operation: metadataOperation.value,
           parameter: metadataParameter.value,
           expected_value: expectedValue,
-          semantic_comment: metadataPreview.value
+          semantic_comment: metadataPreview.value,
+          replace_semantic_comment: state.metadataEdit?.replaceSemanticComment || null
         })
       });
       state.session = data.session;
@@ -4424,7 +5041,8 @@
       syncCurrentDxfText(data.dxf_text);
       render();
       const affectedCount = Array.isArray(data.affected_entity_ids) ? data.affected_entity_ids.length : entityIds.length;
-      setStatus(`Metadata applied to ${affectedCount} entitet(a): ${data.semantic_comment}`, "ok");
+      state.metadataEdit.replaceSemanticComment = null;
+      setStatus(`Metadata applied to  entitet(a): `, "ok");
     }
 
     async function assignMicroShiftSetToSelection() {
@@ -4486,7 +5104,7 @@
     }
 
     function ensureTopoPreviewHasTargets() {
-      if (!hasTopoConfigured()) return true;
+      if (!isFixedEnvelopeTopoConfigured()) return true;
       const targets = topoTargetsForActiveGroup();
       if (targets.length) return true;
       const group = String(topoGroup.value || "").trim() || "(missing group)";
@@ -4498,13 +5116,15 @@
 
     async function simulatePreChildPreview() {
       if (!state.session) return;
-      if (hasTopoConfigured()) {
+      if (isFixedEnvelopeTopoConfigured()) {
         if (!ensureTopoPreviewHasTargets()) return;
-        setStatus("TOPO is configured, so preview uses the TOPO child path.", "info");
+        setStatus("Fixed-envelope TOPO is configured, so preview uses the TOPO child path.", "info");
         await previewTopoChildDxf();
         return;
       }
-      setStatus("Running pre-child simulation...");
+      setStatus(isFourBandTopoConfigured()
+        ? "Running Core Shell 4-band shadow simulation..."
+        : "Running pre-child simulation...");
       const config_parameter_set = readConfigInput();
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/simulate`, {
         method: "POST",
@@ -4534,6 +5154,10 @@
     async function generateChildDxf(options = {}) {
       if (!state.session) return;
       const allowDraft = Boolean(options.allowDraft);
+      if (isFourBandTopoConfigured()) {
+        await generateCoreShellShadowChildDxf();
+        return;
+      }
       if (!allowDraft && !canGenerateChildDxf()) {
         setStatus("Child DXF generation requires mother_validated artifact or in_review status.", "error");
         return;
@@ -4577,9 +5201,48 @@
       setStatus(allowDraft ? "Draft/debug child DXF download ready." : "Child DXF download ready.", "ok");
     }
 
+    async function generateCoreShellShadowChildDxf() {
+      if (!state.session) return;
+      setStatus("Generating Core Shell 4-band shadow DXF for external viewer validation...", "info");
+      const config_parameter_set = readConfigInput();
+      const response = await fetch(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/core-shell-shadow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config_parameter_set })
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        let message = text || `HTTP ${response.status}`;
+        try {
+          const parsed = JSON.parse(text);
+          message = parsed.message || message;
+        } catch (_) {
+          // Keep raw server response when it is not JSON.
+        }
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const filename = filenameFromContentDisposition(
+        response.headers.get("Content-Disposition"),
+        `${state.session.session_id}_core_shell_4_band_shadow_child.dxf`
+      );
+      triggerBlobDownload(blob, filename);
+      const included = response.headers.get("X-Mother-DXF-Included-Count") || "?";
+      const excluded = response.headers.get("X-Mother-DXF-Excluded-Count") || "?";
+      const updated = response.headers.get("X-Mother-DXF-Updated-Entity-Count") || "?";
+      const removed = response.headers.get("X-Mother-DXF-Removed-Entity-Count") || "?";
+      childSummaryBox.style.display = "";
+      childSummaryBox.textContent = `Core Shell 4-band shadow DXF exported: included=${included}, excluded=${excluded}, updated=${updated}, removed=${removed}, diagnostic_only=true, production_safe=false`;
+      setStatus("Core Shell 4-band shadow DXF download ready. Diagnostic only; production activation is not approved.", "warn");
+    }
+
     async function generateTopoChildDxf(options = {}) {
       if (!state.session) return;
       const allowDraft = Boolean(options.allowDraft);
+      if (isFourBandTopoConfigured()) {
+        await generateCoreShellShadowChildDxf();
+        return;
+      }
       if (!allowDraft && !canGenerateChildDxf()) {
         setStatus("TOPO child DXF generation requires mother_validated artifact or in_review status.", "error");
         return;
@@ -4627,6 +5290,10 @@
 
     async function previewTopoChildDxf() {
       if (!state.session) return;
+      if (isFourBandTopoConfigured()) {
+        await simulatePreChildPreview();
+        return;
+      }
       if (!ensureTopoPreviewHasTargets()) return;
       setStatus("Previewing TOPO child geometry...");
       const config_parameter_set = readConfigInput();
@@ -4879,7 +5546,12 @@
     });
     documentSemProduct.addEventListener("input", render);
     addDocumentSemRuleBtn.addEventListener("click", addDocumentSemRule);
+    topoFamily.addEventListener("change", render);
     topoGroup.addEventListener("input", syncTopoInputFromSession);
+    [topoFourBandParameterL, topoFourBandParameterR, topoFourBandParameterT, topoFourBandParameterB, topoFourBandNominalL, topoFourBandNominalR, topoFourBandNominalT, topoFourBandNominalB, topoFourBandFactorL, topoFourBandFactorR, topoFourBandFactorT, topoFourBandFactorB].forEach((input) => {
+      input.addEventListener("input", syncTopoInputFromSession);
+      input.addEventListener("change", syncTopoInputFromSession);
+    });
     topoLecParameter.addEventListener("change", syncTopoInputFromSession);
     topoLecNominal.addEventListener("input", syncTopoInputFromSession);
     topoRecParameter.addEventListener("change", syncTopoInputFromSession);
@@ -5050,7 +5722,7 @@
     });
     authoringStageSemBtn.addEventListener("click", () => {
       if (!canOpenSemStage()) {
-        setStatus(hasDocumentSemConfigured() ? "Prvo spremi ili preskoči TOPO setup." : "Prvo spremi Document SEM.", "error");
+        setStatus("Prvo spremi Document SEM.", "error");
         return;
       }
       state.authoring.activeStage = "sem";
@@ -5084,6 +5756,8 @@
     document.getElementById("clearMetadataBtn").addEventListener("click", () => {
       clearMetadataRule().catch((error) => setStatus(error.message, "error"));
     });
+    document.getElementById("focusSameMetadataBtn").addEventListener("click", focusSameMetadataEntities);
+    document.getElementById("loadMetadataEditBtn").addEventListener("click", loadSelectedMetadataForEdit);
     document.getElementById("exportBtn").addEventListener("click", exportMotherDraft);
     generateChildBtn.addEventListener("click", () => {
       generateChildDxf().catch((error) => setStatus(error.message, "error"));
@@ -5104,6 +5778,11 @@
       } else {
         setStatus("Measure mode off.", "info");
       }
+      render();
+    });
+    hashToggleBtn.addEventListener("click", () => {
+      state.hashLabels.enabled = !state.hashLabels.enabled;
+      setStatus(state.hashLabels.enabled ? "HASH labels on." : "HASH labels off.", state.hashLabels.enabled ? "ok" : "info");
       render();
     });
     window.addEventListener("resize", render);
