@@ -1,15 +1,74 @@
-﻿node_modules/
-.env
-.env.*
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build/Output
+out/
 dist/
 build/
-coverage/
-out/
 tmp/
+temp/
+coverage/
+
+# Logs
+logs/
 *.log
+*.ndjson
+
+# Test artifacts
+tests/resolver_harness/output/
+tests/**/output/
+tests/**/outputs/
+tests/**/tmp/
+tests/**/temp/
+
+# POC artifacts
+_poc/**/logs/raw/
+_poc/**/logs/
+_poc/**/tmp/
+_poc/**/temp/
+_poc/erp_gateway_smoke/BRANIMIR_SMOKE_PACKAGE.md
+
+# OS/Editor junk
 .DS_Store
 Thumbs.db
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Archives and binary working files
 *.zip
+*.xlsx
+*.xls
+
+# Keep fixtures, even if they contain archives/spreadsheets
+!fixtures/
+!fixtures/**
+!tests/fixtures/
+!tests/fixtures/**
+!tests/fixtures/**/*.zip
+!tests/fixtures/**/*.xlsx
+!tests/fixtures/**/*.xls
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
 _poc/erp_gateway_smoke/erp_secret.txt
-_poc/erp_gateway_smoke/BRANIMIR_SMOKE_PACKAGE.md
+
+# Explicitly keep source/docs/scripts/contracts
+!src/
+!src/**
+!docs/
+!docs/**
+!scripts/
+!scripts/**
+!package.json
+!package-lock.json

@@ -16,7 +16,11 @@
   },
   "description": "",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node tests/run_all.js",
+    "lint": "node scripts/lint_minimal.js",
+    "validate:contracts": "node scripts/validate_contracts.js",
+    "health": "npm run repo:health",
+    "repo:health": "node scripts/repo_health.js",
     "db:smoke": "node scripts/postgres_smoke_test.js",
     "db:smoke:cleanup": "node scripts/postgres_smoke_test.js --cleanup-schema",
     "db:robotics:tecna:smoke": "node scripts/robotics_tecna_smoke_test.js",
@@ -39,5 +43,8 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "engines": {
+    "node": ">=18"
+  }
 }
