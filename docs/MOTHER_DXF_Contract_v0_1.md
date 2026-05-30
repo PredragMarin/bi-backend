@@ -996,7 +996,56 @@ Normative rules:
 - collision and repair logic operate on resolved active geometry for the same parameter set, not on the full raw DXF universe
 - `SEM recompute` is a reserved future branch, not default behavior
 
-### 15F.1 Resolver Harness and Assertion Checks
+### 15F.1 Geometry Branch Contract
+
+Mother DXF supports multiple alternative geometry branches inside one mother file
+when they share the same product/part contract, parameter set, label pipeline,
+and rule pipeline. This is a branch-selection contract, not a layer contract.
+
+Current branch convention:
+
+- untagged top-level geometry is implicit `BASE`
+- tagged alternative geometry uses `MOTHERDXF` XDATA with `GEOMETRY_VARIANT=<VALUE>`
+- recommended authoring layout is `BASE` bbox minimum at `X=0`, `Y=0` and
+  the first tagged branch, for example `ECO`, bbox minimum at `X=3000`, `Y=0`
+- additional branches may use later 3000 mm X slots
+- `ALL` is only an authoring, inspection, and XDATA repair view
+- combined child preview and child DXF export must resolve exactly one source
+  branch before SEM, TOPO, document rules, final orientation, labels, and
+  serialization
+- resolved child output must not contain eliminated branch geometry or Mother DXF
+  branch XDATA
+- selected branch geometry is normalized to bbox minimum `X=0`, `Y=0` during
+  child materialization
+
+For current catalog behavior, `TIP_VRATA=ECO` selects the `ECO` branch. Other
+non-empty `TIP_VRATA` values select implicit `BASE` unless an explicit non-ALL
+branch mode is supplied by a diagnostic/authoring call.
+
+Validation target:
+
+- untagged geometry in a shifted branch slot should warn
+- tagged branch geometry in the implicit base slot should warn unless accepted as
+  a legacy/debug overlap file
+- child preview/export with `ALL` as source should warn or refuse materialization
+
+Implementation note 2026-05-28:
+
+- Combined Child Preview renders only entities present in the resolver simulation
+  item set, so non-selected branch geometry is not drawn as fallback raw geometry
+- no-TOPO child materialization applies the same branch selection and document
+  filtering before document rules, SEM inclusion, final orientation, labels,
+  normalization, and serialization
+- Metadata Authoring branch-sensitive actions require an active concrete branch
+  (`BASE` or tagged variant) when a multi-branch file is detected; `ALL` remains
+  available for inspection and XDATA repair
+- document rules may declare `target_scope.geometry_branch`; `MXD_LAYER_B_OFFSET_9P5`
+  is scoped to implicit `BASE` and must not execute for `ECO` branch materialization
+- Mother DXF consumes Core Shell resolver branch helpers for branch mode derivation,
+  object branch filtering, and branch-scoped rule matching so DBR and UI do not
+  grow separate branch semantics
+
+### 15F.2 Resolver Harness and Assertion Checks
 
 Resolver extraction is currently guarded by behavior-parity diagnostics, not by
 a replacement execution engine.
@@ -1358,6 +1407,9 @@ Execution meaning:
 - `Lijeva (SX)` and `Inverzna lijeva (INV SX)` mirror around the explicit catalog axis: X for unstacked parts and Y for stacked parts
 - after mirror, child geometry is normalized so final bbox starts at `minX=0`, `minY=0`
 - Mother DXF preview emits `MISSING_FINAL_ORIENTATION_RULE` when `STRANA_OTVARANJA` and part scope match one of these rules but the document has no explicit active `rule_ref` for it
+- TIP_VRATA drives geometry branch selection for BASE/ECO resolver preview: `ECO` selects ECO branch; other non-empty values select BASE branch unless an explicit non-ALL branch mode is supplied
+- `topology_mode=none` preview uses identity geometry as its base. No implicit legacy layer resize may run without explicit TOPO metadata or document rule activation.
+- diagnostic Core Shell 4-band child export must materialize the same final-oriented simulation map shown in Combined Child Preview and must not execute final orientation a second time
 - future technology-level face/back processing may extend this with an XOR-like
   effective orientation rule, but `STRANA_OTVARANJA` remains the door-side source parameter
 
@@ -1498,13 +1550,13 @@ Current artifact:
 
 Current MXD draft rules:
 
-- `MXD_PPV_LAYER_B_OFFSET_9P5`
+- `MXD_LAYER_B_OFFSET_9P5`
 
 Current MXD rule example:
 
-- `MXD_PPV_LAYER_B_OFFSET_9P5`
+- `MXD_LAYER_B_OFFSET_9P5`
   - `profile_scope = MXD`
-  - condition: `TIP_VRATA == PPV`
+  - condition: `TIP_VRATA IN [Europa, EuroMax]`
   - target scope: `Layer B`
   - action: `offset Y +9.5 mm`
   - post repair: `bounded local trim/rejoin`

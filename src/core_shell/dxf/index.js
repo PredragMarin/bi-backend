@@ -412,8 +412,59 @@ function reindexDocumentSources(document) {
   return document;
 }
 
+function collectXdataAppNamesFromPairs(pairs, appNames) {
+  for (const pair of Array.isArray(pairs) ? pairs : []) {
+    if (String(pair?.code) !== "1001") continue;
+    const appName = String(pair?.value || "").trim();
+    if (appName) appNames.add(appName);
+  }
+}
+
+function collectXdataAppNames(document) {
+  const appNames = new Set();
+  collectXdataAppNamesFromPairs(document?.preComments, appNames);
+  for (const block of Array.isArray(document?.blocks) ? document.blocks : []) {
+    collectXdataAppNamesFromPairs(block.headerPairs, appNames);
+    collectXdataAppNamesFromPairs(block.endblkPairs, appNames);
+    for (const entity of Array.isArray(block?.entities) ? block.entities : []) {
+      collectXdataAppNamesFromPairs(entity.preComments, appNames);
+      collectXdataAppNamesFromPairs(entity.pairs, appNames);
+    }
+  }
+  for (const entity of Array.isArray(document?.entities) ? document.entities : []) {
+    collectXdataAppNamesFromPairs(entity.preComments, appNames);
+    collectXdataAppNamesFromPairs(entity.pairs, appNames);
+  }
+  return Array.from(appNames).sort();
+}
+
+function appIdTablePairs(appNames) {
+  const names = Array.isArray(appNames) ? appNames.filter(Boolean) : [];
+  if (!names.length) return [];
+  const pairs = [
+    { code: "0", value: "SECTION" },
+    { code: "2", value: "TABLES" },
+    { code: "0", value: "TABLE" },
+    { code: "2", value: "APPID" },
+    { code: "70", value: String(names.length) }
+  ];
+  for (const name of names) {
+    pairs.push(
+      { code: "0", value: "APPID" },
+      { code: "2", value: name },
+      { code: "70", value: "0" }
+    );
+  }
+  pairs.push(
+    { code: "0", value: "ENDTAB" },
+    { code: "0", value: "ENDSEC" }
+  );
+  return pairs;
+}
+
 function serializeDocument(document) {
   const pairs = [];
+  pairs.push(...appIdTablePairs(collectXdataAppNames(document)));
 
   pairs.push({ code: "0", value: "SECTION" });
   pairs.push({ code: "2", value: "BLOCKS" });

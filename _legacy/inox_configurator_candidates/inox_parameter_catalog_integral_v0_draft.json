@@ -1,0 +1,1337 @@
+{
+  "catalog_id": "inox_parameter_catalog_integral_v0_draft",
+  "schema_version": "parameter_catalog.inox.v0.draft",
+  "status": "draft_for_domain_review",
+  "modeling_principle": "Most INOX products are table-like parametric bodies with optional feature extensions. Product specificity is introduced by composition, small compatibility tables, and narrowly scoped domain rules.",
+  "source": {
+    "primary": "legacy_inox_configurator_candidates/schema_inox_v6.js",
+    "secondary": "working_excel_parameter_template_screenshot",
+    "notes": [
+      "This draft replaces product-family repetition with base templates and feature extensions.",
+      "Duljina and Sirina use commercial 100 mm steps. Visina uses 50 mm steps.",
+      "Rules are referenced by id here, but implementation belongs to rule catalog/runtime."
+    ]
+  },
+  "dimension_policy": {
+    "Duljina": {
+      "unit": "mm",
+      "step": 100
+    },
+    "Sirina": {
+      "unit": "mm",
+      "step": 100
+    },
+    "Visina": {
+      "unit": "mm",
+      "step": 50
+    }
+  },
+  "parameters": {
+    "Model": {
+      "type": "enum",
+      "required": true,
+      "label": "Model",
+      "description": "Legacy/display product model name.",
+      "values": [
+        "Sudoperi_Otvoreni",
+        "Sudoperi_Zatvoreni",
+        "Sudoperi_Specijalni",
+        "Stolovi_Zatvoreni",
+        "Stolovi_Otvoreni",
+        "Stolovi_Specijalni",
+        "Stolovi_Hladeni",
+        "Stolovi_Grijani",
+        "Stolovi_Ladice",
+        "Ormari_Samostojeci",
+        "Ormari_Viseci",
+        "Sifon_Podni",
+        "Police_Skladisne",
+        "Police_Zidne",
+        "Police_Stolne",
+        "Nape",
+        "Elementi_Samoposluzeni",
+        "Elementi_Barski",
+        "Kolica",
+        "Komore",
+        "Mostovi",
+        "Ostali_Proizvodi",
+        "Elementi_Poluproizvodi"
+      ]
+    },
+    "ModelCode": {
+      "type": "enum",
+      "required": true,
+      "label": "Model code",
+      "description": "Short legacy/ERP/model code.",
+      "values": [
+        "SDPO",
+        "SDPZ",
+        "SDPS",
+        "STOLZ",
+        "STOLO",
+        "STOLS",
+        "STOLH",
+        "STOLG",
+        "STLAD",
+        "ORM",
+        "ORMV",
+        "SIF",
+        "PSKL",
+        "PZ",
+        "PST",
+        "NAP",
+        "SELFS",
+        "BAR",
+        "KOL",
+        "KOM",
+        "MOST",
+        "OST",
+        "PPR"
+      ]
+    },
+    "Duljina": {
+      "type": "integer",
+      "unit": "mm",
+      "global_range": {
+        "min": 300,
+        "max": 3000,
+        "step": 100
+      },
+      "allow_custom": false
+    },
+    "Sirina": {
+      "type": "integer",
+      "unit": "mm",
+      "global_range": {
+        "min": 300,
+        "max": 3000,
+        "step": 100
+      },
+      "allow_custom": false,
+      "values": [
+        300,
+        400,
+        500,
+        600,
+        700,
+        800,
+        900,
+        1000,
+        1100,
+        1200,
+        1300,
+        1400
+      ]
+    },
+    "Visina": {
+      "type": "integer",
+      "unit": "mm",
+      "global_range": {
+        "min": 50,
+        "max": 2500,
+        "step": 50
+      },
+      "allow_custom": false
+    },
+    "NogaVisina": {
+      "type": "integer",
+      "unit": "mm",
+      "values": [
+        100,
+        150
+      ],
+      "default": 150
+    },
+    "NogaBroj": {
+      "type": "integer",
+      "unit": "pcs",
+      "values": [
+        4,
+        6
+      ],
+      "default_policy": "AUTO_LEG_COUNT_BY_LENGTH"
+    },
+    "PlocaAlzatina": {
+      "type": "enum",
+      "values": [
+        "ALZ40Tanka",
+        "ALZ100Debela",
+        "BezALZ"
+      ],
+      "default": "BezALZ"
+    },
+    "PlocaVodeniRub": {
+      "type": "enum",
+      "values": [
+        "Suho",
+        "Pjover"
+      ],
+      "default": "Suho"
+    },
+    "DebljinaPloce": {
+      "type": "integer",
+      "unit": "mm",
+      "values": [
+        40,
+        50
+      ],
+      "default": 50
+    },
+    "Korito1": {
+      "type": "enum",
+      "values": [
+        "250x250x200",
+        "340x340x200",
+        "400x340x200",
+        "340x400x200",
+        "400x400x250",
+        "500x400x250",
+        "400x500x250",
+        "500x400x300",
+        "400x500x300",
+        "500x500x250",
+        "500x500x300",
+        "600x500x300",
+        "800x500x375"
+      ]
+    },
+    "Korito2": {
+      "type": "enum",
+      "values": [
+        "BezK2",
+        "250x250x200",
+        "340x340x200",
+        "400x340x200",
+        "340x400x200",
+        "400x400x250",
+        "500x400x250",
+        "400x500x250",
+        "500x400x300",
+        "400x500x300",
+        "500x500x250",
+        "500x500x300",
+        "600x500x300",
+        "800x500x375"
+      ],
+      "default": "BezK2"
+    },
+    "OrijentacijaK1": {
+      "type": "enum",
+      "values": [
+        "Lijevo",
+        "Desno"
+      ]
+    },
+    "OrijentacijaK2": {
+      "type": "enum",
+      "values": [
+        "NP",
+        "Lijevo",
+        "Desno"
+      ],
+      "default": "NP"
+    },
+    "SlavinaK1": {
+      "type": "enum",
+      "values": [
+        "Bez_SK1",
+        "Lijevo",
+        "Centar",
+        "Desno"
+      ],
+      "default": "Bez_SK1"
+    },
+    "SlavinaK2": {
+      "type": "enum",
+      "values": [
+        "NP",
+        "Bez_SK2",
+        "Lijevo",
+        "Centar",
+        "Desno"
+      ],
+      "default": "NP"
+    },
+    "OffsetK1": {
+      "type": "integer",
+      "unit": "mm",
+      "range": {
+        "min": -50,
+        "max": 50,
+        "step": 50
+      },
+      "default": 0
+    },
+    "OffsetK2": {
+      "type": "integer",
+      "unit": "mm",
+      "range": {
+        "min": -50,
+        "max": 50,
+        "step": 50
+      },
+      "default": 0
+    },
+    "SkacaPrednja": {
+      "type": "enum",
+      "unit": "mm",
+      "values": [
+        "69",
+        "270",
+        "Custom"
+      ],
+      "default": "69"
+    },
+    "SkacaLijeva": {
+      "type": "enum",
+      "unit": "mm",
+      "values": [
+        "69",
+        "270",
+        "Custom"
+      ],
+      "default": "69"
+    },
+    "SkacaDesna": {
+      "type": "enum",
+      "unit": "mm",
+      "values": [
+        "69",
+        "270",
+        "Custom"
+      ],
+      "default": "69"
+    },
+    "Dno": {
+      "type": "enum",
+      "unit": "mm",
+      "values": [
+        "Bez_D",
+        "30",
+        "40"
+      ],
+      "default": "Bez_D"
+    },
+    "Polica": {
+      "type": "enum",
+      "unit": "pcs",
+      "values": [
+        "Bez_P",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "default": "Bez_P"
+    },
+    "PolicaTehnologija": {
+      "type": "enum",
+      "values": [
+        "NP",
+        "Vijak",
+        "Zavar"
+      ],
+      "default": "NP"
+    },
+    "Vrata": {
+      "type": "enum",
+      "values": [
+        "Bez_V",
+        "Vrata_1Krilna",
+        "Vrata_2Krilna",
+        "Vrata_Klizna"
+      ],
+      "default": "Bez_V"
+    },
+    "Ladice": {
+      "type": "integer",
+      "unit": "pcs",
+      "values": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "Vodilica": {
+      "type": "integer",
+      "unit": "mm",
+      "values": [
+        450,
+        500,
+        550,
+        600
+      ]
+    },
+    "Grijac": {
+      "type": "enum",
+      "values": [
+        "Lijevo",
+        "Desno",
+        "Oba_G"
+      ]
+    },
+    "Filter": {
+      "type": "enum",
+      "values": [
+        "400x400",
+        "400x500",
+        "500x400",
+        "500x500"
+      ]
+    }
+  },
+  "templates": {
+    "BASE_TABLE_LIKE": {
+      "label": "Base table-like INOX body",
+      "description": "Shared base for work tables, many sinks, and table-like INOX products.",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 500,
+          "max": 3000,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 500,
+          "max": 800,
+          "step": 100,
+          "standard_values": [
+            500,
+            600,
+            700,
+            800
+          ]
+        },
+        "Visina": {
+          "min": 850,
+          "max": 950,
+          "step": 50,
+          "standard_values": [
+            850,
+            900,
+            950
+          ]
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "NogaVisina",
+        "NogaBroj",
+        "PlocaAlzatina",
+        "PlocaVodeniRub",
+        "DebljinaPloce",
+        "Dno",
+        "Polica",
+        "PolicaTehnologija"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "DebljinaPloce"
+      ],
+      "rules": [
+        "AUTO_LEG_COUNT_BY_LENGTH",
+        "SHELF_CLEAR_HEIGHT_MIN"
+      ]
+    },
+    "SINK_EXTENSION": {
+      "label": "Sink bowl extension",
+      "description": "Adds K1/K2 bowl, faucet, orientation, offset, and splash/side parameters to a table-like body.",
+      "dimension_ranges": {
+        "Sirina": {
+          "min": 600,
+          "max": 700,
+          "step": 100,
+          "standard_values": [
+            600,
+            700
+          ]
+        }
+      },
+      "parameters": [
+        "Korito1",
+        "Korito2",
+        "OrijentacijaK1",
+        "OrijentacijaK2",
+        "SlavinaK1",
+        "SlavinaK2",
+        "OffsetK1",
+        "OffsetK2",
+        "SkacaPrednja",
+        "SkacaLijeva",
+        "SkacaDesna"
+      ],
+      "required_parameters": [
+        "Korito1",
+        "OrijentacijaK1",
+        "SlavinaK1"
+      ],
+      "rules": [
+        "K2_DISABLED_IMPLIES_K2_FIELDS_NP",
+        "SINK_BOWL_HEADROOM"
+      ]
+    },
+    "CLOSED_BASE_EXTENSION": {
+      "label": "Closed base extension",
+      "parameters": [
+        "Vrata"
+      ],
+      "required_parameters": [
+        "Vrata"
+      ],
+      "rules": [
+        "DOOR_TYPE_BY_LENGTH"
+      ]
+    },
+    "DRAWER_EXTENSION": {
+      "label": "Drawer extension",
+      "parameters": [
+        "Ladice",
+        "Vodilica"
+      ],
+      "required_parameters": [
+        "Ladice",
+        "Vodilica"
+      ],
+      "rules": [
+        "DRAWER_GUIDE_COMPATIBILITY"
+      ]
+    },
+    "THERMAL_TABLE_EXTENSION": {
+      "label": "Heated/cooled table extension",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 1000,
+          "max": 3000,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 600,
+          "max": 900,
+          "step": 100
+        },
+        "Visina": {
+          "min": 850,
+          "max": 950,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Grijac"
+      ],
+      "required_parameters": [
+        "Grijac"
+      ]
+    },
+    "CABINET_BASE": {
+      "label": "Standing cabinet body",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 500,
+          "max": 2000,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 400,
+          "max": 800,
+          "step": 100
+        },
+        "Visina": {
+          "min": 1200,
+          "max": 2200,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "NogaVisina",
+        "DebljinaPloce",
+        "Polica",
+        "Vrata"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "Vrata"
+      ]
+    },
+    "WALL_CABINET_BASE": {
+      "label": "Wall cabinet body",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 400,
+          "max": 1800,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 300,
+          "max": 500,
+          "step": 100
+        },
+        "Visina": {
+          "min": 400,
+          "max": 1000,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "DebljinaPloce",
+        "Polica",
+        "Vrata"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ]
+    },
+    "SHELVING_TALL": {
+      "label": "Tall storage shelving",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 600,
+          "max": 3000,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 300,
+          "max": 800,
+          "step": 100
+        },
+        "Visina": {
+          "min": 1200,
+          "max": 2500,
+          "step": 50,
+          "standard_values": [
+            1800,
+            2000,
+            2200,
+            2500
+          ]
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "Polica",
+        "PolicaTehnologija"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "Polica"
+      ]
+    },
+    "SHELF_WALL": {
+      "label": "Wall shelf",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 400,
+          "max": 2000,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 300,
+          "max": 500,
+          "step": 100
+        },
+        "Visina": {
+          "min": 50,
+          "max": 400,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "PolicaTehnologija"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina"
+      ]
+    },
+    "SHELF_TABLE": {
+      "label": "Table shelf",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 400,
+          "max": 2000,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 300,
+          "max": 600,
+          "step": 100
+        },
+        "Visina": {
+          "min": 200,
+          "max": 800,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "Polica",
+        "PolicaTehnologija"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ]
+    },
+    "HOOD_BASE": {
+      "label": "Hood body",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 600,
+          "max": 3000,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 600,
+          "max": 1400,
+          "step": 100
+        },
+        "Visina": {
+          "min": 300,
+          "max": 800,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "Filter"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ]
+    },
+    "TROLLEY_BASE": {
+      "label": "Trolley body",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 500,
+          "max": 1800,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 400,
+          "max": 900,
+          "step": 100
+        },
+        "Visina": {
+          "min": 700,
+          "max": 1200,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "Polica",
+        "PolicaTehnologija"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ]
+    },
+    "CHAMBER_BASE": {
+      "label": "Chamber body",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 1000,
+          "max": 3000,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 1000,
+          "max": 3000,
+          "step": 100
+        },
+        "Visina": {
+          "min": 1800,
+          "max": 2500,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ]
+    },
+    "LOW_ELEMENT_BASE": {
+      "label": "Low utility element",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 400,
+          "max": 2500,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 300,
+          "max": 1000,
+          "step": 100
+        },
+        "Visina": {
+          "min": 600,
+          "max": 1400,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina",
+        "NogaVisina",
+        "NogaBroj",
+        "DebljinaPloce",
+        "Dno",
+        "Polica",
+        "PolicaTehnologija"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ]
+    },
+    "SIFON_BASE": {
+      "label": "Floor siphon",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 300,
+          "max": 600,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 300,
+          "max": 600,
+          "step": 100
+        },
+        "Visina": {
+          "min": 50,
+          "max": 300,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina"
+      ]
+    },
+    "GENERIC_INOX_ELEMENT": {
+      "label": "Generic INOX element",
+      "dimension_ranges": {
+        "Duljina": {
+          "min": 400,
+          "max": 3000,
+          "step": 100
+        },
+        "Sirina": {
+          "min": 300,
+          "max": 1400,
+          "step": 100
+        },
+        "Visina": {
+          "min": 50,
+          "max": 2500,
+          "step": 50
+        }
+      },
+      "parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ],
+      "required_parameters": [
+        "Model",
+        "ModelCode",
+        "Duljina",
+        "Sirina",
+        "Visina"
+      ]
+    }
+  },
+  "compatibility_tables": {
+    "LEG_COUNT_BY_LENGTH": [
+      {
+        "if": {
+          "Duljina": {
+            "max": 2000
+          }
+        },
+        "then": {
+          "NogaBroj": 4
+        }
+      },
+      {
+        "if": {
+          "Duljina": {
+            "min": 2100
+          }
+        },
+        "then": {
+          "NogaBroj": 6
+        }
+      }
+    ],
+    "DOOR_TYPE_BY_LENGTH_BAND": [
+      {
+        "Vrata": "Vrata_1Krilna",
+        "Duljina": {
+          "min": 500,
+          "max": 700
+        },
+        "status": "ok"
+      },
+      {
+        "Vrata": "Vrata_2Krilna",
+        "Duljina": {
+          "min": 800,
+          "max": 1200
+        },
+        "status": "ok"
+      },
+      {
+        "Vrata": "Vrata_Klizna",
+        "Duljina": {
+          "min": 1100,
+          "max": 3000
+        },
+        "status": "ok"
+      }
+    ],
+    "DRAWER_GUIDE_BY_DEPTH": [
+      {
+        "Sirina": {
+          "min": 500,
+          "max": 600
+        },
+        "Vodilica": [
+          450,
+          500
+        ]
+      },
+      {
+        "Sirina": {
+          "min": 700,
+          "max": 800
+        },
+        "Vodilica": [
+          500,
+          550,
+          600
+        ]
+      }
+    ]
+  },
+  "products": {
+    "SDPO": {
+      "display_name": "Sudoperi otvoreni",
+      "legacy_model": "Sudoperi_Otvoreni",
+      "canonical_product": "SUDOPER_OTVORENI",
+      "family": "INOX",
+      "composition": [
+        "BASE_TABLE_LIKE",
+        "SINK_EXTENSION"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "rules_available"
+    },
+    "SDPZ": {
+      "display_name": "Sudoperi zatvoreni",
+      "legacy_model": "Sudoperi_Zatvoreni",
+      "canonical_product": "SUDOPER_ZATVORENI",
+      "family": "INOX",
+      "composition": [
+        "BASE_TABLE_LIKE",
+        "SINK_EXTENSION",
+        "CLOSED_BASE_EXTENSION"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "SDPS": {
+      "display_name": "Sudoperi specijalni",
+      "legacy_model": "Sudoperi_Specijalni",
+      "canonical_product": "SUDOPER_SPECIJALNI",
+      "family": "INOX",
+      "composition": [
+        "BASE_TABLE_LIKE",
+        "SINK_EXTENSION"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "STOLZ": {
+      "display_name": "Stolovi zatvoreni",
+      "legacy_model": "Stolovi_Zatvoreni",
+      "canonical_product": "STOL_ZATVORENI",
+      "family": "INOX",
+      "composition": [
+        "BASE_TABLE_LIKE",
+        "CLOSED_BASE_EXTENSION"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "rules_available"
+    },
+    "STOLO": {
+      "display_name": "Stolovi otvoreni",
+      "legacy_model": "Stolovi_Otvoreni",
+      "canonical_product": "STOL_OTVORENI",
+      "family": "INOX",
+      "composition": [
+        "BASE_TABLE_LIKE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "rules_available"
+    },
+    "STOLS": {
+      "display_name": "Stolovi specijalni",
+      "legacy_model": "Stolovi_Specijalni",
+      "canonical_product": "STOL_SPECIJALNI",
+      "family": "INOX",
+      "composition": [
+        "BASE_TABLE_LIKE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "STOLH": {
+      "display_name": "Stolovi hladeni",
+      "legacy_model": "Stolovi_Hladeni",
+      "canonical_product": "STOL_HLADENI",
+      "family": "INOX",
+      "composition": [
+        "BASE_TABLE_LIKE",
+        "THERMAL_TABLE_EXTENSION"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "STOLG": {
+      "display_name": "Stolovi grijani",
+      "legacy_model": "Stolovi_Grijani",
+      "canonical_product": "STOL_GRIJANI",
+      "family": "INOX",
+      "composition": [
+        "BASE_TABLE_LIKE",
+        "THERMAL_TABLE_EXTENSION"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "STLAD": {
+      "display_name": "Stolovi s ladicama",
+      "legacy_model": "Stolovi_Ladice",
+      "canonical_product": "STOL_S_LADICAMA",
+      "family": "INOX",
+      "composition": [
+        "BASE_TABLE_LIKE",
+        "CLOSED_BASE_EXTENSION",
+        "DRAWER_EXTENSION"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "ORM": {
+      "display_name": "Ormari samostojeci",
+      "legacy_model": "Ormari_Samostojeci",
+      "canonical_product": "ORMAR_SAMOSTOJECI",
+      "family": "INOX",
+      "composition": [
+        "CABINET_BASE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "ORMV": {
+      "display_name": "Ormari viseci",
+      "legacy_model": "Ormari_Viseci",
+      "canonical_product": "ORMAR_VISECI",
+      "family": "INOX",
+      "composition": [
+        "WALL_CABINET_BASE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "SIF": {
+      "display_name": "Sifon podni",
+      "legacy_model": "Sifon_Podni",
+      "canonical_product": "SIFON_PODNI",
+      "family": "INOX",
+      "composition": [
+        "SIFON_BASE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "PSKL": {
+      "display_name": "Police skladisne",
+      "legacy_model": "Police_Skladisne",
+      "canonical_product": "POLICA_SKLADISNA",
+      "family": "INOX",
+      "composition": [
+        "SHELVING_TALL"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned",
+      "aliases": [
+        "PS"
+      ]
+    },
+    "PZ": {
+      "display_name": "Police zidne",
+      "legacy_model": "Police_Zidne",
+      "canonical_product": "POLICA_ZIDNA",
+      "family": "INOX",
+      "composition": [
+        "SHELF_WALL"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "PST": {
+      "display_name": "Police stolne",
+      "legacy_model": "Police_Stolne",
+      "canonical_product": "POLICA_STOLNA",
+      "family": "INOX",
+      "composition": [
+        "SHELF_TABLE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "NAP": {
+      "display_name": "Nape",
+      "legacy_model": "Nape",
+      "canonical_product": "NAPA",
+      "family": "INOX",
+      "composition": [
+        "HOOD_BASE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "SELFS": {
+      "display_name": "Elementi samoposluzni",
+      "legacy_model": "Elementi_Samoposluzeni",
+      "canonical_product": "ELEMENT_SAMOPOSLUZNI",
+      "family": "INOX",
+      "composition": [
+        "LOW_ELEMENT_BASE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "BAR": {
+      "display_name": "Elementi barski",
+      "legacy_model": "Elementi_Barski",
+      "canonical_product": "ELEMENT_BARSKI",
+      "family": "INOX",
+      "composition": [
+        "LOW_ELEMENT_BASE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "KOL": {
+      "display_name": "Kolica",
+      "legacy_model": "Kolica",
+      "canonical_product": "KOLICA",
+      "family": "INOX",
+      "composition": [
+        "TROLLEY_BASE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "KOM": {
+      "display_name": "Komore",
+      "legacy_model": "Komore",
+      "canonical_product": "KOMORA",
+      "family": "INOX",
+      "composition": [
+        "CHAMBER_BASE"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "MOST": {
+      "display_name": "Mostovi",
+      "legacy_model": "Mostovi",
+      "canonical_product": "MOST",
+      "family": "INOX",
+      "composition": [
+        "GENERIC_INOX_ELEMENT"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "OST": {
+      "display_name": "Ostali proizvodni elementi",
+      "legacy_model": "Ostali_Proizvodi",
+      "canonical_product": "OSTALI_PROIZVODNI_ELEMENT",
+      "family": "INOX",
+      "composition": [
+        "GENERIC_INOX_ELEMENT"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    },
+    "PPR": {
+      "display_name": "Elementi poluproizvodi",
+      "legacy_model": "Elementi_Poluproizvodi",
+      "canonical_product": "ELEMENT_POLUPROIZVOD",
+      "family": "INOX",
+      "composition": [
+        "GENERIC_INOX_ELEMENT"
+      ],
+      "technology_profile_default": "LASER",
+      "implementation_status": "planned"
+    }
+  },
+  "rule_catalog_refs": {
+    "AUTO_LEG_COUNT_BY_LENGTH": {
+      "phase": "derive",
+      "scope": "BASE_TABLE_LIKE",
+      "summary": "Duljina <= 2000 uses 4 legs; longer bodies use 6 legs unless domain override exists."
+    },
+    "SHELF_CLEAR_HEIGHT_MIN": {
+      "phase": "validate",
+      "scope": "BASE_TABLE_LIKE",
+      "summary": "Checks usable clear height above shelf count."
+    },
+    "K2_DISABLED_IMPLIES_K2_FIELDS_NP": {
+      "phase": "derive",
+      "scope": "SINK_EXTENSION",
+      "summary": "When Korito2 is BezK2, related K2 fields become NP/0."
+    },
+    "SINK_BOWL_HEADROOM": {
+      "phase": "validate",
+      "scope": "SINK_EXTENSION",
+      "summary": "Checks that Duljina can fit K1, optional K2, and required headroom."
+    },
+    "DOOR_TYPE_BY_LENGTH": {
+      "phase": "validate",
+      "scope": "CLOSED_BASE_EXTENSION",
+      "summary": "Checks hinged/sliding door compatibility by length band."
+    },
+    "DRAWER_GUIDE_COMPATIBILITY": {
+      "phase": "validate",
+      "scope": "DRAWER_EXTENSION",
+      "summary": "Checks drawer guide against width/depth band."
+    }
+  },
+  "resolution_policy": {
+    "order": [
+      "parameters.global_range",
+      "product.composition templates in listed order",
+      "template dimension overrides",
+      "compatibility_tables",
+      "runtime_rules"
+    ],
+    "dimension_validation": {
+      "outside_global_range": "error",
+      "outside_resolved_template_range": "error",
+      "outside_standard_values_but_inside_range": "warning_until_domain_approved",
+      "wrong_step": "error"
+    },
+    "composition_merge_policy": {
+      "parameters": "union_preserve_order",
+      "required_parameters": "union_preserve_order",
+      "dimension_ranges": "later_template_overrides_specific_keys",
+      "rules": "union_preserve_order"
+    }
+  },
+  "open_domain_review_items": [
+    "Confirm whether product code for Police skladisne is PSKL or PS in ERP/commercial usage.",
+    "Confirm spelling/canonical id for Elementi_Samoposluzeni vs Elementi_Samoposluzni.",
+    "Confirm whether PlocaVodeniRub value Pjover is intended spelling.",
+    "Confirm if Komore should remain in INOX furniture parameter catalog or split into a dedicated refrigeration/chamber profile.",
+    "Confirm which products should expose SkacaPrednja/SkacaLijeva/SkacaDesna.",
+    "Confirm whether Custom skaca values are allowed in commercial price list or only engineering override."
+  ]
+}

@@ -8,7 +8,7 @@
       "rule_id": "MXD_LAYER_B_OFFSET_9P5",
       "label": "Layer B offset +9.5 mm",
       "profile_scope": "MXD",
-      "description": "Ako je TIP_VRATA u [Europa, EuroMax], pomakni Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin unutar fixed envelope preview logike.",
+      "description": "Ako je TIP_VRATA u [Europa, EuroMax], pomakni BASE branch Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin unutar fixed envelope preview logike.",
       "condition": {
         "parameter": "TIP_VRATA",
         "operator": "IN",
@@ -18,28 +18,8 @@
         ]
       },
       "target_scope": {
-        "layer": "B"
-      },
-      "action": {
-        "geometry": "offset",
-        "axis": "X",
-        "value_mm": 9.5,
-        "post_repair": "bounded_trim_rejoin"
-      },
-      "status": "draft"
-    },
-    "MXD_PPV_LAYER_B_OFFSET_9P5": {
-      "rule_id": "MXD_PPV_LAYER_B_OFFSET_9P5",
-      "label": "PPV B-layer offset +9.5 mm",
-      "profile_scope": "MXD",
-      "description": "Ako je TIP_VRATA == PPV, pomakni Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin unutar fixed envelope preview logike.",
-      "condition": {
-        "parameter": "TIP_VRATA",
-        "operator": "==",
-        "value": "PPV"
-      },
-      "target_scope": {
-        "layer": "B"
+        "layer": "B",
+        "geometry_branch": "BASE"
       },
       "action": {
         "geometry": "offset",

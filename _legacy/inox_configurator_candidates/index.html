@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="UTF-8" />
+  <title>INOX Konfigurator – v6 UX Simulator</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background:#f5f5f5; }
+    h1 { margin-bottom: 4px; }
+    h2 { margin-top: 24px; margin-bottom: 8px; }
+    .panel {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      margin-top: 16px;
+    }
+    .param-field {
+      margin-bottom: 10px;
+      display: flex;
+      flex-direction: column;
+      max-width: 320px;
+      font-size: 13px;
+    }
+    .param-field label {
+      font-weight: 600;
+      margin-bottom: 3px;
+    }
+    .param-field input,
+    .param-field select {
+      padding: 4px 6px;
+      font-size: 13px;
+    }
+    button {
+      padding: 6px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    #config-section { display: none; }
+    #result-output pre {
+      background:#fafafa;
+      border:1px solid #ddd;
+      padding:8px;
+      font-size:12px;
+      overflow:auto;
+    }
+    #result-errors ul {
+      padding-left:18px;
+      margin-top:4px;
+      margin-bottom:4px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>INOX Konfigurator – v6 UX Simulator</h1>
+<div>Schema: <strong>config_inox_v6</strong> | Mode: <strong>STRICT + per-model rules</strong></div>
+
+<!-- FAZA 1: odabir modela -->
+<div id="model-select-section" class="panel">
+  <h2>1. Odaberite model</h2>
+  <div class="param-field">
+    <label for="start-model">Model</label>
+    <select id="start-model"></select>
+  </div>
+  <button id="start-button">Odaberi model</button>
+  <div id="start-message" style="margin-top:8px;font-size:12px;color:#666;">
+    Nakon odabira modela otvorit će se konfiguracijski ekran.
+  </div>
+</div>
+
+<!-- FAZA 2: konfigurator -->
+<div id="config-section" class="panel">
+  <h2>2. Parametri proizvoda</h2>
+  <div id="active-model-info" style="font-size:12px;margin-bottom:8px;color:#333;"></div>
+  <div id="param-container"></div>
+
+  <button id="validate-button">Validiraj &amp; simuliraj</button>
+
+  <div id="result-section" style="margin-top:16px;border-top:1px solid #ddd;padding-top:12px;">
+    <h2>3. Rezultat</h2>
+    <div id="result-status" style="font-size:13px;margin-bottom:6px;"></div>
+    <div id="result-errors" style="font-size:12px;color:#b00020;"></div>
+    <div id="result-output" style="font-size:12px;margin-top:8px;"></div>
+  </div>
+</div>
+
+<script src="schema_inox_v6.js"></script>
+<script src="rules_SDPO.js"></script>
+<script src="rules_STOLO.js"></script>
+<script src="rules_STOLZ.js"></script>
+<script src="engine_UI.js"></script>
+
+</body>
+</html>

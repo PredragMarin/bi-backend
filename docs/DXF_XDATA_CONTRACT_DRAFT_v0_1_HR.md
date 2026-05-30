@@ -62,7 +62,8 @@ Alternativa u istoj zoni:
 
 - `GEOMETRY_VARIANT=EU_PPV`
 
-Osnovna geometrija ostaje bez XDATA oznake.
+Osnovna geometrija ostaje bez XDATA oznake. U trenutačnoj Mother DXF
+konvenciji neoznačena top-level geometrija je implicitni `BASE` branch.
 
 ### 3.3 Pravilo interpretacije
 
@@ -78,7 +79,38 @@ a ne kao:
 
 - `raw_geometry_conflict`
 
-### 3.4 Opcionalni budući ključevi
+Ovo je samo legacy/dijagnostička interpretacija. Preferirana authoring
+konvencija za nove multi-branch Mother DXF inpute su prostorno odvojeni
+branchovi, a ne preklopljene alternativne geometrije.
+
+### 3.4 Konvencija prostornog rasporeda brancheva
+
+Za product/part slučajeve koji drže više alternativnih geometrija u jednom
+Mother DXF fileu preporučeni raspored je:
+
+- implicitni `BASE`: neoznačena geometrija, bbox minimum na `X=0`, `Y=0`
+- prvi tagged branch, npr. `GEOMETRY_VARIANT=ECO`: bbox minimum na `X=3000`,
+  `Y=0`
+- dodatni tagged branchovi, ako zatrebaju: sljedeći 3000 mm X slotovi
+
+`3000` mm slot je pragmatična authoring konvencija usklađena s trenutačnom
+3 m x 1.5 m tehnološkom bazom. To nije zahtjev za child output koordinatni
+prostor.
+
+Pravila:
+
+- branch geometrija izvan implicitnog base slota mora biti tagirana XDATA-om
+- neoznačena geometrija izvan implicitnog base slota je validation warning
+- tagged branch geometrija u implicitnom base slotu je validation warning osim
+  ako je eksplicitno prihvaćena za legacy/debug file
+- `ALL` je samo authoring/debug view
+- child preview i child export moraju se resolveati u točno jedan branch
+- finalni child DXF ne smije sadržavati eliminiranu branch geometriju ni Mother
+  DXF branch XDATA
+- finalna child geometrija se nakon branch izolacije i resolver egzekucije
+  normalizira tako da bbox minimum bude `X=0`, `Y=0`
+
+### 3.5 Opcionalni budući ključevi
 
 Nisu potrebni za v0.1, ali su kasnije dopušteni:
 
@@ -97,7 +129,9 @@ Upstream CAD operater treba isporučiti:
 
 1. čišću raw DXF geometriju
 2. alternativnu branch geometriju anotiranu XDATA-om
-3. što manje ambiguoznih overlapova bez variant identity signala
+3. prostorno odvojenu branch geometriju gdje je praktično, po mogućnosti u
+   3000 mm X slotovima
+4. što manje ambiguoznih overlapova bez variant identity signala
 
 Ovaj posao je upstream priprema, ne downstream Mother DXF cleanup.
 
@@ -232,6 +266,23 @@ Značenje:
 - dopušteno do trenutka variant resolutiona
 - ne smije blokirati downstream rad
 - treba ostati vidljivo kao kontekst, ali ne kao hard error
+- samo legacy/dijagnostička tolerancija; novi authoring treba preferirati
+  prostorno odvojene brancheve
+
+### B2. Prostorno odvojen branch
+
+Uvjet:
+
+- neoznačena base geometrija zauzima implicitni base slot
+- tagged branch geometrija zauzima odvojeni branch slot, npr. `X=3000`, `Y=0`
+- branch identity je dostupan kroz `GEOMETRY_VARIANT`
+
+Značenje:
+
+- preferirani multi-branch Mother DXF layout
+- selectable i authorable kroz aktivni branch context
+- branch koji nije izabran eliminira se prije child resolver egzekucije
+- izabrani branch se normalizira tijekom child materializacije
 
 ### C. Unknown Overlap
 
@@ -272,6 +323,13 @@ tada:
 - entiteti/blockovi s `GEOMETRY_VARIANT=EU_PPV` su visible i selectable
 - entiteti/blockovi s drugim `GEOMETRY_VARIANT` su dimmed ili hidden
 - TOPO, SEM, Force Assign Layer i Force XDATA Add rade samo nad aktivnim branchom
+
+Kad je aktivni branch `BASE`, neoznačena geometrija je izabrani source branch,
+a tagged branch geometrija je suppressana.
+
+Kad je aktivni branch `ALL`, UI smije prikazati sve branch slotove za pregled,
+selection hygiene ili XDATA repair, ali `ALL` ne smije biti source za child
+preview/export.
 
 ## 6.3 Potrebne promjene u Mother DXF-u
 

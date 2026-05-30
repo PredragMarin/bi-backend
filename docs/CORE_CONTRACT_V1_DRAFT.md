@@ -260,6 +260,36 @@ This addendum captures completed shared resolver functionality as it is rounded 
 - Core Shell resolver services are the shared engine boundary between them.
 - Completed resolver capabilities must be written here before DBR production use is approved.
 
+### Geometry Branch Resolution Slice
+
+Status: contract accepted for Mother DXF authoring/preview and future DBR resolver input selection; implementation remains governed by current diagnostic/POC approval gates.
+
+Shared branch semantics:
+
+- A Mother DXF file may contain multiple alternative geometry branches when they share the same product/part contract, parameter set, label pipeline, and resolver rule pipeline.
+- Untagged top-level geometry is implicit `BASE`.
+- Tagged branch geometry uses `MOTHERDXF` XDATA with `GEOMETRY_VARIANT=<VALUE>`.
+- Recommended authoring layout is spatial separation by 3000 mm X slots: `BASE` bbox minimum at `X=0`, `Y=0`; first tagged branch such as `ECO` bbox minimum at `X=3000`, `Y=0`; later branches in later slots.
+- `ALL` is an authoring/debug view only and must not be used as a DBR child generation source.
+- Resolver input selection must resolve exactly one branch before SEM effective geometry, TOPO movement, post-TOPO rules, final orientation, label emission, bbox normalization, and serialization.
+- Child DXF output must not contain eliminated branch geometry or Mother DXF branch XDATA.
+- Child DXF output must be normalized after branch isolation and resolver execution so bbox minimum is `X=0`, `Y=0`.
+
+DBR boundary:
+
+- DBR may consume the branch-selection result through Core Shell resolver services.
+- DBR must not infer branch selection from Mother DXF UI state.
+- DBR must not import Mother DXF runtime to resolve branches.
+- Branch selection must be driven by the config/parameter context and approved Core Shell resolver contract.
+
+Implementation note 2026-05-28:
+
+- Mother DXF child preview must render only resolver-selected branch items.
+- no-TOPO and TOPO materialization paths must apply branch filtering before child serialization.
+- Metadata Authoring may operate in `ALL` only for inspection/XDATA repair; SEM, TOPO, and primary layer authoring require a concrete branch when branch variants are present.
+- Core Shell/DBR-facing document rule contracts may include `target_scope.geometry_branch`; branch-scoped rules must be skipped when the resolved source branch does not match.
+- Branch mode derivation, object branch filtering, and branch-scoped rule matching are Core Shell resolver service responsibilities; Mother DXF may call these services for UI/authoring parity but must not own divergent branch semantics.
+
 ### 4-band Parameter Resize Slice
 
 Status: Core Shell 4-band preview resolver confirmed for shadow visualization; DBR production activation remains not approved.
@@ -284,7 +314,7 @@ Confirmed Core Shell preview resolver slice:
 - 4-band inference policy is `explicit_layer_only`: circle/arc/insert follower behavior must come from explicit primary layer assignment such as `BL/BR/TL/TR`, not from geometric proximity heuristics.
 - Mother DXF `/simulate` resolves entity-level `SEM` presence/variant filters into an effective geometry set before invoking the Core Shell 4-band shadow resolver.
 - The Core Shell 4-band shadow map is rendered as preview-only `simulated_shapes` for operator inspection.
-- Mother DXF may export a diagnostic `core_shell_4_band_shadow_child_dxf_v0` DXF for external viewer validation; it must carry `diagnostic_only=true` and `production_activation_status=not_approved` and must not be treated as DBR production child generation.
+- Mother DXF may export a diagnostic `core_shell_4_band_shadow_child_dxf_v0` DXF for external viewer validation; it must carry `diagnostic_only=true` and `production_activation_status=not_approved` and must not be treated as DBR production child generation. This export is WYSIWYG with the Combined Child Preview simulation map: final orientation already applied in preview must not be applied a second time during export finalization.
 - Final child materialization order is SEM effective geometry, TOPO movement, post-TOPO offsets, final orientation mirror, bbox normalization to minX=0/minY=0, then child label TEXT emission. This keeps label text from being mirrored.
 - Final orientation mirror is now explicit by axis. `DOOR_SX_DX_MIRROR_X_UNSTACKED` mirrors unstacked parts (`KSKR`, `OBRA`, `OSPY`, `OBRIT`, `OMET`) around X. `DOOR_SX_DX_MIRROR_Y_STACKED` mirrors stacked parts (`LBRA`, `LBRIT`, `LHOR`, `LMET`, `SBRA`, `SBRIT`, `SHOR`, `KDDV`, `KDLV`, `KDHOR`, `PS`) around Y. Deprecated `DOOR_SX_DX_MIRROR` remains only as a compatibility alias for older sessions. Mother DXF preview must emit `MISSING_FINAL_ORIENTATION_RULE` when parameters and part scope match a final-orientation candidate but no explicit document `rule_ref` is active.
 - This preview visualization remains diagnostic-only and must not be treated as DBR child DXF generation or production activation.

@@ -64,7 +64,8 @@ Alternative in the same zone:
 
 - `GEOMETRY_VARIANT=EU_PPV`
 
-Base geometry remains untagged.
+Base geometry remains untagged. In the current Mother DXF convention, untagged
+top-level geometry is the implicit `BASE` branch.
 
 ### 3.3 Interpretation Rule
 
@@ -80,7 +81,37 @@ and not as:
 
 - `raw_geometry_conflict`
 
-### 3.4 Optional Future Keys
+This is a legacy/diagnostic interpretation only. The preferred authoring
+convention for new multi-branch Mother DXF inputs is spatially separated
+branches, not overlapping alternative branches.
+
+### 3.4 Spatial Branch Layout Convention
+
+For product/part cases that keep multiple alternative geometries in one Mother
+DXF file, the recommended layout is:
+
+- implicit `BASE`: untagged geometry, bbox minimum at `X=0`, `Y=0`
+- first tagged branch, for example `GEOMETRY_VARIANT=ECO`: bbox minimum at
+  `X=3000`, `Y=0`
+- additional tagged branches, if needed: next 3000 mm X slots
+
+The `3000` mm slot is a pragmatic authoring convention aligned with the current
+3 m x 1.5 m technology base. It is not a child output coordinate requirement.
+
+Rules:
+
+- branch geometry outside the implicit base slot must be tagged with XDATA
+- untagged geometry outside the implicit base slot is a validation warning
+- tagged branch geometry in the implicit base slot is a validation warning unless
+  explicitly accepted for a legacy/debug file
+- `ALL` is an authoring/debug view only
+- child preview and child export must resolve to exactly one branch
+- final child DXF must not contain eliminated branch geometry or Mother DXF
+  branch XDATA
+- final child geometry is normalized after branch isolation and resolver
+  execution so bbox minimum is `X=0`, `Y=0`
+
+### 3.5 Optional Future Keys
 
 Not required for v0.1, but allowed later:
 
@@ -99,7 +130,9 @@ The upstream CAD operator should deliver:
 
 1. cleaner raw DXF geometry
 2. alternative geometry branch annotated with XDATA
-3. as little ambiguous overlap as possible without variant identity
+3. spatially separated branch geometry where practical, preferably in 3000 mm
+   X slots
+4. as little ambiguous overlap as possible without variant identity
 
 This work is upstream preparation, not downstream Mother DXF cleanup.
 
@@ -234,6 +267,23 @@ Meaning:
 - allowed until variant resolution
 - should not block downstream work
 - should remain visible as context, but not as a hard error
+- legacy/diagnostic tolerance only; new authoring should prefer spatially
+  separated branches
+
+### B2. Spatially Separated Branch
+
+Condition:
+
+- untagged base geometry occupies the implicit base slot
+- tagged branch geometry occupies a distinct branch slot such as `X=3000`, `Y=0`
+- branch identity is available through `GEOMETRY_VARIANT`
+
+Meaning:
+
+- preferred multi-branch Mother DXF layout
+- selectable and authorable through active branch context
+- branch is eliminated before child resolver execution when it is not selected
+- selected branch is normalized during child materialization
 
 ### C. Unknown Overlap
 
@@ -274,6 +324,13 @@ then:
 - entities/blocks with `GEOMETRY_VARIANT=EU_PPV` are visible and selectable
 - entities/blocks with another `GEOMETRY_VARIANT` are dimmed or hidden
 - TOPO, SEM, Force Assign Layer, and Force XDATA Add operate only on the active branch
+
+When active branch is `BASE`, untagged geometry is the selected source branch
+and tagged branch geometry is suppressed.
+
+When active branch is `ALL`, the UI may show all branch slots for inspection,
+selection hygiene, or XDATA repair, but `ALL` must not be used as a child
+preview/export source.
 
 ## 6.3 Required Mother DXF Changes
 

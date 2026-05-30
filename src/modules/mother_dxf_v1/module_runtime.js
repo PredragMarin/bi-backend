@@ -28,7 +28,12 @@ const {
 } = require("../../core_shell/services/dxf_line_repair_service");
 const {
   runFourBandParameterResizeShadowPreview,
-  runResolverPreview
+  runResolverPreview,
+  branchModeFromConfigParameterSet: coreBranchModeFromConfigParameterSet,
+  filterResolverObjectsByBranchMode: coreFilterObjectsByBranchMode,
+  normalizeResolverBranchMode: coreNormalizeBranchMode,
+  resolverBranchMetadataMatchesMode: coreBranchMetadataMatchesMode,
+  resolverRuleMatchesGeometryBranch: coreRuleMatchesGeometryBranch
 } = require("../../core_shell/services/dxf_resolver_service");
 const {
   buildSanitizeReview
@@ -930,7 +935,11 @@ function evaluateCatalogRuleCondition(condition, parameters) {
   return false;
 }
 
-function resolveExecutableDocumentRules(session, parameters) {
+function ruleMatchesGeometryBranch(rule, branchMode) {
+  return coreRuleMatchesGeometryBranch(rule, branchMode);
+}
+
+function resolveExecutableDocumentRules(session, parameters, branchMode = "ALL") {
   const documentSem = collectDocumentSemMetadata(session?.document);
   const ruleRefs = Array.isArray(documentSem?.rule_refs) ? documentSem.rule_refs : [];
   if (!ruleRefs.length) return [];
@@ -942,6 +951,7 @@ function resolveExecutableDocumentRules(session, parameters) {
     if (!rule || typeof rule !== "object") continue;
     const profileScope = String(rule.profile_scope || "").trim().toUpperCase();
     if (profileScope && profileScope !== "MXD") continue;
+    if (!ruleMatchesGeometryBranch(rule, branchMode)) continue;
     if (!evaluateCatalogRuleCondition(rule.condition, parameters)) continue;
     matches.push(rule);
   }
@@ -1256,11 +1266,11 @@ function applyBottomOffsetEnvelopeVerticalPostPass(objectMap, objects, preRuleSh
   }
 }
 
-function applyDocumentRulesToSimulationMap(session, objects, parameters, objectMap, topologyMode) {
+function applyDocumentRulesToSimulationMap(session, objects, parameters, objectMap, topologyMode, branchMode = "ALL") {
   if (!objectMap || !Array.isArray(objects) || !objects.length) {
     return { applied_rules: [] };
   }
-  const executableRules = resolveExecutableDocumentRules(session, parameters);
+  const executableRules = resolveExecutableDocumentRules(session, parameters, branchMode);
   if (!executableRules.length) {
     return { applied_rules: [] };
   }
@@ -1271,6 +1281,7 @@ function applyDocumentRulesToSimulationMap(session, objects, parameters, objectM
     const action = rule && typeof rule.action === "object" ? rule.action : {};
     const targetScope = rule && typeof rule.target_scope === "object" ? rule.target_scope : {};
     const targetLayer = String(targetScope.layer || "").trim().toUpperCase();
+    const targetBranch = String(targetScope.geometry_branch || targetScope.branch || "").trim();
     const geometry = String(action.geometry || "").trim().toLowerCase();
     const axis = String(action.axis || "").trim().toUpperCase();
     const valueMm = Number(action.value_mm);
@@ -1400,6 +1411,7 @@ function applyDocumentRulesToSimulationMap(session, objects, parameters, objectM
     appliedRules.push({
       rule_id: String(rule.rule_id || "").trim() || null,
       target_layer: targetLayer,
+      target_branch: targetBranch || null,
       axis,
       value_mm: valueMm,
       affected_count: affectedObjects.length
@@ -2612,15 +2624,15 @@ function geometryVariantKey(object) {
 }
 
 function normalizeBranchMode(mode) {
-  return String(mode || "ALL").trim() || "ALL";
+  return coreNormalizeBranchMode(mode);
+}
+
+function effectiveBranchModeForConfig(config, explicitMode = null) {
+  return coreBranchModeFromConfigParameterSet(config, explicitMode);
 }
 
 function branchMetadataMatchesMode(metadata, branchMode) {
-  const mode = normalizeBranchMode(branchMode);
-  if (mode === "ALL") return true;
-  const geometryVariant = String(metadata?.geometry_variant || "").trim();
-  if (mode === "BASE") return !geometryVariant;
-  return geometryVariant === mode;
+  return coreBranchMetadataMatchesMode(metadata, branchMode);
 }
 
 function objectMatchesBranchMode(object, branchMode) {
@@ -2628,9 +2640,7 @@ function objectMatchesBranchMode(object, branchMode) {
 }
 
 function filterObjectsByBranchMode(objects, branchMode) {
-  const mode = normalizeBranchMode(branchMode);
-  if (mode === "ALL") return Array.isArray(objects) ? objects : [];
-  return (Array.isArray(objects) ? objects : []).filter((object) => objectMatchesBranchMode(object, mode));
+  return coreFilterObjectsByBranchMode(objects, branchMode);
 }
 
 function hasExplicitBranchMetadata(metadata) {
@@ -3398,9 +3408,11 @@ function pruneUnusedBlocks(document) {
 function materializeChildDocumentNoTopo(session, config) {
   const view = assertNoTopoKskrChildScope(session, config);
   const parameters = config.parameters || {};
-  const sourceObjects = Array.isArray(view.objects) ? view.objects : [];
+  const branchMode = effectiveBranchModeForConfig(config);
+  const sourceObjects = filterObjectsByBranchMode(Array.isArray(view.objects) ? view.objects : [], branchMode);
   const outputDocument = cloneJson(session.document);
-  const documentRuleExecution = materializeDocumentRulesOnDocument(outputDocument, session, view.objects, parameters);
+  const branchFilterExecution = filterDocumentByBranchMode(session, outputDocument, branchMode);
+  const documentRuleExecution = materializeDocumentRulesOnDocument(outputDocument, session, sourceObjects, parameters, branchMode);
   const decisionsByEntityId = new Map();
   const excludedEntities = [];
   const includedEntities = [];
@@ -3452,6 +3464,8 @@ function materializeChildDocumentNoTopo(session, config) {
       topology_mode: "none",
       product_code: config.product_code,
       technology_profile: config.technology_profile,
+      branch_mode: branchMode,
+      branch_filter: branchFilterExecution,
       document_rules_applied: documentRuleExecution.applied_rules || [],
       entity_count: sourceObjects.length,
       included_count: includedEntities.length,
@@ -3523,15 +3537,16 @@ function translateEntityPairs(entity, dx, dy) {
   });
 }
 
-function materializeDocumentRulesOnDocument(outputDocument, session, sourceObjects, parameters) {
+function materializeDocumentRulesOnDocument(outputDocument, session, sourceObjects, parameters, branchMode = "ALL") {
   const outputEntities = entityMapById(outputDocument);
-  const rules = resolveExecutableDocumentRules(session, parameters);
+  const rules = resolveExecutableDocumentRules(session, parameters, branchMode);
   const appliedRules = [];
 
   for (const rule of rules) {
     const action = rule && typeof rule.action === "object" ? rule.action : {};
     const targetScope = rule && typeof rule.target_scope === "object" ? rule.target_scope : {};
     const targetLayer = String(targetScope.layer || "").trim().toUpperCase();
+    const targetBranch = String(targetScope.geometry_branch || targetScope.branch || "").trim();
     const geometry = String(action.geometry || "").trim().toLowerCase();
     const axis = String(action.axis || "").trim().toUpperCase();
     const valueMm = Number(action.value_mm);
@@ -3561,6 +3576,7 @@ function materializeDocumentRulesOnDocument(outputDocument, session, sourceObjec
     appliedRules.push({
       rule_id: String(rule.rule_id || "").trim() || null,
       target_layer: targetLayer,
+      target_branch: targetBranch || null,
       axis,
       value_mm: valueMm,
       post_repair: postRepair || null,
@@ -4587,9 +4603,15 @@ function enforceChildLayerPolicy(outputDocument, config) {
   return { applied: true, text_layer: "0", geometry_layer: "1", updated_count: updatedCount };
 }
 
-function finalizeChildDocument(outputDocument, session, config, repairContext = null) {
+function finalizeChildDocument(outputDocument, session, config, repairContext = null, options = {}) {
   const blockExplosion = explodeAllBlockInsertsOnDocument(outputDocument);
-  const finalOrientation = materializeFinalOrientationRulesOnDocument(outputDocument, session, config);
+  const finalOrientation = options.skipFinalOrientation === true
+    ? {
+        applied_rules: cloneJson(options.preAppliedFinalOrientationRules || []),
+        skipped: true,
+        reason: "pre_applied_in_simulation_map"
+      }
+    : materializeFinalOrientationRulesOnDocument(outputDocument, session, config);
   const bboxNormalization = normalizeChildDocumentBBoxToOrigin(outputDocument);
   const finalGapRepair = applyFinalOpenContourGapRepair(outputDocument, repairContext);
   const childLabelExecution = materializeChildLabelsOnDocument(outputDocument, session);
@@ -4910,7 +4932,7 @@ function applyTopoTrimRejoinEndpointFollowerRepair(session, outputDocument, sour
 function materializeChildDocumentTopoPoc(session, config, options = {}) {
   const view = projectViewModel(session);
   const parameters = config.parameters || {};
-  const branchMode = normalizeBranchMode(options?.branchMode || config.branch_mode || "ALL");
+  const branchMode = effectiveBranchModeForConfig(config, options?.branchMode);
   const topo = firstExecutableTopoComment(session);
   if (!topo) {
     throw new Error("TOPO child POC requires executable file-level TOPO metadata.");
@@ -4927,7 +4949,7 @@ function materializeChildDocumentTopoPoc(session, config, options = {}) {
   const outputDocument = cloneJson(session.document);
   const branchFilterExecution = filterDocumentByBranchMode(session, outputDocument, branchMode);
   const outputEntities = entityMapById(outputDocument);
-  const documentRuleExecution = materializeDocumentRulesOnDocument(outputDocument, session, sourceObjects, parameters);
+  const documentRuleExecution = materializeDocumentRulesOnDocument(outputDocument, session, sourceObjects, parameters, branchMode);
   const decisionsByEntityId = new Map();
   const excludedEntities = [];
   const includedEntities = [];
@@ -5212,6 +5234,8 @@ function buildResolverMaterializedSimulation(session, config, materialized) {
     validation,
     summary: {
       object_count: items.length,
+      branch_mode: summary.branch_mode || null,
+      source_object_count: sourceView.objects.length,
       included_count: items.filter((item) => item.preview?.included !== false).length,
       excluded_count: items.filter((item) => item.preview?.included === false).length,
       resolver_materialized: true,
@@ -5687,6 +5711,8 @@ function validateCombinedPreviewGeometry(objects, items, topologyMode) {
 function simulateChildPreview(session) {
   const view = projectViewModel(session);
   const config = normalizeConfigParameterSet(session.config_parameter_set);
+  const branchMode = effectiveBranchModeForConfig(config);
+  const sourceObjects = filterObjectsByBranchMode(view.objects, branchMode);
   const resolverRuleContext = {
     rule_catalog: normalizeRuleCatalogSnapshot(session.rule_catalog),
     configParameterSet: config,
@@ -5698,14 +5724,7 @@ function simulateChildPreview(session) {
     ? view.topo_metadata.runtime_model
     : null;
   const topologyMode = topoRuntime?.mode || "none";
-  const standardSimulationMap = topologyMode === "none"
-    ? runResolverPreview({
-      profile: "standard_parametric_resize",
-      objects: view.objects,
-      configParameterSet: config,
-      ruleContext: resolverRuleContext
-    })
-    : buildIdentitySimulationMap(view.objects, topologyMode);
+  const standardSimulationMap = buildIdentitySimulationMap(sourceObjects, topologyMode);
   let documentRuleExecution = { applied_rules: [] };
   let postTopoRuleExecution = { applied_rules: [] };
   let topoSimulationMap = null;
@@ -5716,22 +5735,24 @@ function simulateChildPreview(session) {
   if (topologyMode === "none") {
     documentRuleExecution = applyDocumentRulesToSimulationMap(
       session,
-      view.objects,
+      sourceObjects,
       config.parameters,
       activeSimulationMap,
-      topologyMode
+      topologyMode,
+      branchMode
     );
   } else {
     documentRuleExecution = applyDocumentRulesToSimulationMap(
       session,
-      view.objects,
+      sourceObjects,
       config.parameters,
       standardSimulationMap,
-      topologyMode
+      topologyMode,
+      branchMode
     );
     topoSimulationMap = buildTopoGeometrySimulationMap(
       session,
-      view.objects,
+      sourceObjects,
       config.parameters,
       topologyMode,
       standardSimulationMap
@@ -5739,7 +5760,7 @@ function simulateChildPreview(session) {
     activeSimulationMap = topoSimulationMap || standardSimulationMap;
     if (topologyMode === "4_band_parameter_resize" && topoRuntime?.profile === "standard_parametric_resize") {
       try {
-        semEffectiveGeometryFilter = buildSemEffectiveGeometryFilter(view.objects, config.parameters);
+        semEffectiveGeometryFilter = buildSemEffectiveGeometryFilter(sourceObjects, config.parameters);
         const coreShellFourBandShadowResult = runFourBandParameterResizeShadowPreview({
           objects: semEffectiveGeometryFilter.included_objects,
           configParameterSet: config,
@@ -5769,7 +5790,7 @@ function simulateChildPreview(session) {
   }
   postTopoRuleExecution = applyPostTopoRulesToSimulationMap(
     session,
-    view.objects,
+    sourceObjects,
     config.parameters,
     activeSimulationMap
   );
@@ -5777,7 +5798,7 @@ function simulateChildPreview(session) {
   const finalSimulationMap = finalOrientationPreview.simulation_map;
   const limitator = normalizeBooleanLike(config.parameters.LIMITATOR);
   const brava = config.parameters.BRAVA == null ? null : String(config.parameters.BRAVA);
-  const items = view.objects.map((object) => {
+  const items = sourceObjects.map((object) => {
     const parsedSemRecords = Array.isArray(object.semantic_metadata?.parsed) ? object.semantic_metadata.parsed : [];
     const firstSem = parsedSemRecords.length ? parsedSemRecords[0] : null;
     const semKeys = firstSem?.keys || {};
@@ -5852,7 +5873,7 @@ function simulateChildPreview(session) {
     };
   });
 
-  const validation = validateCombinedPreviewGeometry(view.objects, items, topologyMode);
+  const validation = validateCombinedPreviewGeometry(sourceObjects, items, topologyMode);
   const topologyDeltaWarnings = Array.isArray(coreShellFourBandShadow?.topology_delta_warnings)
     ? coreShellFourBandShadow.topology_delta_warnings
     : [];
@@ -5891,6 +5912,7 @@ function simulateChildPreview(session) {
     technology_profile: config.technology_profile,
     product_code: config.product_code,
     topology_mode: topologyMode,
+    branch_mode: branchMode,
     config_parameter_set: config,
     items,
     validation,
@@ -5924,6 +5946,7 @@ function materializeCoreShellFourBandShadowDocument(session, parameterSet) {
   }
 
   const outputDocument = materializeDocumentForExport(session);
+  const branchFilterExecution = filterDocumentByBranchMode(session, outputDocument, simulation.summary?.branch_mode || simulation.branch_mode || "ALL");
   const itemByEntityId = new Map((simulation.items || []).map((item) => [String(item.entity_id || ""), item]));
   const removedEntityIds = [];
   const updatedEntityIds = [];
@@ -5958,7 +5981,10 @@ function materializeCoreShellFourBandShadowDocument(session, parameterSet) {
     }
   }
 
-  const finalChildExecution = finalizeChildDocument(outputDocument, session, config);
+  const finalChildExecution = finalizeChildDocument(outputDocument, session, config, null, {
+    skipFinalOrientation: true,
+    preAppliedFinalOrientationRules: simulation.summary?.final_orientation_rules_applied || []
+  });
   return {
     document: outputDocument,
     simulation,
@@ -5968,6 +5994,7 @@ function materializeCoreShellFourBandShadowDocument(session, parameterSet) {
       production_activation_status: "not_approved",
       cleanup_approval: "no",
       topology_mode: simulation.topology_mode,
+      branch_filter: branchFilterExecution,
       object_count: simulation.summary?.object_count ?? simulation.items.length,
       included_count: simulation.items.filter((item) => item.preview?.included !== false).length,
       excluded_count: simulation.items.filter((item) => item.preview?.included === false).length,
@@ -5980,6 +6007,10 @@ function materializeCoreShellFourBandShadowDocument(session, parameterSet) {
       core_shell_4_band_shadow: shadowSummary,
       block_explosion: finalChildExecution.block_explosion,
       final_orientation_rules_applied: finalChildExecution.final_orientation.applied_rules || [],
+      final_orientation_materialization: {
+        skipped: finalChildExecution.final_orientation.skipped === true,
+        reason: finalChildExecution.final_orientation.reason || null
+      },
       bbox_normalization: finalChildExecution.bbox_normalization,
       final_gap_repair: finalChildExecution.final_gap_repair,
       child_label_rules_applied: finalChildExecution.child_label.applied_rules || [],

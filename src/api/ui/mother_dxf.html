@@ -288,7 +288,7 @@
             <div id="documentSemSummaryPanel" class="phase-summary" style="display:none"></div>
             <div id="documentSemEditorPanel">
             <div id="documentSemMeta" class="meta" style="margin-bottom:8px">Document SEM not saved.</div>
-            <div class="meta" style="margin-bottom:10px">Identity definira document contract, a document rules aktiviraju profile/product-specific runtime ponašanja nad cijelim mother artefaktom.</div>
+            <div class="meta" style="margin-bottom:10px">Identity definira document contract. Document rules aktiviraju profile/product-specific ponašanja nad resolved geometry branchom; ALL je samo authoring/debug view.</div>
             <div class="meta" style="margin-bottom:8px"><strong>Identity</strong></div>
             <div class="grid-2">
               <label>Nominal width
@@ -1023,13 +1023,8 @@
         rule_id: "MXD_LAYER_B_OFFSET_9P5",
         label: "Layer B offset +9.5 mm",
         profile_scope: "MXD",
-        description: "Ako je TIP_VRATA u [Europa, EuroMax], pomakni Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin."
-      },
-      {
-        rule_id: "MXD_PPV_LAYER_B_OFFSET_9P5",
-        label: "PPV B-layer offset +9.5 mm",
-        profile_scope: "MXD",
-        description: "Ako je TIP_VRATA == PPV, pomakni Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin unutar fixed envelope preview logike."
+        description: "Ako je TIP_VRATA u [Europa, EuroMax], pomakni BASE branch Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin.",
+        target_scope: { layer: "B", geometry_branch: "BASE" }
       }
     ];
 
@@ -1447,6 +1442,29 @@
       return Array.from(state.selectedIds)
         .map((id) => objectById(id))
         .filter(Boolean);
+    }
+
+    function hasGeometryBranches() {
+      const variants = state.session?.xdata_context?.geometry_variants;
+      return Array.isArray(variants) && variants.length > 0;
+    }
+
+    function ensureConcreteBranchForAuthoring(actionLabel) {
+      if (!hasGeometryBranches() || currentBranchMode() !== "ALL") return true;
+      setStatus(String(actionLabel || "Authoring") + " requires an active geometry branch. Choose BASE or a tagged branch in Geometry Branch Context first.", "error");
+      if (xdataContextDetails) xdataContextDetails.open = true;
+      return false;
+    }
+
+    function currentBranchAuthoringObjects(actionLabel) {
+      if (!ensureConcreteBranchForAuthoring(actionLabel)) return null;
+      const selected = currentSelectionObjects();
+      const scoped = selected.filter((object) => isObjectSelectableInVariantContext(object));
+      if (selected.length && scoped.length !== selected.length) {
+        state.selectedIds = new Set(scoped.map((object) => object.id));
+        setStatus(String(actionLabel || "Authoring") + ": removed " + String(selected.length - scoped.length) + " off-branch selection item(s).", "warn");
+      }
+      return scoped;
     }
 
     function selectionTowerActive() {
@@ -2153,6 +2171,7 @@
 
     function isObjectVisibleInSimulation(objectId) {
       const item = simulationItemByObjectId(objectId);
+      if (state.simulation && !item) return false;
       if (item && item.preview && String(item.preview.geometry_simulation_mode || "").startsWith("topology_mode:")) {
         return item.preview.visible !== false;
       }
@@ -3142,6 +3161,8 @@
         status: item.status,
         stage: item.action?.stage || null,
         axis: item.action?.axis || null,
+        target_branch: item.target_scope?.geometry_branch || item.target_scope?.branch || null,
+        target_layer: item.target_scope?.layer || null,
         target_parts: Array.isArray(item.target_scope?.parts) ? item.target_scope.parts : null,
         ui_hidden: item.ui_hidden === true
       })), null, 2);
@@ -3186,7 +3207,22 @@
     function ruleScopeLabel(rule) {
       const scope = rule && typeof rule.target_scope === "object" ? rule.target_scope : {};
       const parts = Array.isArray(scope.parts) ? scope.parts.join(",") : String(scope.parts || "").trim();
-      return parts ? `parts=${parts}` : "";
+      const branch = String(scope.geometry_branch || scope.branch || "").trim();
+      const layer = String(scope.layer || "").trim();
+      return [branch ? "branch=" + branch : "", parts ? "parts=" + parts : "", layer ? "layer=" + layer : ""]
+        .filter(Boolean)
+        .join(" | ");
+    }
+
+    function ruleConditionLabel(rule) {
+      const condition = rule && typeof rule.condition === "object" ? rule.condition : {};
+      const parameter = String(condition.parameter || "").trim();
+      const operator = String(condition.operator || "").trim();
+      if (!parameter || !operator) return "condition=always";
+      if (operator.toUpperCase() === "IN" && Array.isArray(condition.values)) {
+        return parameter + " IN [" + condition.values.map((item) => String(item)).join(", ") + "]";
+      }
+      return parameter + " " + operator + " " + String(condition.value ?? "");
     }
 
     function ruleOptionLabel(rule) {
@@ -3353,7 +3389,10 @@
         const catalogRules = new Map(availableDocumentRules().map((rule) => [rule.rule_id, rule]));
         documentSemRulesBox.innerHTML = activeRules.map((ruleRef) => {
           const rule = catalogRules.get(ruleRef) || null;
-          return `<div class="selection-item"><strong>${esc(ruleRef)}</strong>${rule ? ` | ${esc(rule.label || "")}` : ""}<br><span class="meta">${esc(rule?.description || "No rule description loaded.")}</span><div class="toolbar" style="margin-top:6px"><button type="button" class="secondary" data-remove-doc-rule="${esc(ruleRef)}">Remove</button></div></div>`;
+          const ruleDescription = rule ? String(rule.description || "No rule description loaded.") : "No rule description loaded.";
+          const ruleRuntimeScope = ruleScopeLabel(rule) || "branch=resolved";
+          const ruleCondition = ruleConditionLabel(rule);
+          return `<div class="selection-item"><strong>${esc(ruleRef)}</strong>${rule ? ` | ${esc(rule.label || "")}` : ""}<br><span class="meta">${esc(ruleRuntimeScope)} | ${esc(ruleCondition)}</span><br><span class="meta">${esc(ruleDescription)}</span><div class="toolbar" style="margin-top:6px"><button type="button" class="secondary" data-remove-doc-rule="${esc(ruleRef)}">Remove</button></div></div>`;
         }).join("");
         documentSemRulesBox.querySelectorAll("[data-remove-doc-rule]").forEach((button) => {
           button.addEventListener("click", () => removeDocumentSemRule(button.dataset.removeDocRule));
@@ -4607,14 +4646,16 @@
     }
 
     async function applyAssignment(layer) {
-      if (!state.session || !state.selectedIds.size) {
+      const selectedObjects = currentBranchAuthoringObjects("Layer assignment");
+      if (!state.session || !selectedObjects || !selectedObjects.length) {
         setStatus("Select one or more objects first.", "error");
         return;
       }
+      const selectedIds = selectedObjects.map((object) => object.id);
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/assign`, {
         method: "POST",
         body: JSON.stringify({
-          ids: Array.from(state.selectedIds),
+          ids: selectedIds,
           layer
         })
       });
@@ -4623,7 +4664,7 @@
       clearTopoPreview();
       syncCurrentDxfText(data.dxf_text);
       render();
-      setStatus(`Assigned ${layer} to ${state.selectedIds.size} object(s).`, "ok");
+      setStatus("Assigned " + String(layer) + " to " + String(selectedIds.length) + " object(s).", "ok");
     }
 
     async function assignXdataToSelection() {
@@ -4815,6 +4856,7 @@
         return;
       }
       const family = activeTopoFamily();
+      if (!ensureConcreteBranchForAuthoring("TOPO metadata authoring")) return;
       const topoConfigOk = Boolean(
         String(topoLecParameter.value || "").trim()
         && Number.isFinite(Number(topoLecNominal.value))
@@ -4851,7 +4893,7 @@
       state.session = data.session;
       syncCurrentDxfText(data.dxf_text);
       const selectedObjects = family === "fixed_envelope_slide"
-        ? Array.from(state.selectedIds).map((id) => objectById(id)).filter(Boolean)
+        ? (currentBranchAuthoringObjects("TOPO role authoring") || [])
         : [];
       for (const object of selectedObjects) {
         const roleData = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/entities/${encodeURIComponent(object.entity_id)}/topo-role`, {
@@ -4882,6 +4924,7 @@
 
     async function clearSelectedTopoMetadata() {
       if (!state.session) return;
+      if (!ensureConcreteBranchForAuthoring("TOPO metadata clearing")) return;
       const targetIds = state.selectedIds.size
         ? Array.from(state.selectedIds)
         : Array.from(state.topoInspectorSelectedIds || []);
@@ -5007,8 +5050,8 @@
     }
 
     async function applyMetadataRule() {
-      const selectedObjects = currentSelectionObjects();
-      if (!state.session || !selectedObjects.length) {
+      const selectedObjects = currentBranchAuthoringObjects("SEM metadata authoring");
+      if (!state.session || !selectedObjects || !selectedObjects.length) {
         setStatus("Select one or more relevant objects first.", "error");
         return;
       }
@@ -5042,12 +5085,12 @@
       render();
       const affectedCount = Array.isArray(data.affected_entity_ids) ? data.affected_entity_ids.length : entityIds.length;
       state.metadataEdit.replaceSemanticComment = null;
-      setStatus(`Metadata applied to  entitet(a): `, "ok");
+      setStatus("Metadata applied to " + String(affectedCount) + " entitet(a).", "ok");
     }
 
     async function assignMicroShiftSetToSelection() {
-      const selectedObjects = currentSelectionObjects();
-      if (!state.session || !selectedObjects.length) {
+      const selectedObjects = currentBranchAuthoringObjects("MICRO_SHIFT_SET authoring");
+      if (!state.session || !selectedObjects || !selectedObjects.length) {
         setStatus("Select one or more relevant objects first.", "error");
         return;
       }
@@ -5089,6 +5132,7 @@
     }
 
     async function clearMetadataRule() {
+      if (!ensureConcreteBranchForAuthoring("SEM metadata clearing")) return;
       const object = selectedObject();
       if (!state.session || !object) {
         setStatus("Select one relevant object first.", "error");

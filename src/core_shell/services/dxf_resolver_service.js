@@ -14,6 +14,46 @@ function cloneShapes(shapes) {
   return JSON.parse(JSON.stringify(Array.isArray(shapes) ? shapes : []));
 }
 
+function normalizeResolverBranchMode(mode) {
+  return String(mode || "ALL").trim() || "ALL";
+}
+
+function branchModeFromConfigParameters(parameters) {
+  const tip = String(parameters?.TIP_VRATA || "").trim().toUpperCase();
+  if (tip === "ECO") return "ECO";
+  if (tip) return "BASE";
+  return "ALL";
+}
+
+function branchModeFromConfigParameterSet(config, explicitMode = null) {
+  const explicit = String(explicitMode || "").trim();
+  if (explicit && explicit !== "ALL") return normalizeResolverBranchMode(explicit);
+  const configMode = String(config?.branch_mode || "").trim();
+  if (configMode && configMode !== "ALL") return normalizeResolverBranchMode(configMode);
+  return normalizeResolverBranchMode(branchModeFromConfigParameters(config?.parameters || {}));
+}
+
+function resolverBranchMetadataMatchesMode(metadata, branchMode) {
+  const mode = normalizeResolverBranchMode(branchMode);
+  if (mode === "ALL") return true;
+  const geometryVariant = String(metadata?.geometry_variant || "").trim();
+  if (mode === "BASE") return !geometryVariant;
+  return geometryVariant === mode;
+}
+
+function filterResolverObjectsByBranchMode(objects, branchMode) {
+  const mode = normalizeResolverBranchMode(branchMode);
+  if (mode === "ALL") return Array.isArray(objects) ? objects : [];
+  return (Array.isArray(objects) ? objects : []).filter((object) => resolverBranchMetadataMatchesMode(object?.xdata_metadata, mode));
+}
+
+function resolverRuleMatchesGeometryBranch(rule, branchMode) {
+  const scope = rule && typeof rule.target_scope === "object" ? rule.target_scope : {};
+  const targetBranch = String(scope.geometry_branch || scope.branch || "").trim();
+  if (!targetBranch) return true;
+  return normalizeResolverBranchMode(branchMode).toUpperCase() === targetBranch.toUpperCase();
+}
+
 function shapeAnchorPoint(shape) {
   if (!shape || typeof shape !== "object") return null;
   if (shape.kind === "circle" || shape.kind === "arc") {
@@ -1215,6 +1255,12 @@ async function resolveMotherDxfRuntimePlan({
 }
 
 module.exports = {
+  branchModeFromConfigParameterSet,
+  branchModeFromConfigParameters,
+  filterResolverObjectsByBranchMode,
+  normalizeResolverBranchMode,
+  resolverBranchMetadataMatchesMode,
+  resolverRuleMatchesGeometryBranch,
   loadSharedSemEvaluatorService,
   normalizeFourBandResizeContract,
   resolveMotherDxfRuntimePlan,

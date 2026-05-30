@@ -225,13 +225,13 @@ Current artifacts:
 
 Current MXD draft rules:
 
-- `MXD_PPV_LAYER_B_OFFSET_9P5`
+- `MXD_LAYER_B_OFFSET_9P5`
 
 Current MXD rule example:
 
-- `MXD_PPV_LAYER_B_OFFSET_9P5`
+- `MXD_LAYER_B_OFFSET_9P5`
   - `profile_scope = MXD`
-  - condition: `TIP_VRATA == PPV`
+  - condition: `TIP_VRATA IN [Europa, EuroMax]`
   - target scope: `Layer B`
   - action: `offset Y +9.5 mm`
   - post repair: `bounded local trim/rejoin`
