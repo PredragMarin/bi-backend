@@ -17,7 +17,7 @@
   "description": "",
   "scripts": {
     "test": "node tests/run_all.js",
-    "lint": "node scripts/lint_minimal.js",
+    "lint": "npm run check:mother-io && node scripts/lint_minimal.js",
     "validate:contracts": "node scripts/validate_contracts.js",
     "validate:schema": "node scripts/validate_json_schema.js",
     "validate:deadcode": "node scripts/check_dead_code.js",
@@ -42,7 +42,8 @@
     "resolver:sequencing-risk": "node tests/resolver_harness/show_resolver_sequencing_risk.js",
     "resolver:stage-boundaries": "node tests/resolver_harness/show_resolver_stage_boundaries.js",
     "resolver:integral-shadow": "node tests/resolver_harness/show_integral_resolver_shadow.js",
-    "resolver:strict-probe": "node tests/resolver_harness/check_core_shell_strict_probe.js"
+    "resolver:strict-probe": "node tests/resolver_harness/check_core_shell_strict_probe.js",
+    "check:mother-io": "node scripts/check_no_legacy_io.js"
   },
   "keywords": [],
   "author": "",

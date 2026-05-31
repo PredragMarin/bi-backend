@@ -1,17 +1,11 @@
-// param_catalog_loader.js
-// Purpose: Parameter catalog loader placeholder for Mother DXF Core Shell I/O.
-//
-// Future role:
-// - Resolve parameter catalog definitions for Mother DXF sessions, previews, child generation, and batch jobs.
-// - Preserve parameter vocabulary, scope, defaults, types, units, enum values, and catalog version identity.
-// - Provide a future boundary between catalog persistence and domain runtime.
-//
-// Not implemented here:
-// - No parameter catalog loading.
-// - No validation.
-// - No DB logic.
-// - No imports.
-// - No exports.
-// - No runtime calls.
+"use strict";
 
-function loadParameterCatalog() {}
+// Placeholder adapter for the new Mother DXF I/O pipeline.
+// This module MUST be used for all new durable parameter catalog I/O.
+// Legacy I/O is disabled.
+
+function loadParameterCatalog() {
+  throw new Error("loadParameterCatalog() not implemented in new I/O pipeline.");
+}
+
+module.exports = { loadParameterCatalog };

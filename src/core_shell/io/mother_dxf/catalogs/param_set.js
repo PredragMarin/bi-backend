@@ -1,19 +1,30 @@
-// param_set.js
-// Purpose: Parameter set placeholder for Mother DXF Core Shell I/O.
-//
-// Future role:
-// - Represent param_set_id and frozen parameter set concepts.
-// - Capture scope, values, validation result, lifecycle state, and frozen status when implemented.
-// - Provide a future boundary for preview, child generation, and batch execution parameter snapshots.
-//
-// Not implemented here:
-// - No param_set_id generation.
-// - No freezing logic.
-// - No validation.
-// - No imports.
-// - No exports.
-// - No runtime calls.
+"use strict";
 
-function createParamSet() {}
+const fs = require("fs/promises");
+const path = require("path");
 
-function freezeParamSet() {}
+function defaultRoot() {
+  return path.join("out", "mother_dxf_v1");
+}
+
+/**
+ * Writes param set JSON for a session.
+ * Output path must remain identical to legacy behavior:
+ * out/mother_dxf_v1/sessions/<session_id>/param_set.json
+ */
+async function saveParamSet(sessionId, paramSetJson, rootDir) {
+  const dir = path.join(
+    rootDir || defaultRoot(),
+    "sessions",
+    String(sessionId)
+  );
+
+  const filePath = path.join(dir, "param_set.json");
+
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(paramSetJson, null, 2), "utf8");
+
+  return filePath;
+}
+
+module.exports = { saveParamSet };

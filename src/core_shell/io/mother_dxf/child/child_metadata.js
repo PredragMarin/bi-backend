@@ -1,19 +1,30 @@
-// child_metadata.js
-// Purpose: Child DXF metadata placeholder for Mother DXF Core Shell I/O.
-//
-// Future role:
-// - Represent child metadata for generated child outputs.
-// - Track child_artifact_id, variant_id, param overrides, generation summary, source Mother artifact, and output path reference when implemented.
-// - Keep child metadata separate from child DXF payload and resolver logic.
-//
-// Not implemented here:
-// - No child_artifact_id generation.
-// - No variant_id generation.
-// - No artifact registration.
-// - No imports.
-// - No exports.
-// - No runtime calls.
+"use strict";
 
-function createChildMetadata() {}
+const fs = require("fs/promises");
+const path = require("path");
 
-function registerChildArtifact() {}
+function defaultRoot() {
+  return path.join("out", "mother_dxf_v1");
+}
+
+/**
+ * Writes child metadata JSON for a generated child DXF.
+ * Output path must remain identical to legacy behavior:
+ * out/mother_dxf_v1/children/<session_id>_<suffix>/child_metadata.json
+ */
+async function writeChildMetadata(sessionId, suffix, metadata, rootDir) {
+  const dir = path.join(
+    rootDir || defaultRoot(),
+    "children",
+    String(sessionId) + "_" + String(suffix)
+  );
+
+  const filePath = path.join(dir, "child_metadata.json");
+
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(filePath, JSON.stringify(metadata, null, 2), "utf8");
+
+  return filePath;
+}
+
+module.exports = { writeChildMetadata };

@@ -1,5 +1,12 @@
 "use strict";
 
+if (process.env.MOTHER_IO_LEGACY_DISABLED === "1") {
+  throw new Error(
+    "Legacy Mother DXF I/O path is DISABLED. " +
+    "All durable I/O MUST go through src/core_shell/io/mother_dxf/* adapters."
+  );
+}
+
 const crypto = require("crypto");
 const path = require("path");
 const {
@@ -40,20 +47,45 @@ const {
 } = require("../../core_shell/services/dxf_geometry_hygiene_service");
 const {
   defaultRoot,
-  saveSession,
-  deleteSession,
-  loadSession,
-  listSessions,
   saveExport,
   saveChildExport,
   saveRawDxf,
-  saveMotherJson,
-  saveParamSetSnapshot,
   saveRuleCatalogSnapshot,
-  saveChildDxf,
-  savePreviewArtifacts,
-  appendEvent
+  saveChildDxf
 } = require("../../core_shell/storage/mother_dxf_store");
+const { appendEvent } = require("../../core_shell/io/mother_dxf/events/event_stream");
+const { writeChildMetadata } = require("../../core_shell/io/mother_dxf/child/child_metadata");
+const { savePreview } = require("../../core_shell/io/mother_dxf/preview/preview_io");
+const { saveParamSet } = require("../../core_shell/io/mother_dxf/catalogs/param_set");
+const {
+  saveSessionEnvelope,
+  loadSessionEnvelope,
+  deleteSessionEnvelope,
+  listSessionEnvelopes,
+  saveMotherJson
+} = require("../../core_shell/io/mother_dxf/session/session_store");
+const {
+  registerArtifact,
+  loadArtifactRegistry,
+  resolveArtifactPath
+} = require("../../core_shell/io/mother_dxf/session/artifact_registry");
+// Session persistence is envelope-backed; runtime code intentionally reads/writes legacy payloads.
+async function saveSession({ rootDir, session }) {
+  return saveSessionEnvelope(session.session_id, session, rootDir);
+}
+
+async function loadSession({ rootDir, sessionId }) {
+  return loadSessionEnvelope(sessionId, rootDir);
+}
+
+async function deleteSession({ rootDir, sessionId }) {
+  return deleteSessionEnvelope(sessionId, rootDir);
+}
+
+async function listSessions({ rootDir }) {
+  return listSessionEnvelopes(rootDir);
+}
+
 const DEFAULT_PARAMETER_CATALOG = require("./contracts/parameter_catalog_legacy_door_v0.json");
 const DEFAULT_RULE_CATALOG = require("./contracts/rule_catalog_mxd_door_v0.json");
 
@@ -6055,7 +6087,7 @@ function runExecutionCheck(session, configParameterSet) {
 
 async function saveSessionArtifactSnapshots(session, eventType, details, storeRoot) {
   const root = storeRoot || defaultRoot();
-  await saveParamSetSnapshot(session.session_id, session.config_parameter_set || {}, root);
+  await saveParamSet(session.session_id, session.config_parameter_set || {}, root);
   await saveRuleCatalogSnapshot(session.session_id, session.rule_catalog || {}, root);
   await appendEvent(session.session_id, {
     type: eventType,
@@ -6116,7 +6148,8 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
     });
     projectViewModel(currentSession);
     await saveSession({ rootDir: storeRoot || defaultRoot(), session: currentSession });
-    await saveRawDxf(currentSession.session_id, dxfText, storeRoot || defaultRoot());
+    const rawInfo = await saveRawDxf(currentSession.session_id, dxfText, storeRoot || defaultRoot());
+    await registerArtifact(currentSession.session_id, "raw_dxf", currentSession.session_id + "_raw", rawInfo.filePath, storeRoot || defaultRoot());
     await saveSessionArtifactSnapshots(currentSession, "raw_refresh_forced_artifacts_saved", { source_name: normalizedSourceName }, storeRoot);
     for (const duplicate of matchingSessions.slice(1)) {
       await deleteSession({ rootDir: storeRoot || defaultRoot(), sessionId: duplicate.session_id });
@@ -6155,7 +6188,8 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
   });
   projectViewModel(session);
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-  await saveRawDxf(session.session_id, dxfText, storeRoot || defaultRoot());
+  const rawInfo = await saveRawDxf(session.session_id, dxfText, storeRoot || defaultRoot());
+  await registerArtifact(session.session_id, "raw_dxf", session.session_id + "_raw", rawInfo.filePath, storeRoot || defaultRoot());
   await saveSessionArtifactSnapshots(session, currentSession ? "session_refreshed_artifacts_saved" : "session_created_artifacts_saved", { source_name: normalizedSourceName }, storeRoot);
   for (const duplicate of matchingSessions.slice(1)) {
     await deleteSession({ rootDir: storeRoot || defaultRoot(), sessionId: duplicate.session_id });
@@ -6340,6 +6374,7 @@ async function resetConfigParameterSetFromCatalog({ sessionId, context, storeRoo
   });
   session.updated_at = new Date().toISOString();
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  await saveParamSet(session.session_id, session.config_parameter_set || {}, storeRoot || defaultRoot());
   return session;
 }
 
@@ -6356,6 +6391,7 @@ async function updateConfigParameterSet({ sessionId, configParameterSet, storeRo
   });
   session.updated_at = new Date().toISOString();
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  await saveParamSet(session.session_id, session.config_parameter_set || {}, storeRoot || defaultRoot());
   return session;
 }
 
@@ -6583,15 +6619,17 @@ async function simulateSession({ sessionId, configParameterSet, storeRoot }) {
     session.config_parameter_set = normalizeConfigParameterSet(configParameterSet);
     session.updated_at = new Date().toISOString();
     await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+    await saveParamSet(session.session_id, session.config_parameter_set || {}, storeRoot || defaultRoot());
   }
   const simulation = simulateChildPreview(session);
   const previewId = crypto.randomUUID();
-  await savePreviewArtifacts(previewId, {
+  const previewInfo = await savePreview(session.session_id, previewId, {
     session_id: session.session_id,
     preview_id: previewId,
     type: "simulate_session",
     simulation
   }, null, storeRoot || defaultRoot());
+  await registerArtifact(session.session_id, "preview_json", previewId, previewInfo.jsonPath, storeRoot || defaultRoot());
   await appendEvent(session.session_id, {
     type: "preview_saved",
     details: { preview_id: previewId, mode: "simulate_session" }
@@ -6610,6 +6648,7 @@ async function persistSessionConfigParameterSet(session, parameterSet, storeRoot
   session.config_parameter_set = config;
   session.updated_at = new Date().toISOString();
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  await saveParamSet(session.session_id, session.config_parameter_set || {}, storeRoot || defaultRoot());
   return config;
 }
 
@@ -6663,7 +6702,13 @@ async function generateChildDxfNoTopoForSession({ sessionId, parameterSet, store
     dxfText: result.dxf_text,
     suffix: "child_no_topo"
   });
-  await saveChildDxf(sessionId, "child_no_topo", result.dxf_text, storeRoot || defaultRoot());
+  const childDxfInfo = await saveChildDxf(sessionId, "child_no_topo", result.dxf_text, storeRoot || defaultRoot());
+  await registerArtifact(sessionId, "child_dxf", "child_no_topo", childDxfInfo.filePath, storeRoot || defaultRoot());
+  await writeChildMetadata(sessionId, "child_no_topo", {
+    session_id: String(sessionId),
+    suffix: "child_no_topo",
+    created_at: new Date().toISOString()
+  }, storeRoot || defaultRoot());
   await appendEvent(sessionId, {
     type: "child_dxf_artifacts_saved",
     details: { suffix: "child_no_topo" }
@@ -6692,7 +6737,13 @@ async function generateChildDxfTopoPocForSession({ sessionId, parameterSet, bran
     dxfText: result.dxf_text,
     suffix: "child_topo_poc"
   });
-  await saveChildDxf(sessionId, "child_topo_poc", result.dxf_text, storeRoot || defaultRoot());
+  const childDxfInfo = await saveChildDxf(sessionId, "child_topo_poc", result.dxf_text, storeRoot || defaultRoot());
+  await registerArtifact(sessionId, "child_dxf", "child_topo_poc", childDxfInfo.filePath, storeRoot || defaultRoot());
+  await writeChildMetadata(sessionId, "child_topo_poc", {
+    session_id: String(sessionId),
+    suffix: "child_topo_poc",
+    created_at: new Date().toISOString()
+  }, storeRoot || defaultRoot());
   await appendEvent(sessionId, {
     type: "child_dxf_artifacts_saved",
     details: { suffix: "child_topo_poc" }
@@ -6718,7 +6769,7 @@ async function generateChildDxfTopoPocPreviewForSession({ sessionId, parameterSe
   const dxfText = serializeDocument(materialized.document);
   const resolverPreview = buildResolverMaterializedSimulation(session, config, materialized);
   const previewId = crypto.randomUUID();
-  await savePreviewArtifacts(previewId, {
+  const previewInfo = await savePreview(session.session_id, previewId, {
     session_id: session.session_id,
     preview_id: previewId,
     type: "child_topo_poc_preview",
@@ -6726,6 +6777,10 @@ async function generateChildDxfTopoPocPreviewForSession({ sessionId, parameterSe
     generation_summary: materialized.generation_summary,
     resolver_preview: resolverPreview
   }, dxfText, storeRoot || defaultRoot());
+  await registerArtifact(session.session_id, "preview_json", previewId, previewInfo.jsonPath, storeRoot || defaultRoot());
+  if (previewInfo.dxfPath) {
+    await registerArtifact(session.session_id, "preview_dxf", previewId, previewInfo.dxfPath, storeRoot || defaultRoot());
+  }
   await appendEvent(session.session_id, {
     type: "preview_saved",
     details: { preview_id: previewId, mode: "child_topo_poc_preview" }
@@ -6773,6 +6828,8 @@ async function exportMotherDraft({ sessionId, storeRoot }) {
     dxfText
   });
   await saveMotherJson(sessionId, session.document, storeRoot || defaultRoot());
+  await registerArtifact(sessionId, "mother_dxf", sessionId + "_mother", exportInfo.artifactPath || exportInfo.filePath, storeRoot || defaultRoot());
+  await registerArtifact(sessionId, "mother_export", sessionId + "_mother_export", exportInfo.filePath, storeRoot || defaultRoot());
   await appendEvent(sessionId, {
     type: "mother_export_artifacts_saved",
     details: { export_file: exportInfo.filePath, artifact_file: exportInfo.artifactPath || null }

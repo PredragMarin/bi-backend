@@ -1,19 +1,29 @@
-// event_stream.js
-// Purpose: Event stream placeholder for Mother DXF Core Shell I/O.
-//
-// Future role:
-// - Represent append-only event streams for sessions, artifacts, previews, child generation, catalogs, batches, and jobs.
-// - Carry event_id, timestamp, severity, type, subject, actor, correlation_id, and details when implemented.
-// - Keep audit events separate from session JSON convenience logs.
-//
-// Not implemented here:
-// - No event_id generation.
-// - No append behavior.
-// - No file or DB writes.
-// - No imports.
-// - No exports.
-// - No runtime calls.
+"use strict";
 
-function appendEvent() {}
+const fs = require("fs/promises");
+const path = require("path");
 
-function loadEventStream() {}
+function defaultRoot() {
+  return path.join("out", "mother_dxf_v1");
+}
+
+async function appendEvent(sessionId, event, rootDir) {
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    ...(event && typeof event === "object" ? event : { type: "event", details: {} })
+  }) + "\n";
+
+  const filePath = path.join(
+    rootDir || defaultRoot(),
+    "sessions",
+    String(sessionId),
+    "events.ndjson"
+  );
+
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.appendFile(filePath, line, "utf8");
+
+  return { filePath };
+}
+
+module.exports = { appendEvent };

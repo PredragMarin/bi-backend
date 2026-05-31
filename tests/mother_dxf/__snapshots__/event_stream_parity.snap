@@ -1,0 +1,3 @@
+{"ts":"2026-01-01T00:00:00.000Z","type":"session_created_artifacts_saved","details":{"source_name":"fixture.dxf"}}
+{"ts":"2026-01-01T00:00:01.000Z","type":"config_saved","details":{"parameter_count":2}}
+{"ts":"2026-01-01T00:00:02.000Z","type":"mother_export_artifacts_saved","details":{"export_file":"out/mother_dxf_v1/exports/session_event_parity_mother.dxf","artifact_file":"out/mother_dxf_v1/artifacts/mother/session_event_parity_mother.dxf"}}
