@@ -21,6 +21,7 @@
     "validate:contracts": "node scripts/validate_contracts.js",
     "validate:schema": "node scripts/validate_json_schema.js",
     "validate:deadcode": "node scripts/check_dead_code.js",
+    "validate:boundaries": "node scripts/check_module_boundaries.js",
     "health": "npm run repo:health",
     "repo:health": "node scripts/repo_health.js",
     "db:smoke": "node scripts/postgres_smoke_test.js",
