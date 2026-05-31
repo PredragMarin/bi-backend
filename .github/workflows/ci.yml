@@ -1,0 +1,60 @@
+name: Repo Discipline CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  discipline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Run minimal lint
+        run: |
+          echo "=== LINT ==="
+          npm run lint || true
+
+      - name: Validate contracts
+        run: |
+          echo "=== CONTRACTS ==="
+          npm run validate:contracts || true
+
+      - name: Validate schema
+        run: |
+          echo "=== SCHEMA ==="
+          npm run validate:schema || true
+
+      - name: Dead code check
+        run: |
+          echo "=== DEAD CODE ==="
+          npm run validate:deadcode || true
+
+      - name: Boundary check
+        run: |
+          echo "=== BOUNDARIES ==="
+          npm run validate:boundaries || true
+
+      - name: Run tests
+        run: |
+          echo "=== TESTS ==="
+          npm test || true
+
+      - name: Repo health
+        run: |
+          echo "=== HEALTH ==="
+          npm run health || true
+
+      - name: Upload repo health report
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-health-report
+          path: out/repo_health/
+          if-no-files-found: ignore
