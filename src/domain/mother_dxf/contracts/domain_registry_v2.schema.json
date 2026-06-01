@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mother_dxf/domain_registry_v2",
+  "title": "Mother DXF Domain Registry v2",
+  "type": "object",
+  "required": ["domain", "domain_version"],
+  "properties": {
+    "domain": { "const": "mother_dxf" },
+    "domain_version": { "const": 2 },
+    "technology_units": { "type": "array" },
+    "parameter_sets": { "type": "array" },
+    "rule_sets": { "type": "array" },
+    "family_properties": { "type": "array" },
+    "product_structures": { "type": "array" },
+    "batch_models": { "type": "array" }
+  },
+  "additionalProperties": true
+}
+

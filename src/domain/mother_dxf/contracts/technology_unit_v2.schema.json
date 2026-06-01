@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mother_dxf/technology_unit_v2",
+  "title": "Mother DXF Technology Unit v2",
+  "type": "object",
+  "required": ["entity_type", "id", "name"],
+  "properties": {
+    "entity_type": { "const": "technology_unit" },
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "material_scope": { "type": "array", "items": { "type": "string" } },
+    "parameter_schema_refs": { "type": "array", "items": { "type": "string" } },
+    "transformation_refs": { "type": "array", "items": { "type": "string" } },
+    "constraint_refs": { "type": "array", "items": { "type": "string" } },
+    "preview_model_refs": { "type": "array", "items": { "type": "string" } },
+    "batch_model_refs": { "type": "array", "items": { "type": "string" } },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}
+

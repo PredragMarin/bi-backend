@@ -96,6 +96,8 @@ const DEFAULT_BANDS = {
   bottom: 80
 };
 
+const GEOMETRY_SLOT_WIDTH_MM = 3000;
+
 const MOTHER_XDATA_APP_NAME = "MOTHERDXF";
 
 const SEMANTIC_COLORS = {
@@ -237,6 +239,53 @@ function normalizeBands(input) {
 
 function computeDocumentBBox(relevantObjects) {
   return (Array.isArray(relevantObjects) ? relevantObjects : []).reduce((acc, item) => bboxUnion(acc, item.bbox), null);
+}
+
+function computeGeometrySlotIndex(objectBBox, slotWidth = GEOMETRY_SLOT_WIDTH_MM) {
+  const minX = Number(objectBBox?.minX);
+  const width = Number(slotWidth);
+  if (!Number.isFinite(minX) || !Number.isFinite(width) || width <= 0) return null;
+  return Math.floor(minX / width);
+}
+
+function projectSlotIndexOnRelevantObjects(relevantObjects, slotWidth = GEOMETRY_SLOT_WIDTH_MM) {
+  const warnings = [];
+  const projected = (Array.isArray(relevantObjects) ? relevantObjects : []).map((object) => {
+    const slotIndex = computeGeometrySlotIndex(object?.bbox, slotWidth);
+    const next = {
+      ...object,
+      slot_index: slotIndex
+    };
+    const maxX = Number(object?.bbox?.maxX);
+    if (Number.isInteger(slotIndex) && Number.isFinite(maxX)) {
+      const slotBoundaryX = (slotIndex + 1) * slotWidth;
+      if (maxX > slotBoundaryX) {
+        warnings.push({
+          code: "SLOT_BOUNDARY_CROSSING",
+          severity: "warning",
+          object_id: object.id,
+          entity_id: object.entityId || object.entity_id || null,
+          slot_index: slotIndex,
+          slot_width: slotWidth,
+          boundary_x: slotBoundaryX,
+          bbox: object.bbox || null,
+          message: "Object " + object.id + " crosses geometry slot " + slotIndex + " boundary at x=" + slotBoundaryX + "."
+        });
+      }
+    }
+    return next;
+  });
+
+  return {
+    relevant_objects: projected,
+    slot_validation: {
+      version: 1,
+      mode: "passive",
+      slot_width: slotWidth,
+      ok: warnings.length === 0,
+      warnings
+    }
+  };
 }
 
 function cloneJson(value) {
@@ -2502,7 +2551,8 @@ function suggestLayerForBBox(objectBBox, documentBBox, bands) {
 }
 
 function buildRelevantState(document, bands, priorAssignments) {
-  const relevantObjects = listRelevantObjects(document);
+  const slotProjection = projectSlotIndexOnRelevantObjects(listRelevantObjects(document));
+  const relevantObjects = slotProjection.relevant_objects;
   const documentBBox = computeDocumentBBox(relevantObjects);
   const assignments = {};
 
@@ -2536,7 +2586,8 @@ function buildRelevantState(document, bands, priorAssignments) {
   return {
     document_bbox: documentBBox,
     relevant_objects: relevantObjects,
-    assignments
+    assignments,
+    slot_validation: slotProjection.slot_validation
   };
 }
 
@@ -3186,6 +3237,7 @@ function projectViewModel(session) {
       entity_id: item.entityId,
       type: item.type,
       bbox: item.bbox,
+      slot_index: item.slot_index,
       shapes: item.shapes,
       block_name: item.blockName || null,
       source: item.source || null,
@@ -3230,6 +3282,7 @@ function projectViewModel(session) {
     document_rules,
     topo_metadata,
     geometry_hygiene,
+    slot_validation: state.slot_validation,
     xdata_context,
     arrangement_snapshot,
     activity_log: session.activity_log,

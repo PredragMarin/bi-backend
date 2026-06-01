@@ -1,0 +1,18 @@
+{
+  "domain": "mother_dxf",
+  "domain_version": 2,
+  "status": "skeleton",
+  "runtime_impact": "none",
+  "io_boundary": "pure_domain_no_durable_io",
+  "contracts": [
+    "contracts/domain_registry_v2.schema.json",
+    "contracts/technology_unit_v2.schema.json",
+    "contracts/parameter_set_v2.schema.json",
+    "contracts/rule_set_v2.schema.json",
+    "contracts/family_properties_v2.schema.json",
+    "contracts/product_in_parts_v2.schema.json",
+    "contracts/batch_model_v2.schema.json"
+  ],
+  "validation_entrypoint": "core/validation.js#validateDomainRegistry"
+}
+

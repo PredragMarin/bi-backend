@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mother_dxf/family_properties_v2",
+  "title": "Mother DXF Family Properties v2",
+  "type": "object",
+  "required": ["entity_type", "family_id", "version", "properties"],
+  "properties": {
+    "entity_type": { "const": "family_properties" },
+    "family_id": { "type": "string" },
+    "version": { "type": "string" },
+    "material_scope": { "type": "array", "items": { "type": "string" } },
+    "properties": { "type": "array" },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}
+

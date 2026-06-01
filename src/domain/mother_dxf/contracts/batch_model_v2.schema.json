@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mother_dxf/batch_model_v2",
+  "title": "Mother DXF Batch Model v2",
+  "type": "object",
+  "required": ["entity_type", "batch_id", "version", "batch_type", "items"],
+  "properties": {
+    "entity_type": { "const": "batch_model" },
+    "batch_id": { "type": "string" },
+    "version": { "type": "string" },
+    "batch_type": { "type": "string" },
+    "items": { "type": "array" },
+    "constraints": { "type": "object" },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}
+

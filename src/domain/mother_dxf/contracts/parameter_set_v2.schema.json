@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mother_dxf/parameter_set_v2",
+  "title": "Mother DXF Parameter Set v2",
+  "type": "object",
+  "required": ["entity_type", "id", "version", "base_values"],
+  "properties": {
+    "entity_type": { "const": "parameter_set" },
+    "id": { "type": "string" },
+    "version": { "type": "string" },
+    "compatible_technology_units": { "type": "array", "items": { "type": "string" } },
+    "compatible_family_ids": { "type": "array", "items": { "type": "string" } },
+    "base_values": { "type": "object" },
+    "overrides": { "type": "array" },
+    "normalization_hints": { "type": "object" },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}
+

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mother_dxf/product_in_parts_v2",
+  "title": "Mother DXF Product-in-Parts v2",
+  "type": "object",
+  "required": ["entity_type", "product_id", "version", "parts"],
+  "properties": {
+    "entity_type": { "const": "product_structure" },
+    "product_id": { "type": "string" },
+    "version": { "type": "string" },
+    "family_id": { "type": ["string", "null"] },
+    "program_id": { "type": ["string", "null"] },
+    "erp_product_ref": { "type": ["string", "null"] },
+    "parts": { "type": "array" },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}
+
