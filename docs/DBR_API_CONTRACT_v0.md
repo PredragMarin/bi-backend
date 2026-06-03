@@ -188,7 +188,7 @@ curl -sS -X POST http://localhost:3000/api/dbr/v1/artifacts \
 - `dxf_ops_host_v1` and the older Zoran/DXF OPS flow are references only, not
   long-term DBR dependencies.
 - Configurator parameter keys in snapshots should remain canonical long-form
-  keys such as `VISINA_VRATA` and `SIRINA_VRATA`; abbreviation aliases require
+  keys such as `MODEL_VRATA`, `TIP_VRATA` (legacy alias), `KONF_ID`, `VISINA_VRATA`, `VISINA_EFF`, and `SIRINA_VRATA`; abbreviation aliases require
   a later catalog policy/migration.
 
 ## Rollback

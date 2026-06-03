@@ -8,9 +8,9 @@
       "rule_id": "MXD_LAYER_B_OFFSET_9P5",
       "label": "Layer B offset +9.5 mm",
       "profile_scope": "MXD",
-      "description": "Ako je TIP_VRATA u [Europa, EuroMax], pomakni BASE branch Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin unutar fixed envelope preview logike.",
+      "description": "Ako je MODEL_VRATA u [Europa, EuroMax] (legacy alias TIP_VRATA), pomakni BASE branch Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin unutar fixed envelope preview logike.",
       "condition": {
-        "parameter": "TIP_VRATA",
+        "parameter": "MODEL_VRATA",
         "operator": "IN",
         "values": [
           "Europa",
@@ -78,7 +78,7 @@
         "carrier_color": 1,
         "carrier_h_align": 1,
         "carrier_v_align": 2,
-        "payload_template": ";|{{WORKORDERCODE}}|{{TIP_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}",
+        "payload_template": ";|{{WORKORDERCODE}}|{{MODEL_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}",
         "payload_fields": {
           "DIMENSION_SHORT": "format({{SIRINA_VRATA_DIV10}}x{{VISINA_VRATA_DIV10}})",
           "SIRINA_VRATA_DIV10": "number_expr(SIRINA_VRATA/10,integer)",

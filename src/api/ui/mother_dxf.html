@@ -126,7 +126,7 @@
           </details>
         </div>
 
-        <div class="card" id="cardAutoSuggestion">
+        <div class="card" id="cardAutoSuggestion" style="display:none">
           <details id="autoSuggestionDetails" open>
             <summary><strong>4-Band Definition</strong></summary>
             <div class="grid-2" style="margin-top:10px">
@@ -137,7 +137,6 @@
             </div>
             <div class="toolbar" style="margin-top:12px">
               <button id="startBtn">Create / Refresh Working Session</button>
-              <button id="reclassifyBtn" class="secondary" disabled>Re-run Auto-Suggest</button>
             </div>
           </details>
         </div>
@@ -206,7 +205,7 @@
           </details>
         </div>
 
-        <div class="card" id="cardXdataContext">
+        <div class="card" id="cardXdataContext" style="display:none">
           <details id="xdataContextDetails">
             <summary><strong>Geometry Branch Context</strong></summary>
             <div class="meta" style="margin-top:10px">Session-wide branch switch za viewer, selection i enrichment. `BASE` znači neoznačena geometrija; tagged branch geometrije nose samo `GEOMETRY_VARIANT=<VALUE>`.</div>
@@ -231,6 +230,74 @@
         <div class="card" id="cardSessionLifecycle">
           <details id="sessionLifecycleDetails">
             <summary><strong>Session Lifecycle</strong></summary>
+            <div id="sessionLifecycleStatePanel" class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">Lifecycle state: context_draft</div>
+              <div class="phase-summary-row">Complete and lock session context before uploading DXF.</div>
+            </div>
+            <div id="sessionContextWizardPanel" class="phase-summary">
+              <div class="phase-summary-title">Session Initialization Wizard</div>
+              <div class="phase-summary-row">Domain-first setup for Mother DXF v2. Raw DXF upload is blocked until this context is locked.</div>
+              <div id="sessionContextValidationBox" class="status" style="margin-top:10px">Session context is incomplete.</div>
+              <div class="grid-2" style="margin-top:10px">
+                <label>Production program
+                  <select id="contextProductionProgram">
+                    <option value="">Select production program</option>
+                  </select>
+                </label>
+                <label>Family
+                  <select id="contextFamily">
+                    <option value="">Select family</option>
+                  </select>
+                </label>
+                <label>Product
+                  <select id="contextProduct">
+                    <option value="">Select product</option>
+                  </select>
+                </label>
+                <label>Part
+                  <select id="contextPart">
+                    <option value="">Select part</option>
+                  </select>
+                </label>
+                <label>Nominal value set
+                  <select id="contextNominalValueSet">
+                    <option value="">Select nominal value set</option>
+                  </select>
+                </label>
+                <label>Rule set
+                  <select id="contextRuleSet">
+                    <option value="">Select rule set</option>
+                  </select>
+                </label>
+                <label>Parameter catalog
+                  <select id="contextParameterCatalog">
+                    <option value="">Select parameter catalog</option>
+                  </select>
+                </label>
+                <label>Branch mode
+                  <select id="contextBranchMode">
+                    <option value="ALL">ALL</option>
+                    <option value="BASE">BASE</option>
+                    <option value="ECO">ECO</option>
+                  </select>
+                </label>
+                <label>Expected variant policy
+                  <select id="contextVariantPolicyMode">
+                    <option value="none">none</option>
+                    <option value="optional">optional</option>
+                    <option value="required">required</option>
+                  </select>
+                </label>
+                <label>Expected variant keys
+                  <input id="contextVariantKeys" type="text" value="" />
+                </label>
+              </div>
+              <div class="toolbar" style="margin-top:12px">
+                <button id="lockSessionContextBtn" class="good" type="button">Lock Context</button>
+                <button id="resetSessionContextBtn" class="secondary" type="button" disabled>Reset Context</button>
+              </div>
+            </div>
+            <div id="dxfUploadGateBanner" class="status" style="margin-top:10px">Please complete and lock session context before uploading DXF.</div>
             <div class="meta" style="margin-top:10px">Ovdje otvaraš postojeći session ili pokrećeš novi rad nad novim raw DXF fileom.</div>
             <div class="grid-2" style="margin-top:10px">
               <label>Session title<input id="sessionTitle" type="text" placeholder="KSKR smoke 001" /></label>
@@ -259,6 +326,67 @@
             </div>
             <div class="row" style="margin:0 0 10px">
               <input id="sessionSourceOverride" type="text" placeholder="Working name / source override (e.g. SBRA_MJ)" />
+            </div>
+            <div class="toolbar" style="margin-top:12px">
+              <button id="startSessionBtn" type="button" disabled>Create / Refresh Working Session</button>
+            </div>
+          </details>
+        </div>
+
+        <div class="card" id="cardGeometryContext">
+          <details id="geometryContextDetails">
+            <summary><strong>Geometry Context</strong></summary>
+            <div id="geometryReadinessBanner" class="status" style="margin-top:10px">Geometry context has not been computed.</div>
+            <div class="grid-2" style="margin-top:10px">
+              <label>Left band (mm)<input id="geometryBandLeft" type="number" value="80" min="0" step="1" /></label>
+              <label>Right band (mm)<input id="geometryBandRight" type="number" value="80" min="0" step="1" /></label>
+              <label>Top band (mm)<input id="geometryBandTop" type="number" value="80" min="0" step="1" /></label>
+              <label>Bottom band (mm)<input id="geometryBandBottom" type="number" value="80" min="0" step="1" /></label>
+            </div>
+            <div class="toolbar" style="margin-top:12px">
+              <button id="computeGeometryBtn" class="warn" type="button" disabled>Apply Bands + Compute Geometry Context</button>
+            </div>
+            <div class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">Global geometry context</div>
+              <div id="globalGeometryContextBox" class="selection"><div class="meta">No geometry context loaded yet.</div></div>
+            </div>
+            <div class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">Slot model</div>
+              <div id="slotModelBox" class="selection"><div class="meta">No slot model loaded yet.</div></div>
+            </div>
+            <div class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">Legacy vs slot comparison</div>
+              <div id="legacySlotComparisonBanner" class="status" style="display:none;margin-bottom:10px">Global classification spans multiple slots — slot model recommended.</div>
+              <div id="legacySlotComparisonBox" class="selection"><div class="meta">No comparison loaded yet.</div></div>
+            </div>
+            <pre id="geometryContextOut" style="margin-top:10px">{"ok":false,"note":"No geometry context computed yet."}</pre>
+          </details>
+        </div>
+
+        <div class="card" id="cardDomainValidation">
+          <details id="domainValidationDetails">
+            <summary><strong>Domain Validation</strong></summary>
+            <div id="domainReadinessBanner" class="status" style="margin-top:10px">Domain context has not been validated.</div>
+            <div class="toolbar" style="margin-top:12px">
+              <button id="validateDomainBtn" class="warn" type="button" disabled>Validate Domain Context</button>
+            </div>
+            <div id="domainValidationBlockerBanner" class="status" style="margin-top:10px;display:none">Domain context is not valid. Please resolve SEM/XDATA mismatches before continuing.</div>
+            <div class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">Session context</div>
+              <pre id="domainSessionContextOut">{"ok":false,"note":"No session context loaded yet."}</pre>
+            </div>
+            <div class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">SEM evidence</div>
+              <pre id="domainSemEvidenceOut">{"ok":false,"note":"No SEM evidence loaded yet."}</pre>
+            </div>
+            <div class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">XDATA evidence</div>
+              <pre id="domainXdataEvidenceOut">{"ok":false,"note":"No XDATA evidence loaded yet."}</pre>
+            </div>
+            <div class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">Validation signals</div>
+              <div id="domainValidationSignals" class="selection"><div class="meta">No domain validation run yet.</div></div>
+              <pre id="domainValidationOut" style="margin-top:10px">{"ok":false,"note":"No domain validation run yet."}</pre>
             </div>
           </details>
         </div>
@@ -697,17 +825,46 @@
 
         <div class="card" id="cardConfigParameterSet">
           <details id="configParameterSetDetails">
-            <summary><strong>Config Parameter Set</strong></summary>
-            <div class="meta" style="margin:10px 0 8px">Ovdje se unosi životni konfiguracijski JSON artefakt za smoke simulaciju prije child DXF generacije.</div>
-            <textarea id="configInput" style="min-height:180px" placeholder='{"technology_profile":"OPS_S4P4","family":"VRATA","product":"PPV","part":"LBRA","parameters":{"SIRINA_VRATA":900,"VISINA_VRATA":2100}}'></textarea>
+            <summary><strong>Parameter Context</strong></summary>
+            <div class="meta" style="margin:10px 0 8px">Parameter context is read-only in Mother DXF v2. Free-form JSON editing and catalog fallback reset are disabled; parameters are resolved from session_context_v1.parameter_catalog_id.</div>
+            <textarea id="configInput" style="display:none" readonly></textarea>
+            <pre id="parameterContextOut">{"ok":false,"note":"No parameter context loaded yet."}</pre>
+          </details>
+        </div>
+
+        <div class="card" id="cardResolverPreview">
+          <details id="resolverPreviewDetails">
+            <summary><strong>Resolver Preview</strong></summary>
+            <div class="meta" style="margin:10px 0 8px">Core Shell Resolver execution snapshot za preview. Phase 1 authority ostaje legacy_branch; slot authority je samo pasivni signal.</div>
+            <div id="resolverPreviewReadinessBanner" class="meta" style="margin-bottom:8px">Resolver preview not generated.</div>
+            <div id="resolverPreviewGateBanner" class="meta" style="display:none;margin-bottom:8px">Preview must be generated before child/export.</div>
             <div class="toolbar" style="margin-top:12px">
-              <button id="saveConfigBtn" class="secondary" disabled>Save Config</button>
-              <button id="reloadConfigBtn" class="secondary" disabled>Use Saved Config</button>
-              <button id="resetConfigFromCatalogBtn" class="secondary" disabled>Reset from Catalog Defaults</button>
-              <button id="simulateBtn" class="good" disabled>Preview Enriched Child</button>
-              <button id="previewTopoChildBtn" class="good" style="display:none" disabled>Preview TOPO Child</button>
-              <button id="backToDraftViewBtn" class="secondary" disabled>Back to Draft View</button>
+              <button id="generateResolverPreviewBtn" class="good" type="button" disabled>Generate Resolver Preview</button>
             </div>
+            <div id="resolverAuthorityBox" class="selection" style="margin-top:10px">No resolver authority snapshot.</div>
+            <div id="resolverHashBox" class="selection" style="margin-top:10px">No resolver hashes.</div>
+            <div id="resolverSummaryBox" class="selection" style="margin-top:10px">No resolver summary.</div>
+            <div id="resolverValidationSignals" style="margin-top:10px"><div class="meta">No resolver warnings/errors.</div></div>
+            <pre id="resolverPreviewOut">{"ok":false,"note":"Resolver preview not generated yet."}</pre>
+          </details>
+        </div>
+
+        <div class="card" id="cardWysiwygGate">
+          <details id="wysiwygGateDetails">
+            <summary><strong>WYSIWYG Gate</strong></summary>
+            <div id="wysiwygGateBanner" class="meta" style="margin:10px 0 8px">WYSIWYG gate not evaluated.</div>
+            <div id="wysiwygHashBox" class="selection" style="margin-top:10px">No WYSIWYG hashes.</div>
+            <div id="wysiwygBlockingSignals" style="margin-top:10px"><div class="meta">No blocking WYSIWYG signals.</div></div>
+            <pre id="wysiwygGateOut">{"ok":false,"note":"WYSIWYG gate not evaluated yet."}</pre>
+          </details>
+        </div>
+
+        <div class="card" id="cardArtifactLineage">
+          <details id="artifactLineageDetails">
+            <summary><strong>Artifact Lineage</strong></summary>
+            <div id="artifactLineageBanner" class="meta" style="margin:10px 0 8px">Artifact lineage incomplete — export/DBR blocked.</div>
+            <div id="artifactLineageBox" class="selection" style="margin-top:10px">No artifact lineage yet.</div>
+            <pre id="artifactLineageOut">{"ok":false,"note":"No artifact lineage yet."}</pre>
           </details>
         </div>
 
@@ -718,9 +875,10 @@
             <div class="toolbar" style="margin-top:12px">
               <button id="validateBtn" class="warn" disabled>Validate Mother Draft</button>
               <button id="exportBtn" class="good" disabled>Export Mother DXF</button>
-              <button id="generateChildBtn" class="good" style="display:none" disabled>Save Child DXF</button>
+              <button id="exportDbrBtn" class="good" disabled>Export DBR</button>
+              <button id="generateChildBtn" class="good" style="display:none" disabled>Generate Resolver Child DXF</button>
               <button id="generateTopoChildBtn" class="good" style="display:none" disabled>Generate TOPO Child DXF</button>
-              <button id="generateDraftChildBtn" class="secondary" disabled>Save Resolver Child DXF (Draft)</button>
+              <button id="generateDraftChildBtn" class="secondary" style="display:none" disabled>Save Resolver Child DXF (Draft)</button>
             </div>
             <div id="childSummaryBox" class="meta" style="display:none;margin-top:10px"></div>
             <div class="meta" style="margin:10px 0 6px">Session arrangement, activity log, and validation</div>
@@ -818,6 +976,17 @@
         activeMode: "ALL"
       },
       sessionSummaries: [],
+      contextDraft: {
+        production_program_id: "",
+        family_id: "",
+        product_id: "",
+        part_id: "",
+        nominal_value_set_id: "",
+        rule_set_id: "",
+        parameter_catalog_id: "",
+        branch_mode: "ALL",
+        expected_variant_policy: { mode: "none", expected_variant_keys: [] }
+      },
       microShiftAssigning: false,
       metadataEdit: {
         replaceSemanticComment: null
@@ -845,11 +1014,31 @@
     const xdataContextBox = document.getElementById("xdataContextBox");
     const metadataAuthoringDetails = document.getElementById("metadataAuthoringDetails");
     const sessionLifecycleDetails = document.getElementById("sessionLifecycleDetails");
+    const geometryContextDetails = document.getElementById("geometryContextDetails");
+    const domainValidationDetails = document.getElementById("domainValidationDetails");
     const configParameterSetDetails = document.getElementById("configParameterSetDetails");
     const statusValidationDetails = document.getElementById("statusValidationDetails");
     const parameterCatalogDetails = document.getElementById("parameterCatalogDetails");
     const ruleCatalogDetails = document.getElementById("ruleCatalogDetails");
     const simulationPreviewDetails = document.getElementById("simulationPreviewDetails");
+    const resolverPreviewDetails = document.getElementById("resolverPreviewDetails");
+    const resolverPreviewReadinessBanner = document.getElementById("resolverPreviewReadinessBanner");
+    const resolverPreviewGateBanner = document.getElementById("resolverPreviewGateBanner");
+    const generateResolverPreviewBtn = document.getElementById("generateResolverPreviewBtn");
+    const resolverAuthorityBox = document.getElementById("resolverAuthorityBox");
+    const resolverHashBox = document.getElementById("resolverHashBox");
+    const resolverSummaryBox = document.getElementById("resolverSummaryBox");
+    const resolverValidationSignals = document.getElementById("resolverValidationSignals");
+    const resolverPreviewOut = document.getElementById("resolverPreviewOut");
+    const wysiwygGateDetails = document.getElementById("wysiwygGateDetails");
+    const wysiwygGateBanner = document.getElementById("wysiwygGateBanner");
+    const wysiwygHashBox = document.getElementById("wysiwygHashBox");
+    const wysiwygBlockingSignals = document.getElementById("wysiwygBlockingSignals");
+    const wysiwygGateOut = document.getElementById("wysiwygGateOut");
+    const artifactLineageDetails = document.getElementById("artifactLineageDetails");
+    const artifactLineageBanner = document.getElementById("artifactLineageBanner");
+    const artifactLineageBox = document.getElementById("artifactLineageBox");
+    const artifactLineageOut = document.getElementById("artifactLineageOut");
     const geometryHygieneMeta = document.getElementById("geometryHygieneMeta");
     const geometryHygieneList = document.getElementById("geometryHygieneList");
     const geometryHygieneOut = document.getElementById("geometryHygieneOut");
@@ -859,9 +1048,47 @@
     const headerBadgeRow = document.getElementById("headerBadgeRow");
     const dxfInput = document.getElementById("dxfInput");
     const sessionSourceOverride = document.getElementById("sessionSourceOverride");
+    const sessionLifecycleStatePanel = document.getElementById("sessionLifecycleStatePanel");
+    const sessionContextValidationBox = document.getElementById("sessionContextValidationBox");
+    const dxfUploadGateBanner = document.getElementById("dxfUploadGateBanner");
+    const geometryReadinessBanner = document.getElementById("geometryReadinessBanner");
+    const computeGeometryBtn = document.getElementById("computeGeometryBtn");
+    const geometryBandLeft = document.getElementById("geometryBandLeft");
+    const geometryBandRight = document.getElementById("geometryBandRight");
+    const geometryBandTop = document.getElementById("geometryBandTop");
+    const geometryBandBottom = document.getElementById("geometryBandBottom");
+    const globalGeometryContextBox = document.getElementById("globalGeometryContextBox");
+    const slotModelBox = document.getElementById("slotModelBox");
+    const legacySlotComparisonBanner = document.getElementById("legacySlotComparisonBanner");
+    const legacySlotComparisonBox = document.getElementById("legacySlotComparisonBox");
+    const geometryContextOut = document.getElementById("geometryContextOut");
+    const domainReadinessBanner = document.getElementById("domainReadinessBanner");
+    const validateDomainBtn = document.getElementById("validateDomainBtn");
+    const domainValidationBlockerBanner = document.getElementById("domainValidationBlockerBanner");
+    const domainSessionContextOut = document.getElementById("domainSessionContextOut");
+    const domainSemEvidenceOut = document.getElementById("domainSemEvidenceOut");
+    const domainXdataEvidenceOut = document.getElementById("domainXdataEvidenceOut");
+    const domainValidationSignals = document.getElementById("domainValidationSignals");
+    const domainValidationOut = document.getElementById("domainValidationOut");
+    const contextProductionProgram = document.getElementById("contextProductionProgram");
+    const contextFamily = document.getElementById("contextFamily");
+    const contextProduct = document.getElementById("contextProduct");
+    const contextPart = document.getElementById("contextPart");
+    const contextNominalValueSet = document.getElementById("contextNominalValueSet");
+    const contextRuleSet = document.getElementById("contextRuleSet");
+    const contextParameterCatalog = document.getElementById("contextParameterCatalog");
+    const contextBranchMode = document.getElementById("contextBranchMode");
+    const contextVariantPolicyMode = document.getElementById("contextVariantPolicyMode");
+    const contextVariantKeys = document.getElementById("contextVariantKeys");
+    const lockSessionContextBtn = document.getElementById("lockSessionContextBtn");
+    const resetSessionContextBtn = document.getElementById("resetSessionContextBtn");
+    const fileInput = document.getElementById("fileInput");
+    const startBtn = document.getElementById("startBtn");
+    const startSessionBtn = document.getElementById("startSessionBtn");
     const jumpDocumentMetadataBtn = document.getElementById("jumpDocumentMetadataBtn");
     const jumpEntitiesSectionBtn = document.getElementById("jumpEntitiesSectionBtn");
     const configInput = document.getElementById("configInput");
+    const parameterContextOut = document.getElementById("parameterContextOut");
     const generateChildBtn = document.getElementById("generateChildBtn");
     const generateTopoChildBtn = document.getElementById("generateTopoChildBtn");
     const generateDraftChildBtn = document.getElementById("generateDraftChildBtn");
@@ -1023,10 +1250,70 @@
         rule_id: "MXD_LAYER_B_OFFSET_9P5",
         label: "Layer B offset +9.5 mm",
         profile_scope: "MXD",
-        description: "Ako je TIP_VRATA u [Europa, EuroMax], pomakni BASE branch Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin.",
+        description: "Ako je MODEL_VRATA u [Europa, EuroMax] (legacy alias TIP_VRATA), pomakni BASE branch Layer B entitete za +9.5 mm po osi Y i primijeni bounded local trim/rejoin.",
         target_scope: { layer: "B", geometry_branch: "BASE" }
       }
     ];
+
+
+    const SESSION_CONTEXT_CATALOG = {
+      MXD: {
+        families: {
+          VRATA: {
+            products: {
+              PPV: {
+                parts: ["LBRA", "DBRA", "SPLO"],
+                nominal_sets: ["MXD_PPV_STANDARD_V1"],
+                rule_sets: ["mxd_ppv_rules_v1"],
+                parameter_catalogs: ["legacy_door_configurator_catalog_v0"]
+              }
+            }
+          }
+        }
+      },
+      INOX: {
+        families: {
+          SUDOPERI: {
+            products: {
+              SUD: {
+                parts: ["SPLO"],
+                nominal_sets: ["INOX_SUD_SPLO_STANDARD_V1"],
+                rule_sets: ["inox_sud_splo_rules_v1"],
+                parameter_catalogs: ["inox_sud_parameter_catalog_v1"]
+              }
+            }
+          }
+        }
+      },
+      MDF: {
+        families: {
+          PLOCE: {
+            products: {
+              PLOCA: {
+                parts: ["SPLO"],
+                nominal_sets: ["MDF_PLOCA_STANDARD_V1"],
+                rule_sets: ["mdf_ploca_rules_v1"],
+                parameter_catalogs: ["mdf_ploca_parameter_catalog_v1"]
+              }
+            }
+          }
+        }
+      },
+      ALU: {
+        families: {
+          PROFILI: {
+            products: {
+              PROFIL: {
+                parts: ["SPLO"],
+                nominal_sets: ["ALU_PROFIL_STANDARD_V1"],
+                rule_sets: ["alu_profil_rules_v1"],
+                parameter_catalogs: ["alu_profil_parameter_catalog_v1"]
+              }
+            }
+          }
+        }
+      }
+    };
 
     function setStatus(message, tone = "info") {
       statusBox.textContent = message;
@@ -1137,22 +1424,809 @@
         .replace(/\"/g, "&quot;");
     }
 
-    function bandsPayload() {
+
+    function defaultSessionContextDraft() {
       return {
-        left: Number(document.getElementById("bandLeft").value || 0),
-        right: Number(document.getElementById("bandRight").value || 0),
-        top: Number(document.getElementById("bandTop").value || 0),
-        bottom: Number(document.getElementById("bandBottom").value || 0)
+        production_program_id: "",
+        family_id: "",
+        product_id: "",
+        part_id: "",
+        nominal_value_set_id: "",
+        rule_set_id: "",
+        parameter_catalog_id: "",
+        branch_mode: "ALL",
+        expected_variant_policy: { mode: "none", expected_variant_keys: [] }
+      };
+    }
+
+    function currentSessionContext() {
+      return state.session?.session_context_v1 || state.contextDraft || defaultSessionContextDraft();
+    }
+
+    function sessionContextLocked() {
+      return String(currentSessionContext().status || "") === "context_locked";
+    }
+
+    function lifecycleState() {
+      return state.session?.session_lifecycle_v1?.state || (sessionContextLocked() ? "context_locked" : "context_draft");
+    }
+
+    function setSelectOptions(select, values, selected, emptyLabel) {
+      if (!select) return;
+      const unique = Array.from(new Set((values || []).filter(Boolean)));
+      select.innerHTML = [`<option value="">${esc(emptyLabel)}</option>`]
+        .concat(unique.map((value) => `<option value="${esc(value)}">${esc(value)}</option>`))
+        .join("");
+      select.value = unique.includes(selected) ? selected : "";
+    }
+
+    function contextProgramNode(programId) {
+      return SESSION_CONTEXT_CATALOG[String(programId || "").trim()] || null;
+    }
+
+    function contextFamilyNode(context) {
+      return contextProgramNode(context.production_program_id)?.families?.[context.family_id] || null;
+    }
+
+    function contextProductNode(context) {
+      return contextFamilyNode(context)?.products?.[context.product_id] || null;
+    }
+
+    function readSessionContextDraftFromInputs() {
+      return {
+        version: 1,
+        status: sessionContextLocked() ? "context_locked" : "context_draft",
+        production_program_id: String(contextProductionProgram.value || "").trim(),
+        family_id: String(contextFamily.value || "").trim(),
+        product_id: String(contextProduct.value || "").trim(),
+        part_id: String(contextPart.value || "").trim(),
+        nominal_value_set_id: String(contextNominalValueSet.value || "").trim(),
+        rule_set_id: String(contextRuleSet.value || "").trim(),
+        parameter_catalog_id: String(contextParameterCatalog.value || "").trim(),
+        branch_mode: String(contextBranchMode.value || "ALL").trim() || "ALL",
+        expected_variant_policy: {
+          mode: String(contextVariantPolicyMode.value || "none").trim() || "none",
+          expected_variant_keys: String(contextVariantKeys.value || "")
+            .split(/[;,\s]+/)
+            .map((value) => value.trim())
+            .filter(Boolean)
+        }
+      };
+    }
+
+    function validateSessionContextDraft(context) {
+      const errors = [];
+      const required = [
+        "production_program_id",
+        "family_id",
+        "product_id",
+        "part_id",
+        "nominal_value_set_id",
+        "rule_set_id",
+        "parameter_catalog_id",
+        "branch_mode"
+      ];
+      for (const field of required) {
+        if (!String(context[field] || "").trim()) errors.push(`${field} is required`);
+      }
+      const productNode = contextProductNode(context);
+      if (context.part_id && productNode && !(productNode.parts || []).includes(context.part_id)) errors.push("part_id is not valid for selected product");
+      if (context.nominal_value_set_id && productNode && !(productNode.nominal_sets || []).includes(context.nominal_value_set_id)) errors.push("nominal_value_set_id is not valid for selected product/part");
+      if (context.rule_set_id && productNode && !(productNode.rule_sets || []).includes(context.rule_set_id)) errors.push("rule_set_id is not valid for selected product/part");
+      if (context.parameter_catalog_id && productNode && !(productNode.parameter_catalogs || []).includes(context.parameter_catalog_id)) errors.push("parameter_catalog_id is not valid for selected product/part");
+      if (context.expected_variant_policy.mode === "required" && !context.expected_variant_policy.expected_variant_keys.length) {
+        errors.push("expected variant keys are required when policy mode is required");
+      }
+      return { ok: errors.length === 0, errors, warnings: [] };
+    }
+
+    function syncSessionContextDraftFromSession() {
+      const context = state.session?.session_context_v1 || state.contextDraft || defaultSessionContextDraft();
+      state.contextDraft = {
+        ...defaultSessionContextDraft(),
+        ...context,
+        expected_variant_policy: {
+          mode: String(context.expected_variant_policy?.mode || "none"),
+          expected_variant_keys: Array.isArray(context.expected_variant_policy?.expected_variant_keys)
+            ? context.expected_variant_policy.expected_variant_keys.slice()
+            : []
+        }
+      };
+    }
+
+    function renderSessionContextWizard() {
+      const context = currentSessionContext();
+      const locked = sessionContextLocked();
+      const programValues = Object.keys(SESSION_CONTEXT_CATALOG);
+      setSelectOptions(contextProductionProgram, programValues, context.production_program_id, "Select production program");
+      const familyValues = Object.keys(contextProgramNode(context.production_program_id)?.families || {});
+      setSelectOptions(contextFamily, familyValues, context.family_id, "Select family");
+      const productValues = Object.keys(contextFamilyNode(context)?.products || {});
+      setSelectOptions(contextProduct, productValues, context.product_id, "Select product");
+      const productNode = contextProductNode(context) || {};
+      setSelectOptions(contextPart, productNode.parts || [], context.part_id, "Select part");
+      setSelectOptions(contextNominalValueSet, productNode.nominal_sets || [], context.nominal_value_set_id, "Select nominal value set");
+      setSelectOptions(contextRuleSet, productNode.rule_sets || [], context.rule_set_id, "Select rule set");
+      setSelectOptions(contextParameterCatalog, productNode.parameter_catalogs || [], context.parameter_catalog_id, "Select parameter catalog");
+      contextBranchMode.value = context.branch_mode || "ALL";
+      contextVariantPolicyMode.value = context.expected_variant_policy?.mode || "none";
+      contextVariantKeys.value = (context.expected_variant_policy?.expected_variant_keys || []).join(", ");
+
+      const inputs = [contextProductionProgram, contextFamily, contextProduct, contextPart, contextNominalValueSet, contextRuleSet, contextParameterCatalog, contextBranchMode, contextVariantPolicyMode, contextVariantKeys];
+      inputs.forEach((input) => { input.disabled = locked; });
+      const validation = context.validation && locked ? context.validation : validateSessionContextDraft(context);
+      sessionContextValidationBox.textContent = validation.ok
+        ? (locked ? "Session context locked. DXF upload is enabled." : "Session context is valid and ready to lock.")
+        : `Session context incomplete: ${validation.errors.join(" | ")}`;
+      sessionContextValidationBox.style.background = validation.ok ? "#dcfce7" : "#fee4e2";
+      sessionContextValidationBox.style.color = validation.ok ? "#166534" : "#b42318";
+      lockSessionContextBtn.disabled = locked || !validation.ok;
+      resetSessionContextBtn.disabled = !state.session || !locked;
+      const stateLabel = lifecycleState();
+      sessionLifecycleStatePanel.innerHTML = `
+        <div class="phase-summary-title">Lifecycle state: ${esc(stateLabel)}</div>
+        <div class="phase-summary-row">${locked ? "Context locked. Raw DXF upload is allowed." : "Complete and lock session context before uploading DXF."}</div>
+      `;
+      dxfUploadGateBanner.style.display = locked ? "none" : "";
+      dxfUploadGateBanner.textContent = "Please complete and lock session context before uploading DXF.";
+      fileInput.disabled = !locked;
+      startBtn.disabled = !locked;
+      if (startSessionBtn) startSessionBtn.disabled = !locked;
+    }
+
+    function handleSessionContextInputChange() {
+      if (sessionContextLocked()) return;
+      const next = readSessionContextDraftFromInputs();
+      const previous = state.contextDraft || defaultSessionContextDraft();
+      if (next.production_program_id !== previous.production_program_id) {
+        next.family_id = "";
+        next.product_id = "";
+        next.part_id = "";
+        next.nominal_value_set_id = "";
+        next.rule_set_id = "";
+        next.parameter_catalog_id = "";
+      } else if (next.family_id !== previous.family_id) {
+        next.product_id = "";
+        next.part_id = "";
+        next.nominal_value_set_id = "";
+        next.rule_set_id = "";
+        next.parameter_catalog_id = "";
+      } else if (next.product_id !== previous.product_id) {
+        next.part_id = "";
+        next.nominal_value_set_id = "";
+        next.rule_set_id = "";
+        next.parameter_catalog_id = "";
+      } else if (next.part_id !== previous.part_id) {
+        next.nominal_value_set_id = "";
+        next.rule_set_id = "";
+        next.parameter_catalog_id = "";
+      }
+      state.contextDraft = next;
+      renderSessionContextWizard();
+    }
+
+    async function ensureContextDraftSession() {
+      if (state.session) return state.session;
+      const data = await fetchJson("/api/mother-dxf/v1/sessions/context", {
+        method: "POST",
+        body: JSON.stringify({ session_context_v1: state.contextDraft || defaultSessionContextDraft() })
+      });
+      state.session = data.session;
+      syncSessionContextDraftFromSession();
+      syncBandsInputFromSession();
+      syncBandsInputFromSession();
+      syncCurrentDxfText(data.dxf_text || "");
+      syncSessionSourceOverrideFromSession();
+      await refreshSessionList();
+      return state.session;
+    }
+
+    async function lockSessionContext() {
+      if (sessionContextLocked()) return;
+      state.contextDraft = readSessionContextDraftFromInputs();
+      const validation = validateSessionContextDraft(state.contextDraft);
+      if (!validation.ok) {
+        renderSessionContextWizard();
+        setStatus("Session context is incomplete. Fix wizard fields before locking context.", "error");
+        return;
+      }
+      const session = await ensureContextDraftSession();
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${session.session_id}/context/lock`, {
+        method: "POST",
+        body: JSON.stringify({ session_context_v1: state.contextDraft })
+      });
+      state.session = data.session;
+      syncSessionContextDraftFromSession();
+      syncBandsInputFromSession();
+      syncCurrentDxfText(data.dxf_text || "");
+      render();
+      setStatus("Session context locked. DXF upload is now enabled.", "ok");
+    }
+
+    async function resetSessionContext() {
+      if (!state.session || !sessionContextLocked()) return;
+      const confirmed = window.confirm("Reset session context to draft? DXF upload will be locked until the context is locked again.");
+      if (!confirmed) {
+        setStatus("Session context reset cancelled.", "warn");
+        return;
+      }
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/context/reset`, { method: "POST" });
+      state.session = data.session;
+      syncSessionContextDraftFromSession();
+      syncBandsInputFromSession();
+      render();
+      setStatus("Session context reset to draft. DXF upload is locked again.", "warn");
+    }
+
+    function domainValidationState() {
+      return state.session?.domain_validation_v1 || null;
+    }
+
+    function domainLifecycleState() {
+      return String(state.session?.session_lifecycle_v1?.state || lifecycleState());
+    }
+
+    function domainIsValidated() {
+      const validation = domainValidationState();
+      return ["domain_validated", "authoring_ready", "preview_ready"].includes(domainLifecycleState()) && validation && validation.ok === true;
+    }
+
+    function hasLoadedRawDxf() {
+      const sourceName = String(state.session?.source_name || "").trim();
+      return Boolean(state.session && sourceName && sourceName !== "context_pending.dxf" && state.session.artifact_state !== "context_draft" && state.session.artifact_state !== "context_locked");
+    }
+
+    function geometryValidationState() {
+      return state.session?.geometry_validation_v1 || null;
+    }
+
+    function geometryIsProjected() {
+      const lifecycle = domainLifecycleState();
+      const validation = geometryValidationState();
+      return ["geometry_projected", "domain_validated", "authoring_ready", "preview_ready"].includes(lifecycle) && validation && validation.ok === true;
+    }
+
+    function bboxText(bbox) {
+      if (!bbox) return "bbox n/a";
+      return "bbox " + Number(bbox.width || 0).toFixed(1) + " x " + Number(bbox.height || 0).toFixed(1) + " | min " + Number(bbox.minX || 0).toFixed(1) + "," + Number(bbox.minY || 0).toFixed(1) + " | max " + Number(bbox.maxX || 0).toFixed(1) + "," + Number(bbox.maxY || 0).toFixed(1);
+    }
+
+    function layerCountsFromObjects(objects) {
+      const counts = {};
+      (Array.isArray(objects) ? objects : []).forEach((object) => {
+        const layer = objectAuthoritativeLayer(object) || "UNCLASSIFIED";
+        counts[layer] = Number(counts[layer] || 0) + 1;
+      });
+      return counts;
+    }
+
+    function bandCountsFromAssignments(assignments) {
+      const counts = {};
+      const source = assignments && typeof assignments === "object" ? assignments.assignments : null;
+      const items = Array.isArray(source)
+        ? source
+        : source && typeof source === "object"
+          ? Object.values(source)
+          : [];
+      items.forEach((item) => {
+        const layer = item?.suggested_layer || item?.layer || "UNCLASSIFIED";
+        counts[layer] = Number(counts[layer] || 0) + 1;
+      });
+      return counts;
+    }
+
+    function renderGeometryContextPanel() {
+      const geometryValidation = geometryValidationState();
+      const geometryContext = state.session?.geometry_context_v1 || geometryValidation?.geometry_context_v1 || null;
+      const slotModel = state.session?.geometry_slot_model || geometryValidation?.geometry_slot_model || null;
+      const lifecycle = domainLifecycleState();
+      const canCompute = Boolean(state.session && sessionContextLocked() && hasLoadedRawDxf());
+      computeGeometryBtn.disabled = !canCompute;
+      if (!state.session) {
+        geometryReadinessBanner.textContent = "No active session. Lock context and load raw DXF before geometry projection.";
+        setDomainBannerTone(geometryReadinessBanner, "info");
+        globalGeometryContextBox.innerHTML = '<div class="meta">No geometry context loaded yet.</div>';
+        slotModelBox.innerHTML = '<div class="meta">No slot model loaded yet.</div>';
+        legacySlotComparisonBanner.style.display = "none";
+        legacySlotComparisonBox.innerHTML = '<div class="meta">No comparison loaded yet.</div>';
+        geometryContextOut.textContent = JSON.stringify({ ok: false, note: "No geometry context computed yet." }, null, 2);
+        return;
+      }
+      const tone = geometryIsProjected() ? "ok" : geometryValidation && geometryValidation.errors?.length ? "error" : "warn";
+      geometryReadinessBanner.textContent = geometryIsProjected()
+        ? "Geometry context projected. lifecycle=" + lifecycle + " | slots=" + ((geometryContext?.slots || []).length) + " | warnings=" + (geometryValidation?.warning_count || 0)
+        : geometryValidation
+          ? "Geometry context blocked. lifecycle=" + lifecycle + " | blocking_errors=" + (geometryValidation.blocking_error_count || 0) + " | warnings=" + (geometryValidation.warning_count || 0)
+          : "Geometry context not computed. lifecycle=" + lifecycle;
+      setDomainBannerTone(geometryReadinessBanner, tone);
+      const globalCounts = layerCountsFromObjects(state.session.objects || []);
+      const bands = state.session?.bands || bandsPayload();
+      const activeBandSource = state.session?.bands ? "session" : "ui";
+      globalGeometryContextBox.innerHTML = [
+        '<div class="selection-item"><strong>Global bbox</strong><br>' + esc(bboxText(state.session.document_bbox)) + '</div>',
+        '<div class="selection-item"><strong>Active band widths</strong><br>L=' + esc(bands.left) + ' | R=' + esc(bands.right) + ' | T=' + esc(bands.top) + ' | B=' + esc(bands.bottom) + ' | source=' + esc(activeBandSource) + '</div>',
+        '<div class="selection-item"><strong>Authoritative slot-aware 9-layer classification</strong><br>' + esc(JSON.stringify(globalCounts)) + '</div>',
+        '<div class="selection-item"><strong>geometry_context_v1</strong><br>slot_width=' + esc(geometryContext?.slot_width || "-") + ' | base_slot_index=' + esc(geometryContext?.base_slot_index ?? "-") + '</div>'
+      ].join("");
+      const slots = Array.isArray(geometryContext?.slots) ? geometryContext.slots : [];
+      slotModelBox.innerHTML = slots.length ? slots.map((slot) => {
+        const completeness = slot.slot_completeness || {};
+        const hygieneIssues = Array.isArray(slot.hygiene?.issues) ? slot.hygiene.issues.length : 0;
+        const hygieneWarnings = Array.isArray(slot.hygiene?.warnings) ? slot.hygiene.warnings.length : 0;
+        const bandCounts = bandCountsFromAssignments(slot.band_assignments);
+        const mismatch = slot.has_variant_mismatch ? " | mismatch=yes" : "";
+        return '<div class="selection-item"><strong>slot ' + esc(slot.slot_index) + ' | ' + esc(slot.role || "-") + '</strong><br>'
+          + esc(bboxText(slot.bbox))
+          + '<br>variant=' + esc(slot.variant_key || "-") + ' | XDATA=' + esc((slot.xdata_variant_keys || []).join(",") || "-") + ' | SEM=' + esc((slot.sem_variant_keys || []).join(",") || "-") + esc(mismatch)
+          + '<br>objects=' + esc((slot.object_ids || []).length) + ' | completeness missing=' + esc(completeness.missing_objects || 0) + ', unexpected=' + esc(completeness.unexpected_objects || 0) + ', cross=' + esc(completeness.cross_slot_objects || 0)
+          + '<br>hygiene issues=' + esc(hygieneIssues) + ', warnings=' + esc(hygieneWarnings)
+          + '<br>per-slot 9-layer=' + esc(JSON.stringify(bandCounts)) + '</div>';
+      }).join("") : '<div class="meta">No slots projected.</div>';
+      const globalSpans = Boolean(geometryValidation?.global_spans_multiple_slots) || slots.length > 1;
+      legacySlotComparisonBanner.style.display = globalSpans ? "" : "none";
+      setDomainBannerTone(legacySlotComparisonBanner, "warn");
+      legacySlotComparisonBox.innerHTML = [
+        '<div class="selection-item"><strong>Legacy diagnostic only</strong><br>' + esc(JSON.stringify(slotModel?.legacy_comparison || {})) + '</div>',
+        '<div class="selection-item"><strong>Authoritative vs per-slot layer model</strong><br>authoritative=' + esc(JSON.stringify(globalCounts)) + '<br>per_slot=' + esc(JSON.stringify(slots.map((slot) => ({ slot_index: slot.slot_index, layers: bandCountsFromAssignments(slot.band_assignments) })))) + '</div>',
+        '<div class="selection-item"><strong>variant_to_slot_map</strong><br>' + esc(JSON.stringify(state.session?.variant_to_slot_map || {})) + '</div>',
+        '<div class="selection-item"><strong>resolver_input_v2_extended</strong><br>active=' + esc(state.session?.resolver_input_v2_extended?.active === true ? "true" : "false") + ' | candidate_slot=' + esc(state.session?.resolver_input_v2_extended?.candidate_authoritative_slot_index ?? "-") + ' | candidate_variant=' + esc(state.session?.resolver_input_v2_extended?.candidate_variant_key || "-") + '</div>'
+      ].join("");
+      geometryContextOut.textContent = JSON.stringify(geometryValidation || { geometry_context_v1: geometryContext, geometry_slot_model: slotModel }, null, 2);
+    }
+
+    async function computeGeometryContext() {
+      if (!state.session) {
+        setStatus("Create or load a session before computing geometry context.", "error");
+        return;
+      }
+      if (!sessionContextLocked()) {
+        sessionLifecycleDetails.open = true;
+        setStatus("Lock session context before computing geometry context.", "error");
+        return;
+      }
+      if (!hasLoadedRawDxf()) {
+        setStatus("Load raw DXF before computing geometry context.", "error");
+        return;
+      }
+      setStatus("Computing geometry context...");
+      const data = await fetchJson('/api/mother-dxf/v1/sessions/' + state.session.session_id + '/compute-geometry', {
+        method: "POST",
+        body: JSON.stringify({
+          bands: bandsPayload()
+        })
+      });
+      state.session = data.session;
+      syncSessionContextDraftFromSession();
+      syncBandsInputFromSession();
+      render();
+      geometryContextDetails.open = true;
+      const validation = state.session.geometry_validation_v1 || data.geometry_validation_v1 || null;
+      if (validation && validation.ok) {
+        setStatus("Geometry context projected. slots=" + (validation.slot_count || 0) + ", warnings=" + (validation.warning_count || 0) + ".", "ok");
+      } else {
+        setStatus("Geometry context blocked. errors=" + (validation?.blocking_error_count || 0) + ", warnings=" + (validation?.warning_count || 0) + ".", "error");
+      }
+    }
+
+    function toneForDomainValidation(validation) {
+      if (!state.session) return "info";
+      if (domainIsValidated()) return "ok";
+      if (validation && Array.isArray(validation.errors) && validation.errors.length > 0) return "error";
+      if (validation && Array.isArray(validation.warnings) && validation.warnings.length > 0) return "warn";
+      return "warn";
+    }
+
+    function setDomainBannerTone(element, tone) {
+      if (!element) return;
+      element.style.background = tone === "error" ? "#fee4e2" : tone === "ok" ? "#dcfce7" : tone === "warn" ? "#fef3c7" : "#d8e4df";
+      element.style.color = tone === "error" ? "#b42318" : tone === "ok" ? "#166534" : tone === "warn" ? "#92400e" : "#334155";
+    }
+
+    function renderDomainValidationPanel() {
+      const validation = domainValidationState();
+      const lifecycle = domainLifecycleState();
+      const canValidate = Boolean(state.session && sessionContextLocked() && hasLoadedRawDxf() && geometryIsProjected());
+      validateDomainBtn.disabled = !canValidate;
+      if (!state.session) {
+        domainReadinessBanner.textContent = "No active session. Lock context and load raw DXF before domain validation.";
+        setDomainBannerTone(domainReadinessBanner, "info");
+        domainValidationBlockerBanner.style.display = "none";
+        domainSessionContextOut.textContent = JSON.stringify({ ok: false, note: "No session context loaded yet." }, null, 2);
+        domainSemEvidenceOut.textContent = JSON.stringify({ ok: false, note: "No SEM evidence loaded yet." }, null, 2);
+        domainXdataEvidenceOut.textContent = JSON.stringify({ ok: false, note: "No XDATA evidence loaded yet." }, null, 2);
+        domainValidationSignals.innerHTML = `<div class="meta">No domain validation run yet.</div>`;
+        domainValidationOut.textContent = JSON.stringify({ ok: false, note: "No domain validation run yet." }, null, 2);
+        return;
+      }
+      domainSessionContextOut.textContent = JSON.stringify(state.session.session_context_v1 || null, null, 2);
+      domainSemEvidenceOut.textContent = JSON.stringify(validation?.sem_evidence || state.session.document_sem || { ok: false, note: "No SEM evidence found." }, null, 2);
+      domainXdataEvidenceOut.textContent = JSON.stringify(validation?.xdata_evidence || state.session.xdata_context || { ok: false, note: "No XDATA evidence found." }, null, 2);
+      const tone = toneForDomainValidation(validation);
+      const blockingCount = validation?.blocking_error_count || 0;
+      const warningCount = validation?.warning_count || 0;
+      domainReadinessBanner.textContent = domainIsValidated()
+        ? `Domain context validated. lifecycle=${lifecycle} | warnings=${warningCount}`
+        : validation
+          ? `Domain context blocked. lifecycle=${lifecycle} | blocking_errors=${blockingCount} | warnings=${warningCount}`
+          : `Domain context not validated. lifecycle=${lifecycle}`;
+      setDomainBannerTone(domainReadinessBanner, tone);
+      const showBlocker = Boolean(state.session && !domainIsValidated());
+      domainValidationBlockerBanner.style.display = showBlocker ? "" : "none";
+      domainValidationBlockerBanner.textContent = "Domain context is not valid. Please resolve SEM/XDATA mismatches before continuing.";
+      setDomainBannerTone(domainValidationBlockerBanner, "error");
+      const errors = Array.isArray(validation?.errors) ? validation.errors : [];
+      const warnings = Array.isArray(validation?.warnings) ? validation.warnings : [];
+      const signals = errors.concat(warnings);
+      domainValidationSignals.innerHTML = signals.length
+        ? signals.map((item) => {
+            const isError = item.severity === "error" || item.blocking === true;
+            const bg = isError ? "#fee4e2" : "#fef3c7";
+            const color = isError ? "#b42318" : "#92400e";
+            return `<div class="selection-item" style="background:${bg};color:${color}"><strong>${esc(item.code || "DOMAIN_SIGNAL")}</strong><br>${esc(item.message || "Domain validation signal.")}</div>`;
+          }).join("")
+        : `<div class="selection-item" style="background:#dcfce7;color:#166534"><strong>DOMAIN_CONTEXT_OK</strong><br>No blocking domain signals.</div>`;
+      domainValidationOut.textContent = JSON.stringify(validation || {
+        ok: false,
+        note: canValidate ? "Domain validation has not been run for this session." : "Lock context, load raw DXF, and compute geometry before validation."
+      }, null, 2);
+    }
+
+    function resolverPreviewState() {
+      return state.session?.resolver_preview_v1 || null;
+    }
+
+    function parameterContextIsValid() {
+      const input = state.session?.resolver_input_v1_minimal;
+      if (input?.parameter_context) return input.parameter_context.valid === true;
+      return domainIsValidated();
+    }
+
+    function ruleContextIsValid() {
+      const input = state.session?.resolver_input_v1_minimal;
+      if (input?.rule_context) return input.rule_context.valid === true;
+      return domainIsValidated();
+    }
+
+    function resolverPreviewReady() {
+      const preview = resolverPreviewState();
+      return domainLifecycleState() === "preview_ready" && preview && preview.validation?.ok === true;
+    }
+
+    function canGenerateResolverPreview() {
+      return Boolean(
+        state.session
+        && domainLifecycleState() === "authoring_ready"
+        && domainIsValidated()
+        && geometryIsProjected()
+        && parameterContextIsValid()
+        && ruleContextIsValid()
+      );
+    }
+
+    function renderResolverPreviewPanel() {
+      const preview = resolverPreviewState();
+      const input = state.session?.resolver_input_v1_minimal || null;
+      const lifecycle = domainLifecycleState();
+      const ready = resolverPreviewReady();
+      const canGenerate = canGenerateResolverPreview();
+      if (generateResolverPreviewBtn) generateResolverPreviewBtn.disabled = !canGenerate;
+      if (!state.session) {
+        resolverPreviewReadinessBanner.textContent = "No active session. Resolver preview requires authoring_ready.";
+        setDomainBannerTone(resolverPreviewReadinessBanner, "info");
+        resolverPreviewGateBanner.style.display = "none";
+        resolverAuthorityBox.textContent = "No resolver authority snapshot.";
+        resolverHashBox.textContent = "No resolver hashes.";
+        resolverSummaryBox.textContent = "No resolver summary.";
+        resolverValidationSignals.innerHTML = '<div class="meta">No resolver warnings/errors.</div>';
+        resolverPreviewOut.textContent = JSON.stringify({ ok: false, note: "Resolver preview not generated yet." }, null, 2);
+        return;
+      }
+      resolverPreviewReadinessBanner.textContent = ready
+        ? "Resolver preview ready. lifecycle=" + lifecycle + " | geometry_authority=" + (preview.geometry_authority || "-")
+        : "Resolver preview not ready. lifecycle=" + lifecycle + " | requires authoring_ready and valid domain/geometry/parameter/rule context.";
+      setDomainBannerTone(resolverPreviewReadinessBanner, ready ? "ok" : canGenerate ? "warn" : "info");
+      resolverPreviewGateBanner.style.display = ready ? "none" : "";
+      resolverPreviewGateBanner.textContent = "Preview must be generated before child/export.";
+      setDomainBannerTone(resolverPreviewGateBanner, "warn");
+      resolverAuthorityBox.innerHTML = [
+        '<div class="selection-item"><strong>Execution authority</strong><br>' + esc(preview?.execution_authority || "core_shell_resolver") + '</div>',
+        '<div class="selection-item"><strong>Geometry authority</strong><br>' + esc(preview?.geometry_authority || "legacy_branch") + ' | branch=' + esc(preview?.branch_mode || input?.branch_mode || "-") + '</div>',
+        '<div class="selection-item"><strong>Slot authority signal</strong><br>slot=' + esc(preview?.selected_slot_index ?? "-") + ' | variant=' + esc(preview?.selected_variant_key || "-") + ' | slot preview inactive</div>'
+      ].join("");
+      resolverHashBox.innerHTML = [
+        '<div class="selection-item"><strong>resolver_input_hash</strong><br><code>' + esc(preview?.resolver_input_hash || "-") + '</code></div>',
+        '<div class="selection-item"><strong>resolver_output_hash</strong><br><code>' + esc(preview?.resolver_output_hash || "-") + '</code></div>'
+      ].join("");
+      const summary = preview?.resolver_geometry_summary || {};
+      resolverSummaryBox.innerHTML = [
+        '<div class="selection-item"><strong>Object counts</strong><br>before=' + esc(summary.input_object_count ?? "-") + ' | after=' + esc(summary.output_object_count ?? "-") + '</div>',
+        '<div class="selection-item"><strong>Resolver bbox</strong><br>' + esc(bboxText(summary.bbox)) + '</div>',
+        '<div class="selection-item"><strong>Layer summary</strong><br>' + esc(JSON.stringify(preview?.resolver_layer_summary || {})) + '</div>',
+        '<div class="selection-item"><strong>Execution plan</strong><br>' + esc(JSON.stringify(preview?.execution_plan_summary || {})) + '</div>'
+      ].join("");
+      const errors = Array.isArray(preview?.validation?.errors) ? preview.validation.errors : [];
+      const warnings = Array.isArray(preview?.validation?.warnings) ? preview.validation.warnings : [];
+      const signals = errors.concat(warnings);
+      resolverValidationSignals.innerHTML = signals.length
+        ? signals.map((item) => {
+            const isError = item.severity === "error" || item.blocking === true;
+            const bg = isError ? "#fee4e2" : "#fef3c7";
+            const color = isError ? "#b42318" : "#92400e";
+            return '<div class="selection-item" style="background:' + bg + ';color:' + color + '"><strong>' + esc(item.code || "RESOLVER_SIGNAL") + '</strong><br>' + esc(item.message || "Resolver validation signal.") + '</div>';
+          }).join("")
+        : '<div class="selection-item" style="background:#dcfce7;color:#166534"><strong>RESOLVER_PREVIEW_OK</strong><br>No resolver warnings/errors.</div>';
+      resolverPreviewOut.textContent = JSON.stringify(preview || {
+        ok: false,
+        note: canGenerate ? "Resolver preview can be generated." : "Resolver preview is gated until authoring_ready."
+      }, null, 2);
+    }
+
+    async function generateResolverPreview() {
+      if (!state.session) {
+        setStatus("Create or load a session before resolver preview.", "error");
+        return;
+      }
+      if (!canGenerateResolverPreview()) {
+        resolverPreviewDetails.open = true;
+        setStatus("Resolver preview requires authoring_ready lifecycle and valid domain/geometry/parameter/rule context.", "error");
+        return;
+      }
+      setStatus("Generating Core Shell Resolver preview...");
+      const data = await fetchJson('/api/mother-dxf/v1/sessions/' + state.session.session_id + '/resolver/preview', { method: "POST" });
+      state.session = data.session;
+      if (data.resolver_output_v1) state.session.resolver_preview_v1 = data.resolver_output_v1;
+      if (data.resolver_input_v1_minimal) state.session.resolver_input_v1_minimal = data.resolver_input_v1_minimal;
+      syncSessionContextDraftFromSession();
+      render();
+      resolverPreviewDetails.open = true;
+      const output = state.session.resolver_preview_v1 || data.resolver_output_v1 || null;
+      if (output?.validation?.ok) {
+        setStatus("Resolver preview ready. output_hash=" + (output.resolver_output_hash || "-") + ".", "ok");
+      } else {
+        setStatus("Resolver preview returned blocking errors.", "error");
+      }
+    }
+
+    function wysiwygGateState() {
+      return state.session?.wysiwyg_gate_v1 || null;
+    }
+
+    function artifactLineageState() {
+      return state.session?.artifact_lineage_v1 || null;
+    }
+
+    function childReady() {
+      return ["child_ready", "export_ready"].includes(domainLifecycleState()) && Boolean(state.session?.resolver_child_v1?.child_artifact_id);
+    }
+
+    function exportReady() {
+      return domainLifecycleState() === "export_ready" && Boolean(state.session?.resolver_export_v1?.export_artifact_id);
+    }
+
+    function wysiwygGateAllowsChild() {
+      const gate = wysiwygGateState();
+      return resolverPreviewReady() && (!gate || gate.ok !== false);
+    }
+
+    function renderWysiwygGatePanel() {
+      const gate = wysiwygGateState();
+      if (!state.session) {
+        wysiwygGateBanner.textContent = "No active session. WYSIWYG gate requires resolver preview.";
+        setDomainBannerTone(wysiwygGateBanner, "info");
+        wysiwygHashBox.textContent = "No WYSIWYG hashes.";
+        wysiwygBlockingSignals.innerHTML = '<div class="meta">No blocking WYSIWYG signals.</div>';
+        wysiwygGateOut.textContent = JSON.stringify({ ok: false, note: "WYSIWYG gate not evaluated yet." }, null, 2);
+        return;
+      }
+      const ok = gate && gate.ok === true;
+      const mismatch = gate && gate.mismatch === true;
+      wysiwygGateBanner.textContent = ok
+        ? "WYSIWYG gate OK. Child/export may proceed according to lifecycle."
+        : mismatch
+          ? "WYSIWYG_CONTRACT_MISMATCH — Preview, child or export cannot proceed."
+          : "WYSIWYG gate not ready. Preview, child or export cannot proceed.";
+      setDomainBannerTone(wysiwygGateBanner, ok ? "ok" : mismatch ? "error" : "warn");
+      wysiwygHashBox.innerHTML = [
+        '<div class="selection-item"><strong>ui_projection_hash</strong><br><code>' + esc(gate?.ui_projection_hash || state.session?.resolver_preview_v1?.ui_projection_hash || "-") + '</code></div>',
+        '<div class="selection-item"><strong>resolver_input_hash</strong><br><code>' + esc(gate?.resolver_input_hash || state.session?.resolver_preview_v1?.resolver_input_hash || "-") + '</code></div>',
+        '<div class="selection-item"><strong>current_resolver_input_hash</strong><br><code>' + esc(gate?.current_resolver_input_hash || "-") + '</code></div>',
+        '<div class="selection-item"><strong>resolver_output_hash</strong><br><code>' + esc(gate?.resolver_output_hash || state.session?.resolver_preview_v1?.resolver_output_hash || "-") + '</code></div>'
+      ].join("");
+      const signals = (Array.isArray(gate?.errors) ? gate.errors : []).concat(Array.isArray(gate?.warnings) ? gate.warnings : []);
+      wysiwygBlockingSignals.innerHTML = signals.length
+        ? signals.map((item) => {
+            const isError = item.severity === "error" || item.blocking === true || String(item.code || "").includes("MISMATCH");
+            const bg = isError ? "#fee4e2" : "#fef3c7";
+            const color = isError ? "#b42318" : "#92400e";
+            return '<div class="selection-item" style="background:' + bg + ';color:' + color + '"><strong>' + esc(item.code || "WYSIWYG_SIGNAL") + '</strong><br>' + esc(item.message || "WYSIWYG gate signal.") + '</div>';
+          }).join("")
+        : '<div class="selection-item" style="background:#dcfce7;color:#166534"><strong>WYSIWYG_GATE_OK</strong><br>No blocking WYSIWYG signals.</div>';
+      wysiwygGateOut.textContent = JSON.stringify(gate || { ok: false, note: "Generate resolver preview before WYSIWYG gate evaluation." }, null, 2);
+    }
+
+    function renderArtifactLineagePanel() {
+      const lineage = artifactLineageState();
+      const childComplete = Boolean(lineage?.complete_for_child);
+      const exportComplete = Boolean(lineage?.complete_for_export);
+      const dbrComplete = Boolean(lineage?.complete_for_dbr);
+      artifactLineageBanner.textContent = dbrComplete
+        ? "Artifact lineage complete for DBR handoff."
+        : exportComplete
+          ? "Artifact lineage complete for export; DBR handoff pending."
+          : childComplete
+            ? "Artifact lineage complete for child; export/DBR pending."
+            : "Artifact lineage incomplete — export/DBR blocked.";
+      setDomainBannerTone(artifactLineageBanner, dbrComplete ? "ok" : childComplete ? "warn" : "error");
+      artifactLineageBox.innerHTML = [
+        '<div class="selection-item"><strong>resolver_run_id</strong><br>' + esc(lineage?.resolver_run_id || "-") + '</div>',
+        '<div class="selection-item"><strong>preview_id</strong><br>' + esc(lineage?.preview_id || "-") + '</div>',
+        '<div class="selection-item"><strong>child_artifact_id</strong><br>' + esc(lineage?.child_artifact_id || "-") + '</div>',
+        '<div class="selection-item"><strong>export_artifact_id</strong><br>' + esc(lineage?.export_artifact_id || "-") + '</div>',
+        '<div class="selection-item"><strong>dbr_handoff_manifest_id</strong><br>' + esc(lineage?.dbr_handoff_manifest_id || "-") + '</div>',
+        '<div class="selection-item"><strong>hashes</strong><br>input=<code>' + esc(lineage?.resolver_input_hash || "-") + '</code><br>output=<code>' + esc(lineage?.resolver_output_hash || "-") + '</code></div>'
+      ].join("");
+      artifactLineageOut.textContent = JSON.stringify(lineage || { ok: false, note: "No artifact lineage yet." }, null, 2);
+    }
+
+    async function generateResolverChildDxf() {
+      if (!state.session) return;
+      if (!resolverPreviewReady()) {
+        resolverPreviewDetails.open = true;
+        setStatus("Preview must be generated before child/export.", "error");
+        return;
+      }
+      setStatus("Generating resolver child DXF with WYSIWYG gate...");
+      const data = await fetchJson('/api/mother-dxf/v1/sessions/' + state.session.session_id + '/resolver/child', { method: "POST" });
+      state.session = data.session;
+      syncSessionContextDraftFromSession();
+      syncBandsInputFromSession();
+      if (data.dxf_text) {
+        triggerBlobDownload(new Blob([data.dxf_text], { type: "application/dxf;charset=utf-8" }), state.session.session_id + '_resolver_child_v1.dxf');
+      }
+      render();
+      wysiwygGateDetails.open = true;
+      artifactLineageDetails.open = true;
+      childSummaryBox.style.display = "";
+      childSummaryBox.textContent = "Resolver child DXF generated: artifact=" + (data.child_artifact?.child_artifact_id || "-") + ", lifecycle=" + domainLifecycleState();
+      setStatus("Resolver child DXF generated and lifecycle moved to child_ready.", "ok");
+    }
+
+    async function generateResolverExportBundle() {
+      if (!state.session) return;
+      if (!childReady()) {
+        artifactLineageDetails.open = true;
+        setStatus("Child artifact must be ready before export/DBR.", "error");
+        return;
+      }
+      setStatus("Generating resolver export and DBR handoff manifest...");
+      const data = await fetchJson('/api/mother-dxf/v1/sessions/' + state.session.session_id + '/resolver/export', { method: "POST" });
+      state.session = data.session;
+      syncSessionContextDraftFromSession();
+      syncBandsInputFromSession();
+      if (data.dxf_text) {
+        triggerBlobDownload(new Blob([data.dxf_text], { type: "application/dxf;charset=utf-8" }), state.session.session_id + '_resolver_export_v1.dxf');
+      }
+      render();
+      wysiwygGateDetails.open = true;
+      artifactLineageDetails.open = true;
+      setStatus("Resolver export and DBR handoff manifest ready. lifecycle=export_ready.", "ok");
+    }
+
+    function setDisabledById(id, disabled) {
+      const element = document.getElementById(id);
+      if (element) element.disabled = disabled;
+    }
+
+    function enforceDomainValidationGates() {
+      renderGeometryContextPanel();
+      renderDomainValidationPanel();
+      renderResolverPreviewPanel();
+      renderWysiwygGatePanel();
+      renderArtifactLineagePanel();
+      const locked = sessionContextLocked();
+      const valid = domainIsValidated();
+      const blockDomainWork = Boolean(state.session) && !valid;
+      const domainGatedButtons = [
+        "validateBtn",
+        "exportBtn",
+        "generateChildBtn",
+        "generateTopoChildBtn",
+        "generateDraftChildBtn",
+        "saveDocumentSemBtn",
+        "addDocumentSemRuleBtn",
+        "saveTopoBtn",
+        "clearSelectedTopoBtn",
+        "clearFileTopoBtn",
+        "skipTopoBtn",
+        "applyMetadataBtn",
+        "assignMicroShiftSetBtn",
+        "clearMetadataBtn",
+        "loadMetadataEditBtn",
+        "xdataSelectBtn",
+        "assignXdataBtn",
+        "authoringStageTopoBtn",
+        "authoringStageSemBtn",
+        "saveLabelDefinitionBtn",
+        "pickLabelPositionBtn",
+        "clearLabelDefinitionBtn"
+      ];
+      domainGatedButtons.forEach((id) => setDisabledById(id, blockDomainWork));
+      if (!locked || !geometryIsProjected()) {
+        setDisabledById("validateDomainBtn", true);
+      }
+      const previewReady = resolverPreviewReady();
+      const childAllowed = Boolean(state.session) && previewReady && wysiwygGateAllowsChild();
+      const exportAllowed = Boolean(state.session) && childReady();
+      ["generateChildBtn", "generateTopoChildBtn", "generateDraftChildBtn"].forEach((id) => setDisabledById(id, !childAllowed));
+      ["exportBtn", "exportDbrBtn"].forEach((id) => setDisabledById(id, !exportAllowed));
+    }
+
+    async function validateDomainContext() {
+      if (!state.session) {
+        setStatus("Create or load a session before domain validation.", "error");
+        return;
+      }
+      if (!sessionContextLocked()) {
+        sessionLifecycleDetails.open = true;
+        setStatus("Lock session context before domain validation.", "error");
+        return;
+      }
+      if (!hasLoadedRawDxf()) {
+        setStatus("Load raw DXF before domain validation.", "error");
+        return;
+      }
+      if (!geometryIsProjected()) {
+        geometryContextDetails.open = true;
+        setStatus("Compute geometry context before domain validation.", "error");
+        return;
+      }
+      setStatus("Validating domain context...");
+      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/validate-domain`, { method: "POST" });
+      state.session = data.session;
+      syncSessionContextDraftFromSession();
+      syncBandsInputFromSession();
+      render();
+      domainValidationDetails.open = true;
+      const validation = state.session.domain_validation_v1 || data.domain_validation_v1 || null;
+      if (validation && validation.ok) {
+        setStatus(`Domain context validated. warnings=${validation.warning_count || 0}.`, "ok");
+      } else {
+        setStatus(`Domain context blocked. errors=${validation?.blocking_error_count || 0}, warnings=${validation?.warning_count || 0}.`, "error");
+      }
+    }
+
+    function bandsPayload() {
+      const leftInput = geometryBandLeft || document.getElementById("bandLeft");
+      const rightInput = geometryBandRight || document.getElementById("bandRight");
+      const topInput = geometryBandTop || document.getElementById("bandTop");
+      const bottomInput = geometryBandBottom || document.getElementById("bandBottom");
+      return {
+        left: Number(leftInput?.value || 0),
+        right: Number(rightInput?.value || 0),
+        top: Number(topInput?.value || 0),
+        bottom: Number(bottomInput?.value || 0)
       };
     }
 
     function syncBandsInputFromSession() {
       const bands = state.session && state.session.bands ? state.session.bands : null;
       if (!bands) return;
-      document.getElementById("bandLeft").value = Number(bands.left ?? 80);
-      document.getElementById("bandRight").value = Number(bands.right ?? 80);
-      document.getElementById("bandTop").value = Number(bands.top ?? 80);
-      document.getElementById("bandBottom").value = Number(bands.bottom ?? 80);
+      const leftValue = Number(bands.left ?? 80);
+      const rightValue = Number(bands.right ?? 80);
+      const topValue = Number(bands.top ?? 80);
+      const bottomValue = Number(bands.bottom ?? 80);
+      const legacyLeft = document.getElementById("bandLeft");
+      const legacyRight = document.getElementById("bandRight");
+      const legacyTop = document.getElementById("bandTop");
+      const legacyBottom = document.getElementById("bandBottom");
+      if (legacyLeft) legacyLeft.value = leftValue;
+      if (legacyRight) legacyRight.value = rightValue;
+      if (legacyTop) legacyTop.value = topValue;
+      if (legacyBottom) legacyBottom.value = bottomValue;
+      if (geometryBandLeft) geometryBandLeft.value = leftValue;
+      if (geometryBandRight) geometryBandRight.value = rightValue;
+      if (geometryBandTop) geometryBandTop.value = topValue;
+      if (geometryBandBottom) geometryBandBottom.value = bottomValue;
     }
 
     function stripDxfExtension(name) {
@@ -1259,6 +2333,85 @@
       state.view.scale = Number.isFinite(scale) && scale > 0 ? scale : 1;
       state.view.offsetX = 20 - bbox.minX * state.view.scale;
       state.view.offsetY = 20 + bbox.maxY * state.view.scale;
+    }
+
+    function objectBandAssignment(object) {
+      const slots = Array.isArray(state.session?.geometry_context_v1?.slots) ? state.session.geometry_context_v1.slots : [];
+      for (const slot of slots) {
+        const assignment = slot?.band_assignments?.assignments && typeof slot.band_assignments.assignments === "object"
+          ? slot.band_assignments.assignments[object?.id]
+          : null;
+        if (assignment) return assignment;
+      }
+      return null;
+    }
+
+    function objectLegacyLayer(object) {
+      return String(object?.primary_layer || object?.suggested_layer || "A").trim().toUpperCase() || "A";
+    }
+
+    function objectAuthoritativeLayer(object) {
+      if (String(object?.assignment_origin || "").trim().toLowerCase() === "manual" && object?.primary_layer) {
+        return String(object.primary_layer).trim().toUpperCase();
+      }
+      const slotAssignment = objectBandAssignment(object);
+      return String(slotAssignment?.suggested_layer || slotAssignment?.layer || objectLegacyLayer(object)).trim().toUpperCase() || "A";
+    }
+
+    function objectAuthoritativeOrigin(object) {
+      if (String(object?.assignment_origin || "").trim().toLowerCase() === "manual" && object?.primary_layer) {
+        return "manual";
+      }
+      const slotAssignment = objectBandAssignment(object);
+      if (slotAssignment?.layer || slotAssignment?.suggested_layer) return "slot_projection";
+      return String(object?.assignment_origin || "legacy").trim() || "legacy";
+    }
+
+    function objectDisplayLayer(object) {
+      const slotAssignment = objectBandAssignment(object);
+      return objectAuthoritativeLayer(object);
+    }
+
+    function objectDisplayColor(object) {
+      const colors = state.session?.semantic_colors || {};
+      return colors[objectDisplayLayer(object)] || object?.semantic_color || "#cbd5e1";
+    }
+
+    function drawSlotBandOverlay() {
+      if (!state.session || !geometryIsProjected() || combinedPreviewActive()) return;
+      const slots = Array.isArray(state.session?.geometry_context_v1?.slots) ? state.session.geometry_context_v1.slots : [];
+      const bands = state.session?.bands || bandsPayload();
+      const colors = state.session?.semantic_colors || {};
+      for (const slot of slots) {
+        const bbox = slot?.bbox;
+        if (!bbox) continue;
+        const left = Number(bands.left || 0);
+        const right = Number(bands.right || 0);
+        const top = Number(bands.top || 0);
+        const bottom = Number(bands.bottom || 0);
+        const zones = [
+          { key: "L", minX: bbox.minX, maxX: Math.min(bbox.maxX, bbox.minX + left), minY: bbox.minY, maxY: bbox.maxY },
+          { key: "R", minX: Math.max(bbox.minX, bbox.maxX - right), maxX: bbox.maxX, minY: bbox.minY, maxY: bbox.maxY },
+          { key: "T", minX: bbox.minX, maxX: bbox.maxX, minY: Math.max(bbox.minY, bbox.maxY - top), maxY: bbox.maxY },
+          { key: "B", minX: bbox.minX, maxX: bbox.maxX, minY: bbox.minY, maxY: Math.min(bbox.maxY, bbox.minY + bottom) }
+        ];
+        zones.forEach((zone) => {
+          if (!(zone.maxX > zone.minX && zone.maxY > zone.minY)) return;
+          const a = worldToScreen({ x: zone.minX, y: zone.minY });
+          const b = worldToScreen({ x: zone.maxX, y: zone.maxY });
+          const minX = Math.min(a.x, b.x);
+          const minY = Math.min(a.y, b.y);
+          const width = Math.abs(b.x - a.x);
+          const height = Math.abs(b.y - a.y);
+          ctx.save();
+          ctx.fillStyle = (colors[zone.key] || "#d1d5db") + '22';
+          ctx.strokeStyle = (colors[zone.key] || "#d1d5db") + '88';
+          ctx.lineWidth = 1;
+          ctx.fillRect(minX, minY, width, height);
+          ctx.strokeRect(minX, minY, width, height);
+          ctx.restore();
+        });
+      }
     }
 
     function effectiveRenderObjects() {
@@ -1368,7 +2521,7 @@
     }
 
     function currentBranchMode() {
-      return String(state.branchContext?.activeMode || "ALL").trim() || "ALL";
+      return String(state.session?.session_context_v1?.branch_mode || currentSessionContext().branch_mode || "ALL").trim() || "ALL";
     }
 
     function objectGeometryVariant(object) {
@@ -1450,10 +2603,7 @@
     }
 
     function ensureConcreteBranchForAuthoring(actionLabel) {
-      if (!hasGeometryBranches() || currentBranchMode() !== "ALL") return true;
-      setStatus(String(actionLabel || "Authoring") + " requires an active geometry branch. Choose BASE or a tagged branch in Geometry Branch Context first.", "error");
-      if (xdataContextDetails) xdataContextDetails.open = true;
-      return false;
+      return true;
     }
 
     function currentBranchAuthoringObjects(actionLabel) {
@@ -1964,7 +3114,7 @@
         const fallbackPrefix = item.source && item.source.line_start ? `Ln${item.source.line_start}` : "";
         const lead = rawPrefix || fallbackPrefix;
         const visibilitySuffix = simulationItem ? ` | visible=${esc(simulationItem.preview?.visible ? "true" : "false")}` : "";
-        return `<div class="selection-item"><strong>${esc(lead)} | ${esc(item.display_label || item.id)}</strong> | layer=${esc(item.primary_layer || "unclassified")} | origin=${esc(item.assignment_origin)}${visibilitySuffix}</div>`;
+        return `<div class="selection-item"><strong>${esc(lead)} | ${esc(item.display_label || item.id)}</strong> | layer=${esc(objectAuthoritativeLayer(item))} | origin=${esc(objectAuthoritativeOrigin(item))} | legacy=${esc(objectLegacyLayer(item))}${visibilitySuffix}</div>`;
       }).join("");
       selectionBox.innerHTML = rows;
     }
@@ -1978,6 +3128,7 @@
         selectionTowerStatus.style.display = "none";
         selectionTowerBox.style.display = "none";
         selectionExplodeBtn.style.display = selectedInsert ? "" : "none";
+        selectionExplodeBtn.disabled = !(selectedInsert && hasLoadedRawDxf());
         selectionTowerDoneBtn.style.display = "none";
         return;
       }
@@ -2402,7 +3553,7 @@
       labelValidationBox.textContent = validation.message;
       labelValidationBox.style.color = validation.tone === "error" ? "#b42318" : validation.tone === "ok" ? "#166534" : "#92400e";
       labelGenerated999.value = labelGeneratedComment(payload) ? `999\n${labelGeneratedComment(payload)}` : "";
-      labelPayloadPreview.textContent = "Payload template: ;|{{WORKORDERCODE}}|{{TIP_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}";
+      labelPayloadPreview.textContent = "Payload template: ;|{{WORKORDERCODE}}|{{MODEL_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}";
       saveLabelDefinitionBtn.disabled = validation.tone === "error" || !Number.isFinite(payload.x) || !Number.isFinite(payload.y);
       clearLabelDefinitionBtn.disabled = !state.session || !saved;
       pickLabelPositionBtn.textContent = state.labelDefinition.pickMode ? "Picking... click canvas" : "Pick Label Position";
@@ -2939,6 +4090,7 @@
       const branchMode = currentBranchMode();
       const badges = [
         `file ${state.session.source_name || "-"}`,
+        `lifecycle ${lifecycleState()}`,
         sem && Number.isFinite(Number(sem.nominal_width)) && Number.isFinite(Number(sem.nominal_height))
           ? `nominal ${sem.nominal_width} x ${sem.nominal_height}`
           : "nominal -",
@@ -2963,6 +4115,16 @@
       if (!state.session || !state.session.config_parameter_set) return;
       if (state.configDirty && !force) return;
       configInput.value = JSON.stringify(state.session.config_parameter_set, null, 2);
+      if (parameterContextOut) {
+        parameterContextOut.textContent = JSON.stringify({
+          version: 1,
+          mode: "read_only",
+          parameter_catalog_id: state.session.session_context_v1?.parameter_catalog_id || state.session.config_parameter_set.parameter_catalog_id || null,
+          parameter_count: Object.keys(state.session.config_parameter_set.parameters || {}).length,
+          resolved_from: "session_context_v1.parameter_catalog_id",
+          free_form_json_editor_enabled: false
+        }, null, 2);
+      }
       state.configDirty = false;
       renderMetadataParameterOptions();
     }
@@ -2983,13 +4145,13 @@
     }
 
     function renderChildGenerationControls() {
-      const visible = canGenerateChildDxf();
-      generateChildBtn.style.display = visible ? "" : "none";
-      generateChildBtn.disabled = !visible;
+      const hasSession = Boolean(state.session);
+      generateChildBtn.style.display = hasSession ? "" : "none";
+      generateChildBtn.disabled = !hasSession || !resolverPreviewReady();
       generateTopoChildBtn.style.display = "none";
       generateTopoChildBtn.disabled = true;
-      generateDraftChildBtn.disabled = !state.session;
-      if (!visible) {
+      generateDraftChildBtn.disabled = !hasSession || !resolverPreviewReady();
+      if (!hasSession) {
         childSummaryBox.style.display = "none";
         childSummaryBox.textContent = "";
       }
@@ -4437,6 +5599,7 @@
       renderHashToggleButton();
       focusSelectedEntityInInput();
       renderSessionMeta();
+      renderSessionContextWizard();
       renderParameterCatalog();
       renderRuleCatalog();
       renderDocumentSemPanel();
@@ -4446,6 +5609,7 @@
       renderMetadataTarget();
       renderMetadataPreview();
       renderLegend();
+      enforceDomainValidationGates();
 
       if (!state.session) {
         state.geometryHygiene.markers = [];
@@ -4459,13 +5623,14 @@
       });
       const hasSelection = state.selectedIds.size > 0;
       drawGhostOverlay();
+      drawSlotBandOverlay();
       for (const object of effectiveRenderObjects()) {
         if (!isObjectVisibleInSimulation(object.id)) continue;
         if (!isObjectVisibleInVariantContext(object)) continue;
         const isSelected = state.selectedIds.has(object.id);
         const isHover = state.hoverId === object.id;
         for (const shape of effectiveShapesForObject(object)) {
-          const baseColor = object.semantic_color || "#cbd5e1";
+          const baseColor = objectDisplayColor(object);
           const passiveColor = hasSelection && !isSelected ? "#d7ddd7" : baseColor;
           drawShape(shape, passiveColor, hasSelection && !isSelected ? 1 : 1.5);
           if (isSelected) {
@@ -4543,6 +5708,12 @@
     }
 
     async function createSession() {
+      if (!sessionContextLocked()) {
+        sessionLifecycleDetails.open = true;
+        setStatus("Please complete and lock session context before uploading DXF.", "error");
+        renderSessionContextWizard();
+        return;
+      }
       const dxfText = await resolveCurrentDxfText();
       if (!dxfText.trim()) {
         document.getElementById("inputSupportDetails").open = true;
@@ -4570,6 +5741,8 @@
       }
       setStatus(forceRefresh ? "Refreshing working session from raw DXF after explicit ERASE confirmation..." : "Loading existing enriched session when available...");
       const payload = {
+        session_id: state.session?.session_id || null,
+        session_context_v1: currentSessionContext(),
         dxf_text: dxfText,
         source_name: sourceName,
         bands: bandsPayload(),
@@ -4580,6 +5753,8 @@
         body: JSON.stringify(payload)
       });
       state.session = data.session;
+      syncSessionContextDraftFromSession();
+      syncBandsInputFromSession();
       state.simulation = null;
       clearTopoPreview();
       state.authoring.topoSkipped = false;
@@ -4597,15 +5772,8 @@
       fitViewToDocument();
       renderValidation({ ok: false, note: "Validation not run yet." });
       renderSimulation({ ok: false, note: "Simulation not run yet." });
-      document.getElementById("reclassifyBtn").disabled = false;
       document.getElementById("validateBtn").disabled = false;
       document.getElementById("exportBtn").disabled = false;
-      document.getElementById("saveConfigBtn").disabled = false;
-      document.getElementById("reloadConfigBtn").disabled = false;
-      document.getElementById("resetConfigFromCatalogBtn").disabled = false;
-      document.getElementById("simulateBtn").disabled = false;
-      document.getElementById("previewTopoChildBtn").disabled = false;
-      document.getElementById("backToDraftViewBtn").disabled = false;
       document.getElementById("saveTopoBtn").disabled = false;
       syncConfigInputFromSession(true);
       syncTopoInputFromSession();
@@ -4622,27 +5790,6 @@
       openWorkflowStep("sanitize");
       render();
       refitViewerAfterLayout();
-    }
-
-    async function rerunAutoSuggest() {
-      if (!state.session) return;
-      setStatus("Recomputing bbox-based auto-suggestion...");
-      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/bands`, {
-        method: "POST",
-        body: JSON.stringify({ bands: bandsPayload() })
-      });
-      state.session = data.session;
-      state.simulation = null;
-      clearTopoPreview();
-      state.documentSem.dirtyRules = false;
-      syncCurrentDxfText(data.dxf_text);
-      syncBandsInputFromSession();
-      syncSessionSourceOverrideFromSession();
-      autoSuggestionDetails.open = false;
-      fitViewToDocument();
-      render();
-      refitViewerAfterLayout();
-      setStatus("Auto-suggestion recomputed. Manual assignments were preserved.", "ok");
     }
 
     async function applyAssignment(layer) {
@@ -4744,24 +5891,12 @@
     }
 
     async function saveConfigParameterSet() {
-      if (!state.session) return;
-      const config_parameter_set = readConfigInput();
-      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/config`, {
-        method: "POST",
-        body: JSON.stringify({ config_parameter_set })
-      });
-      state.session = data.session;
-      clearTopoPreview();
-      syncCurrentDxfText(data.dxf_text);
-      syncConfigInputFromSession(true);
-      render();
-      setStatus("Config parameter set saved to session.", "ok");
+      setStatus("Free-form config editing is disabled in Mother DXF v2. Use locked session_context_v1 and parameter catalog resolution.", "error");
     }
 
     function reloadConfigParameterSetFromSession() {
-      if (!state.session) return;
       syncConfigInputFromSession(true);
-      setStatus("Saved config reloaded into editor.", "ok");
+      setStatus("Parameter context refreshed from locked session context.", "ok");
     }
 
     function documentSemContextForConfigDefaults() {
@@ -4772,17 +5907,7 @@
     }
 
     async function resetConfigParameterSetFromCatalogDefaults() {
-      if (!state.session) return;
-      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/config/reset-from-catalog`, {
-        method: "POST",
-        body: JSON.stringify({ context: documentSemContextForConfigDefaults() })
-      });
-      state.session = data.session;
-      clearTopoPreview();
-      syncCurrentDxfText(data.dxf_text);
-      syncConfigInputFromSession(true);
-      render();
-      setStatus("Config reset from scoped parameter catalog defaults.", "ok");
+      setStatus("Catalog fallback reset is disabled in Mother DXF v2. Parameter context is resolved from session_context_v1.parameter_catalog_id.", "error");
     }
 
     async function saveDocumentSemMetadata() {
@@ -5030,15 +6155,8 @@
       syncConfigInputFromSession(true);
       renderValidation(data.validation || { ok: false, note: "Validation not run yet." });
       renderSimulation({ ok: false, note: "Simulation not run yet." });
-      document.getElementById("reclassifyBtn").disabled = false;
       document.getElementById("validateBtn").disabled = false;
       document.getElementById("exportBtn").disabled = false;
-      document.getElementById("saveConfigBtn").disabled = false;
-      document.getElementById("reloadConfigBtn").disabled = false;
-      document.getElementById("resetConfigFromCatalogBtn").disabled = false;
-      document.getElementById("simulateBtn").disabled = false;
-      document.getElementById("previewTopoChildBtn").disabled = false;
-      document.getElementById("backToDraftViewBtn").disabled = false;
       document.getElementById("saveTopoBtn").disabled = false;
       document.getElementById("saveSessionMetaBtn").disabled = false;
       fitViewToDocument();
@@ -5159,216 +6277,29 @@
     }
 
     async function simulatePreChildPreview() {
-      if (!state.session) return;
-      if (isFixedEnvelopeTopoConfigured()) {
-        if (!ensureTopoPreviewHasTargets()) return;
-        setStatus("Fixed-envelope TOPO is configured, so preview uses the TOPO child path.", "info");
-        await previewTopoChildDxf();
-        return;
-      }
-      setStatus(isFourBandTopoConfigured()
-        ? "Running Core Shell 4-band shadow simulation..."
-        : "Running pre-child simulation...");
-      const config_parameter_set = readConfigInput();
-      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/simulate`, {
-        method: "POST",
-        body: JSON.stringify({ config_parameter_set })
-      });
-      state.session = data.session;
-      state.simulation = data.simulation || null;
-      clearTopoPreview();
-      renderSimulation(data.simulation);
-      syncConfigInputFromSession(true);
-      fitViewToCurrentGeometry();
-      render();
-      refitViewerAfterLayout();
-      const validation = data.simulation && data.simulation.validation ? data.simulation.validation : null;
-      if (validation && validation.ok === false) {
-        setStatus(`Pre-child simulation ready with validation findings: errors=${validation.counts?.errors || 0}, warnings=${validation.counts?.warnings || 0}.`, "warn");
-      } else {
-        setStatus("Pre-child simulation ready.", "ok");
-      }
+      resolverPreviewDetails.open = true;
+      setStatus("Legacy preview is disabled. Use Generate Resolver Preview.", "error");
     }
 
     function exportMotherDraft() {
-      if (!state.session) return;
-      window.open(`/api/mother-dxf/v1/sessions/${state.session.session_id}/export`, "_blank");
+      generateResolverExportBundle().catch((error) => setStatus(error.message, "error"));
     }
 
     async function generateChildDxf(options = {}) {
-      if (!state.session) return;
-      const allowDraft = Boolean(options.allowDraft);
-      if (isFourBandTopoConfigured()) {
-        await generateCoreShellShadowChildDxf();
-        return;
-      }
-      if (!allowDraft && !canGenerateChildDxf()) {
-        setStatus("Child DXF generation requires mother_validated artifact or in_review status.", "error");
-        return;
-      }
-      if (hasTopoConfigured()) {
-        await generateTopoChildDxf({ allowDraft });
-        return;
-      }
-      setStatus(allowDraft ? "Generating draft/debug child DXF..." : "Generating child DXF...");
-      const config_parameter_set = readConfigInput();
-      const response = await fetch(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/no-topo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config_parameter_set)
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        let message = text || `HTTP ${response.status}`;
-        try {
-          const parsed = JSON.parse(text);
-          message = parsed.message || message;
-        } catch (_) {
-          // Keep raw server response when it is not JSON.
-        }
-        throw new Error(message);
-      }
-
-      const blob = await response.blob();
-      const filename = filenameFromContentDisposition(
-        response.headers.get("Content-Disposition"),
-        `${state.session.session_id}_child_no_topo.dxf`
-      );
-      triggerBlobDownload(blob, filename);
-
-      const included = response.headers.get("X-Mother-DXF-Included-Count") || "?";
-      const excluded = response.headers.get("X-Mother-DXF-Excluded-Count") || "?";
-      const unsupported = response.headers.get("X-Mother-DXF-Unsupported-Geometry-Ops") || "0";
-      const productionSafe = response.headers.get("X-Mother-DXF-Production-Safe") || "?";
-      childSummaryBox.style.display = "";
-      childSummaryBox.textContent = `Child DXF generated: included=${included}, excluded=${excluded}, unsupported_geometry_ops=${unsupported}, production_safe=${productionSafe}`;
-      setStatus(allowDraft ? "Draft/debug child DXF download ready." : "Child DXF download ready.", "ok");
+      await generateResolverChildDxf();
     }
 
     async function generateCoreShellShadowChildDxf() {
-      if (!state.session) return;
-      setStatus("Generating Core Shell 4-band shadow DXF for external viewer validation...", "info");
-      const config_parameter_set = readConfigInput();
-      const response = await fetch(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/core-shell-shadow`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config_parameter_set })
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        let message = text || `HTTP ${response.status}`;
-        try {
-          const parsed = JSON.parse(text);
-          message = parsed.message || message;
-        } catch (_) {
-          // Keep raw server response when it is not JSON.
-        }
-        throw new Error(message);
-      }
-      const blob = await response.blob();
-      const filename = filenameFromContentDisposition(
-        response.headers.get("Content-Disposition"),
-        `${state.session.session_id}_core_shell_4_band_shadow_child.dxf`
-      );
-      triggerBlobDownload(blob, filename);
-      const included = response.headers.get("X-Mother-DXF-Included-Count") || "?";
-      const excluded = response.headers.get("X-Mother-DXF-Excluded-Count") || "?";
-      const updated = response.headers.get("X-Mother-DXF-Updated-Entity-Count") || "?";
-      const removed = response.headers.get("X-Mother-DXF-Removed-Entity-Count") || "?";
-      childSummaryBox.style.display = "";
-      childSummaryBox.textContent = `Core Shell 4-band shadow DXF exported: included=${included}, excluded=${excluded}, updated=${updated}, removed=${removed}, diagnostic_only=true, production_safe=false`;
-      setStatus("Core Shell 4-band shadow DXF download ready. Diagnostic only; production activation is not approved.", "warn");
+      setStatus("Legacy child export is disabled. Use resolver child generation.", "error");
     }
 
     async function generateTopoChildDxf(options = {}) {
-      if (!state.session) return;
-      const allowDraft = Boolean(options.allowDraft);
-      if (isFourBandTopoConfigured()) {
-        await generateCoreShellShadowChildDxf();
-        return;
-      }
-      if (!allowDraft && !canGenerateChildDxf()) {
-        setStatus("TOPO child DXF generation requires mother_validated artifact or in_review status.", "error");
-        return;
-      }
-      setStatus(allowDraft ? "Generating draft/debug TOPO child DXF..." : "Generating TOPO child DXF...");
-      const config_parameter_set = readConfigInput();
-      const response = await fetch(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/topo-poc`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          config_parameter_set,
-          branch_mode: currentBranchMode()
-        })
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        let message = text || `HTTP ${response.status}`;
-        try {
-          const parsed = JSON.parse(text);
-          message = parsed.message || message;
-        } catch (_) {
-          // Keep raw server response when it is not JSON.
-        }
-        throw new Error(message);
-      }
-
-      const blob = await response.blob();
-      const filename = filenameFromContentDisposition(
-        response.headers.get("Content-Disposition"),
-        `${state.session.session_id}_child_topo_poc.dxf`
-      );
-      triggerBlobDownload(blob, filename);
-
-      const included = response.headers.get("X-Mother-DXF-Included-Count") || "?";
-      const excluded = response.headers.get("X-Mother-DXF-Excluded-Count") || "?";
-      const moved = response.headers.get("X-Mother-DXF-Moved-Count") || "?";
-      const delta = response.headers.get("X-Mother-DXF-Topo-Delta") || "?";
-      const trim = response.headers.get("X-Mother-DXF-Trim-Policy-Status") || "";
-      const productionSafe = response.headers.get("X-Mother-DXF-Production-Safe") || "?";
-      const deltaSummary = "per-side";
-      childSummaryBox.style.display = "";
-      childSummaryBox.textContent = `TOPO Child DXF generated: included=${included}, excluded=${excluded}, moved=${moved}, delta=${deltaSummary}, trim=${trim}, production_safe=${productionSafe}`;
-      setStatus(allowDraft ? "Draft/debug TOPO child DXF download ready." : "TOPO child DXF download ready.", "ok");
+      await generateResolverChildDxf();
     }
 
     async function previewTopoChildDxf() {
-      if (!state.session) return;
-      if (isFourBandTopoConfigured()) {
-        await simulatePreChildPreview();
-        return;
-      }
-      if (!ensureTopoPreviewHasTargets()) return;
-      setStatus("Previewing TOPO child geometry...");
-      const config_parameter_set = readConfigInput();
-      const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/child/topo-poc/preview`, {
-        method: "POST",
-        body: JSON.stringify({
-          config_parameter_set,
-          branch_mode: currentBranchMode()
-        })
-      });
-      state.session = data.session;
-      state.simulation = data.simulation || null;
-      state.topoPreview = {
-        ok: true,
-        mode: "topo_child_poc_preview",
-        generation_summary: data.generation_summary || null
-      };
-      renderSimulation(state.topoPreview);
-      fitViewToCurrentGeometry();
-      render();
-      refitViewerAfterLayout();
-      const moved = data.generation_summary ? data.generation_summary.moved_count : "?";
-      const delta = data.generation_summary ? data.generation_summary.delta : "?";
-      const zoneInputs = data.generation_summary && data.generation_summary.zone_inputs ? data.generation_summary.zone_inputs : null;
-      const deltaSummary = zoneInputs ? "per-side" : delta;
-      const validation = data.simulation && data.simulation.validation ? data.simulation.validation : null;
-      if (validation && validation.ok === false) {
-        setStatus(`TOPO child preview ready with validation findings: moved=${moved}, delta=${deltaSummary}, errors=${validation.counts?.errors || 0}, warnings=${validation.counts?.warnings || 0}.`, "warn");
-      } else {
-        setStatus(`TOPO child preview ready. moved=${moved}, delta=${deltaSummary}`, "ok");
-      }
+      resolverPreviewDetails.open = true;
+      setStatus("Legacy TOPO preview is disabled. Use Generate Resolver Preview.", "error");
     }
 
     canvas.addEventListener("mousemove", (event) => {
@@ -5559,6 +6490,13 @@
     }, { passive: false });
 
     document.getElementById("fileInput").addEventListener("change", async (event) => {
+      if (!sessionContextLocked()) {
+        event.target.value = "";
+        sessionLifecycleDetails.open = true;
+        setStatus("Please complete and lock session context before uploading DXF.", "error");
+        renderSessionContextWizard();
+        return;
+      }
       const file = event.target.files[0];
       if (!file) return;
       const text = await file.text();
@@ -5709,6 +6647,26 @@
     });
     clearSelectionBtn.addEventListener("click", clearSelection);
 
+    [contextProductionProgram, contextFamily, contextProduct, contextPart, contextNominalValueSet, contextRuleSet, contextParameterCatalog, contextBranchMode, contextVariantPolicyMode, contextVariantKeys].forEach((input) => {
+      input.addEventListener("input", handleSessionContextInputChange);
+      input.addEventListener("change", handleSessionContextInputChange);
+    });
+    lockSessionContextBtn.addEventListener("click", () => {
+      lockSessionContext().catch((error) => setStatus(error.message, "error"));
+    });
+    resetSessionContextBtn.addEventListener("click", () => {
+      resetSessionContext().catch((error) => setStatus(error.message, "error"));
+    });
+    computeGeometryBtn.addEventListener("click", () => {
+      computeGeometryContext().catch((error) => setStatus(error.message, "error"));
+    });
+    validateDomainBtn.addEventListener("click", () => {
+      validateDomainContext().catch((error) => setStatus(error.message, "error"));
+    });
+    generateResolverPreviewBtn.addEventListener("click", () => {
+      generateResolverPreview().catch((error) => setStatus(error.message, "error"));
+    });
+
     document.getElementById("startBtn").addEventListener("click", () => {
       createSession().catch((error) => {
         document.getElementById("inputSupportDetails").open = true;
@@ -5716,18 +6674,17 @@
         setStatus(error.message, "error");
       });
     });
-    document.getElementById("reclassifyBtn").addEventListener("click", () => {
-      rerunAutoSuggest().catch((error) => setStatus(error.message, "error"));
-    });
+    if (startSessionBtn) {
+      startSessionBtn.addEventListener("click", () => {
+        createSession().catch((error) => {
+          document.getElementById("inputSupportDetails").open = true;
+          statusValidationDetails.open = true;
+          setStatus(error.message, "error");
+        });
+      });
+    }
     document.getElementById("validateBtn").addEventListener("click", () => {
       validateMotherDraft().catch((error) => setStatus(error.message, "error"));
-    });
-    document.getElementById("saveConfigBtn").addEventListener("click", () => {
-      saveConfigParameterSet().catch((error) => setStatus(error.message, "error"));
-    });
-    document.getElementById("reloadConfigBtn").addEventListener("click", reloadConfigParameterSetFromSession);
-    document.getElementById("resetConfigFromCatalogBtn").addEventListener("click", () => {
-      resetConfigParameterSetFromCatalogDefaults().catch((error) => setStatus(error.message, "error"));
     });
     document.getElementById("saveDocumentSemBtn").addEventListener("click", () => {
       saveDocumentSemMetadata().catch((error) => setStatus(error.message, "error"));
@@ -5784,13 +6741,6 @@
     document.getElementById("loadSessionBtn").addEventListener("click", () => {
       loadSelectedSession().catch((error) => setStatus(error.message, "error"));
     });
-    document.getElementById("simulateBtn").addEventListener("click", () => {
-      simulatePreChildPreview().catch((error) => setStatus(error.message, "error"));
-    });
-    document.getElementById("previewTopoChildBtn").addEventListener("click", () => {
-      simulatePreChildPreview().catch((error) => setStatus(error.message, "error"));
-    });
-    document.getElementById("backToDraftViewBtn").addEventListener("click", returnToDraftView);
     document.getElementById("applyMetadataBtn").addEventListener("click", () => {
       applyMetadataRule().catch((error) => setStatus(error.message, "error"));
     });
@@ -5803,6 +6753,9 @@
     document.getElementById("focusSameMetadataBtn").addEventListener("click", focusSameMetadataEntities);
     document.getElementById("loadMetadataEditBtn").addEventListener("click", loadSelectedMetadataForEdit);
     document.getElementById("exportBtn").addEventListener("click", exportMotherDraft);
+    document.getElementById("exportDbrBtn").addEventListener("click", () => {
+      generateResolverExportBundle().catch((error) => setStatus(error.message, "error"));
+    });
     generateChildBtn.addEventListener("click", () => {
       generateChildDxf().catch((error) => setStatus(error.message, "error"));
     });
@@ -5848,6 +6801,8 @@
     configParameterSetDetails.open = false;
     forceXdataDetails.open = false;
     setSecondConditionEnabled(false);
+    syncSessionContextDraftFromSession();
+    renderSessionContextWizard();
     renderValidation({ ok: false, note: "Validation not run yet." });
     renderGeometryHygiene({ ok: true, note: "No geometry hygiene report yet." });
     renderSimulation({ ok: false, note: "Simulation not run yet." });
@@ -5860,7 +6815,10 @@
       parameters: {
         SIRINA_VRATA: 900,
         VISINA_VRATA: 2100,
-        TIP_VRATA: "Europa"
+        MODEL_VRATA: "Europa",
+        TIP_VRATA: "Europa",
+        KONF_ID: "SMOKE-0001",
+        VISINA_EFF: 2100
       }
     }, null, 2);
     refreshSessionList().catch(() => {});

@@ -219,7 +219,10 @@ function fetchStubSifradnRecords({ count = 20 } = {}) {
       parameters: {
         VISINA_VRATA: 2100,
         SIRINA_VRATA: 900,
+        KONF_ID: "SMOKE-0001",
         MODEL_VRATA: "SMOKE",
+        TIP_VRATA: "SMOKE",
+        VISINA_EFF: 2100,
         stub_record: true,
         stub_sequence: index + 1
       }

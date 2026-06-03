@@ -3,11 +3,11 @@
   "schema_version": "parameter_catalog.v0",
   "source": "legacy_table_user_supplied",
   "parameters": {
-    "MODEL_VRATA": {
-      "key": "MODEL_VRATA",
-      "code": "1",
-      "label": "Model vrata",
-      "type": "number",
+    "KONF_ID": {
+      "key": "KONF_ID",
+      "code": "0",
+      "label": "Konfigurator ID",
+      "type": "string",
       "unit": null,
       "min": null,
       "max": null,
@@ -21,12 +21,32 @@
           "*"
         ]
       },
-      "default": 1
+      "default": null
+    },
+    "MODEL_VRATA": {
+      "key": "MODEL_VRATA",
+      "code": "1",
+      "label": "Model vrata",
+      "type": "string",
+      "unit": null,
+      "min": null,
+      "max": null,
+      "step": null,
+      "scope": {
+        "family": "VRATA",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null
     },
     "TIP_VRATA": {
       "key": "TIP_VRATA",
       "code": "1a",
-      "label": "Tip vrata",
+      "label": "Tip vrata (legacy alias modela)",
       "type": "enum",
       "values": [
         "Europa",
@@ -104,6 +124,26 @@
         ]
       },
       "default": "Ne"
+    },
+    "VISINA_EFF": {
+      "key": "VISINA_EFF",
+      "code": "3E",
+      "label": "Efektivna visina vrata",
+      "type": "number",
+      "unit": "mm",
+      "min": null,
+      "max": null,
+      "step": 1,
+      "scope": {
+        "family": "VRATA",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null
     },
     "SKRACENJE": {
       "key": "SKRACENJE",

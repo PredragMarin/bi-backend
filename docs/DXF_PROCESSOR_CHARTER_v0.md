@@ -231,7 +231,7 @@ Current MXD rule example:
 
 - `MXD_LAYER_B_OFFSET_9P5`
   - `profile_scope = MXD`
-  - condition: `TIP_VRATA IN [Europa, EuroMax]`
+  - condition: `MODEL_VRATA IN [Europa, EuroMax]`
   - target scope: `Layer B`
   - action: `offset Y +9.5 mm`
   - post repair: `bounded local trim/rejoin`

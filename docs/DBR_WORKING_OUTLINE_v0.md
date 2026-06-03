@@ -209,7 +209,10 @@ Implementirani stupci:
 
 Trenutni canonical keyevi ostaju dugi configurator/domain nazivi, npr.:
 
-- `VISINA_VRATA`
+- `KONF_ID`
+- `MODEL_VRATA`
+- `TIP_VRATA` (legacy alias modela)
+- `VISINA_VRATA`, `VISINA_EFF`
 - `SIRINA_VRATA`
 - `STRANA_OTVARANJA`
 - `BOJA_DOVRATNIKA`

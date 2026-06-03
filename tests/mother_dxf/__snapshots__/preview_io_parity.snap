@@ -1,1 +1,1 @@
-{"preview_json":{"session_id":"b7f20a6f-fafb-4647-92c3-7493bb7e51fa","preview_id":"preview-parity-id","type":"simulate_session","has_simulation":true,"has_dxf":false,"json_path":"previews/preview-parity-id/preview.json"}}
+{"preview_json":{"session_id":"b7f20a6f-fafb-4647-92c3-7493bb7e51fa","preview_id":"preview-parity-id","type":"resolver_preview_v1","has_resolver_output":true,"has_simulation":true,"has_dxf":false,"json_path":"previews/preview-parity-id/preview.json"}}

@@ -22,13 +22,34 @@ async function main() {
 
   try {
     crypto.randomUUID = () => previewId;
+    fixture.session_context_v1 = {
+      version: 1,
+      status: "context_locked",
+      production_program_id: "MDX",
+      family_id: "VRATA",
+      product_id: "KSKR",
+      part_id: "SPLO",
+      nominal_value_set_id: "KSKR_DEFAULT",
+      rule_set_id: "legacy_door_rule_catalog_v0",
+      parameter_catalog_id: "legacy_door_configurator_catalog_v0",
+      branch_mode: "ALL",
+      expected_variant_policy: { mode: "optional", expected_variant_keys: [] },
+      validation: { ok: true, errors: [], warnings: [] }
+    };
+    fixture.session_lifecycle_v1 = { version: 1, state: "raw_loaded", allowed_transitions: [] };
+    fixture.config_parameter_set = {
+      ...fixture.config_parameter_set,
+      family: "VRATA",
+      product: "KSKR",
+      part: "SPLO",
+      parameter_catalog_id: "legacy_door_configurator_catalog_v0"
+    };
     await fsp.mkdir(sessionsDir, { recursive: true });
     await fsp.writeFile(sessionPath, JSON.stringify(fixture, null, 2), "utf8");
 
-    await runtime.simulateSession({
-      sessionId: fixture.session_id,
-      storeRoot
-    });
+    await runtime.computeGeometryContext({ sessionId: fixture.session_id, storeRoot });
+    await runtime.validateDomainContext({ sessionId: fixture.session_id, storeRoot });
+    await runtime.generateResolverPreview({ sessionId: fixture.session_id, storeRoot });
 
     const previewDir = path.join(storeRoot, "previews", previewId);
     const previewPath = path.join(previewDir, "preview.json");
@@ -47,6 +68,7 @@ async function main() {
         session_id: previewJson.session_id,
         preview_id: previewJson.preview_id,
         type: previewJson.type,
+        has_resolver_output: Boolean(previewJson.resolver_output_v1),
         has_simulation: Boolean(previewJson.simulation),
         has_dxf: hasDxf,
         json_path: path.relative(storeRoot, previewPath).split(path.sep).join("/")

@@ -19,7 +19,7 @@ function normalizeResolverBranchMode(mode) {
 }
 
 function branchModeFromConfigParameters(parameters) {
-  const tip = String(parameters?.TIP_VRATA || "").trim().toUpperCase();
+  const tip = String(parameters?.MODEL_VRATA || parameters?.TIP_VRATA || "").trim().toUpperCase();
   if (tip === "ECO") return "ECO";
   if (tip) return "BASE";
   return "ALL";

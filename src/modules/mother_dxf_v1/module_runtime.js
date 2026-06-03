@@ -220,6 +220,155 @@ const DEFAULT_KSKR_EXECUTION_CHECK_PARAMETER_SET = {
 };
 
 const ALLOWED_SESSION_STATUSES = new Set(["draft", "in_review", "finished"]);
+const SESSION_LIFECYCLE_STATES = new Set([
+  "context_draft",
+  "context_locked",
+  "raw_loaded",
+  "geometry_projected",
+  "domain_validated",
+  "authoring_ready",
+  "preview_ready",
+  "child_ready",
+  "export_ready"
+]);
+
+
+const SESSION_CONTEXT_REQUIRED_FIELDS = [
+  "production_program_id",
+  "family_id",
+  "product_id",
+  "part_id",
+  "nominal_value_set_id",
+  "rule_set_id",
+  "parameter_catalog_id",
+  "branch_mode"
+];
+
+function normalizeExpectedVariantPolicy(input) {
+  const source = input && typeof input === "object" ? input : {};
+  const mode = String(source.mode || "none").trim() || "none";
+  return {
+    mode: ["none", "optional", "required"].includes(mode) ? mode : "none",
+    expected_variant_keys: Array.isArray(source.expected_variant_keys)
+      ? source.expected_variant_keys.map((value) => String(value || "").trim()).filter(Boolean)
+      : []
+  };
+}
+
+function validateSessionContextV1(context) {
+  const errors = [];
+  const warnings = [];
+  const source = context && typeof context === "object" ? context : {};
+  for (const field of SESSION_CONTEXT_REQUIRED_FIELDS) {
+    if (!String(source[field] || "").trim()) {
+      errors.push({
+        code: "SESSION_CONTEXT_FIELD_REQUIRED",
+        field,
+        message: "Session context field is required: " + field
+      });
+    }
+  }
+  const policy = normalizeExpectedVariantPolicy(source.expected_variant_policy);
+  if (policy.mode === "required" && policy.expected_variant_keys.length === 0) {
+    errors.push({
+      code: "EXPECTED_VARIANT_KEYS_REQUIRED",
+      field: "expected_variant_policy.expected_variant_keys",
+      message: "Expected variant keys are required when expected variant policy mode is required."
+    });
+  }
+  if (String(source.branch_mode || "").trim().toUpperCase() === "ALL" && policy.mode === "required") {
+    warnings.push({
+      code: "BRANCH_ALL_WITH_REQUIRED_VARIANT_POLICY",
+      field: "branch_mode",
+      message: "Branch mode ALL is selected while expected variant policy requires variants."
+    });
+  }
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+
+function normalizeSessionContextV1(input, options = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const locked = typeof options.locked === "boolean"
+    ? options.locked
+    : String(source.status || "").trim() === "context_locked";
+  const context = {
+    version: 1,
+    status: locked ? "context_locked" : "context_draft",
+    production_program_id: String(source.production_program_id || "").trim(),
+    family_id: String(source.family_id || "").trim(),
+    product_id: String(source.product_id || "").trim(),
+    part_id: String(source.part_id || "").trim(),
+    nominal_value_set_id: String(source.nominal_value_set_id || "").trim(),
+    rule_set_id: String(source.rule_set_id || "").trim(),
+    parameter_catalog_id: String(source.parameter_catalog_id || "").trim(),
+    branch_mode: String(source.branch_mode || "ALL").trim() || "ALL",
+    expected_variant_policy: normalizeExpectedVariantPolicy(source.expected_variant_policy),
+    selected_by: source.selected_by == null ? null : String(source.selected_by || "").trim() || null,
+    locked_at: locked ? (source.locked_at || new Date().toISOString()) : null,
+    validation: { ok: true, errors: [], warnings: [] }
+  };
+  const validation = validateSessionContextV1(context);
+  context.validation = validation;
+  if (locked && !validation.ok) {
+    context.status = "context_draft";
+    context.locked_at = null;
+  }
+  return context;
+}
+
+function sessionContextIsLocked(sessionOrContext) {
+  const context = sessionOrContext?.session_context_v1 || sessionOrContext;
+  return Boolean(context && String(context.status || "") === "context_locked" && context.validation?.ok !== false);
+}
+
+function lifecycleStateForSession(session) {
+  if (!sessionContextIsLocked(session?.session_context_v1)) return "context_draft";
+  const current = String(session?.session_lifecycle_v1?.state || "").trim();
+  if (SESSION_LIFECYCLE_STATES.has(current) && current !== "context_draft") return current;
+  return "context_locked";
+}
+
+function lifecycleTransitionsForState(state) {
+  switch (state) {
+    case "context_draft":
+      return ["context_locked"];
+    case "context_locked":
+      return ["context_draft", "raw_loaded", "geometry_projected"];
+    case "raw_loaded":
+      return ["context_draft", "geometry_projected"];
+    case "geometry_projected":
+      return ["context_draft", "domain_validated", "authoring_ready"];
+    case "domain_validated":
+      return ["context_draft", "geometry_projected", "authoring_ready"];
+    case "authoring_ready":
+      return ["context_draft", "geometry_projected", "preview_ready"];
+    case "preview_ready":
+      return ["context_draft", "geometry_projected", "authoring_ready", "child_ready"];
+    case "child_ready":
+      return ["context_draft", "geometry_projected", "authoring_ready", "preview_ready", "export_ready"];
+    case "export_ready":
+      return ["context_draft", "geometry_projected", "authoring_ready", "preview_ready", "child_ready"];
+    default:
+      return ["context_draft", "context_locked"];
+  }
+}
+
+function ensureSessionContextShape(session) {
+  session.session_context_v1 = normalizeSessionContextV1(session?.session_context_v1 || {}, {
+    locked: String(session?.session_context_v1?.status || "") === "context_locked"
+  });
+  const state = lifecycleStateForSession(session);
+  session.session_lifecycle_v1 = {
+    version: 1,
+    state,
+    allowed_transitions: lifecycleTransitionsForState(state)
+  };
+  return session;
+}
 
 function clampBand(value) {
   const num = Number(value);
@@ -288,8 +437,774 @@ function projectSlotIndexOnRelevantObjects(relevantObjects, slotWidth = GEOMETRY
   };
 }
 
+function groupObjectsBySlot(objects, slotWidth = GEOMETRY_SLOT_WIDTH_MM) {
+  const bySlot = new Map();
+  for (const object of Array.isArray(objects) ? objects : []) {
+    const slotIndex = object?.slot_index;
+    if (!Number.isInteger(slotIndex)) continue;
+    if (!bySlot.has(slotIndex)) {
+      bySlot.set(slotIndex, {
+        slot_index: slotIndex,
+        slot_width: slotWidth,
+        objects: []
+      });
+    }
+    bySlot.get(slotIndex).objects.push(object);
+  }
+  return Array.from(bySlot.values()).sort((left, right) => left.slot_index - right.slot_index);
+}
+
+function computeSlotBBox(slotObjects) {
+  const bbox = (Array.isArray(slotObjects) ? slotObjects : []).reduce((acc, object) => bboxUnion(acc, object?.bbox), null);
+  if (!bbox) return null;
+  const minX = Number(bbox.minX);
+  const minY = Number(bbox.minY);
+  const maxX = Number(bbox.maxX);
+  const maxY = Number(bbox.maxY);
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: Number.isFinite(minX) && Number.isFinite(maxX) ? maxX - minX : null,
+    height: Number.isFinite(minY) && Number.isFinite(maxY) ? maxY - minY : null
+  };
+}
+
+function computeSlotHygiene(slotObjects) {
+  return analyzeGeometryHygiene(null, null, Array.isArray(slotObjects) ? slotObjects : []);
+}
+
+function classifySlotBands(slotObjects, slotBBox, bands = DEFAULT_BANDS) {
+  const assignments = {};
+  const warnings = [];
+  if (!Array.isArray(slotObjects) || slotObjects.length === 0 || !slotBBox) {
+    return {
+      version: 1,
+      mode: "passive",
+      assignments,
+      validation: { ok: false, warnings: [{ code: "EMPTY_SLOT_BANDS", severity: "warning" }] }
+    };
+  }
+
+  for (const object of slotObjects) {
+    const suggested = suggestSlotLayerForObject(object, slotBBox, bands);
+    if (!suggested) {
+      warnings.push({
+        code: "BAND_ASSIGNMENT_WARNING_IN_SLOT",
+        severity: "warning",
+        object_id: object?.id || null,
+        entity_id: object?.entity_id || object?.entityId || null,
+        message: "Slot band assignment could not classify object."
+      });
+    }
+    assignments[object.id] = suggested
+      ? {
+          state: "classified",
+          layer: suggested,
+          origin: "slot_projection",
+          suggested_layer: suggested
+        }
+      : {
+          state: "unclassified",
+          layer: null,
+          origin: "slot_projection",
+          suggested_layer: null
+        };
+  }
+
+  return {
+    version: 1,
+    mode: "passive",
+    assignments,
+    validation: {
+      ok: warnings.length === 0,
+      warnings
+    }
+  };
+}
+
+function buildGeometrySlotModelProjection(objects, slotValidation, slotWidth = GEOMETRY_SLOT_WIDTH_MM, bands = DEFAULT_BANDS, config = null, branchModeOverride = null) {
+  const slots = groupObjectsBySlot(objects, slotWidth).map((slot) => ({
+    ...slot,
+    bbox: computeSlotBBox(slot.objects),
+    hygiene: computeSlotHygiene(slot.objects),
+    band_assignments: classifySlotBands(slot.objects, computeSlotBBox(slot.objects), bands)
+  }));
+  const warnings = Array.isArray(slotValidation?.warnings) ? slotValidation.warnings.slice() : [];
+  for (const slot of slots) {
+    const slotWarnings = [];
+    const addSlotWarning = (warning) => {
+      slotWarnings.push(warning);
+      warnings.push(warning);
+    };
+
+    if (!Array.isArray(slot.objects) || slot.objects.length === 0 || !slot.bbox) {
+      addSlotWarning({
+        code: "EMPTY_SLOT_BBOX",
+        severity: "warning",
+        slot_index: slot.slot_index,
+        slot_width: slotWidth,
+        message: "Geometry slot " + slot.slot_index + " has no bbox."
+      });
+      slot.validation = {
+        version: 1,
+        mode: "passive",
+        ok: slotWarnings.length === 0,
+        warnings: slotWarnings
+      };
+      continue;
+    }
+
+    if (!slot.hygiene) {
+      addSlotWarning({
+        code: "EMPTY_SLOT_HYGIENE",
+        severity: "warning",
+        slot_index: slot.slot_index,
+        slot_width: slotWidth,
+        message: "Geometry slot " + slot.slot_index + " has no hygiene result."
+      });
+    } else {
+      const hygieneIssues = Array.isArray(slot.hygiene.issues) ? slot.hygiene.issues : [];
+      const hygieneWarnings = Array.isArray(slot.hygiene.warnings) ? slot.hygiene.warnings : [];
+      if (slot.hygiene.ok === false || hygieneIssues.length > 0) {
+        addSlotWarning({
+          code: "HYGIENE_ERROR_IN_SLOT",
+          severity: "warning",
+          slot_index: slot.slot_index,
+          slot_width: slotWidth,
+          issue_count: hygieneIssues.length,
+          message: "Geometry slot " + slot.slot_index + " has hygiene issue(s)."
+        });
+      }
+      if (hygieneWarnings.length > 0) {
+        addSlotWarning({
+          code: "HYGIENE_WARNING_IN_SLOT",
+          severity: "warning",
+          slot_index: slot.slot_index,
+          slot_width: slotWidth,
+          warning_count: hygieneWarnings.length,
+          message: "Geometry slot " + slot.slot_index + " has hygiene warning(s)."
+        });
+      }
+    }
+
+    const bandValidation = slot.band_assignments && slot.band_assignments.validation ? slot.band_assignments.validation : null;
+    const bandWarnings = Array.isArray(bandValidation?.warnings) ? bandValidation.warnings : [];
+    for (const warning of bandWarnings) {
+      const code = String(warning?.code || "");
+      addSlotWarning({
+        ...warning,
+        code: code === "EMPTY_SLOT_BANDS" ? "EMPTY_SLOT_BANDS" : "BAND_ASSIGNMENT_WARNING_IN_SLOT",
+        severity: "warning",
+        slot_index: slot.slot_index,
+        slot_width: slotWidth
+      });
+    }
+    if (bandValidation && bandValidation.ok === false && !bandWarnings.length) {
+      addSlotWarning({
+        code: "BAND_ASSIGNMENT_ERROR_IN_SLOT",
+        severity: "warning",
+        slot_index: slot.slot_index,
+        slot_width: slotWidth,
+        message: "Geometry slot " + slot.slot_index + " has band assignment error."
+      });
+    }
+
+    const maxX = Number(slot.bbox.maxX);
+    const boundaryX = (slot.slot_index + 1) * slotWidth;
+    if (Number.isFinite(maxX) && maxX > boundaryX) {
+      addSlotWarning({
+        code: "SLOT_BOUNDARY_CROSSING",
+        severity: "warning",
+        slot_index: slot.slot_index,
+        slot_width: slotWidth,
+        boundary_x: boundaryX,
+        bbox: slot.bbox,
+        message: "Geometry slot " + slot.slot_index + " bbox crosses boundary at x=" + boundaryX + "."
+      });
+    }
+
+    const width = Number(slot.bbox.width);
+    const height = Number(slot.bbox.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width < 0 || height < 0) {
+      addSlotWarning({
+        code: "NEGATIVE_SLOT_BBOX",
+        severity: "warning",
+        slot_index: slot.slot_index,
+        slot_width: slotWidth,
+        bbox: slot.bbox,
+        message: "Geometry slot " + slot.slot_index + " has invalid bbox dimensions."
+      });
+    }
+
+    slot.validation = {
+      version: 1,
+      mode: "passive",
+      ok: slotWarnings.length === 0,
+      warnings: slotWarnings
+    };
+  }
+
+  const branchMode = normalizeBranchMode(branchModeOverride || effectiveBranchModeForConfig(config));
+  const branchSelectedObjects = filterObjectsByBranchMode(objects, branchMode);
+  if (branchMode !== "ALL") {
+    warnings.push({
+      code: "LEGACY_BRANCH_MODE_ACTIVE",
+      severity: "warning",
+      branch_mode: branchMode,
+      message: "Legacy branch mode is active for geometry slot model comparison."
+    });
+  }
+  warnings.push({
+    code: "SLOT_MODEL_NOT_ACTIVE",
+    severity: "warning",
+    message: "Geometry slot model is passive; slot-based authoritative selection is not active."
+  });
+  warnings.push({
+    code: "PREFER_SLOT_MODE_DISABLED",
+    severity: "info",
+    message: "Prefer-slot mode is disabled."
+  });
+  warnings.push({
+    code: "PREFER_SLOT_MODE_AVAILABLE",
+    severity: "info",
+    message: "Prefer-slot mode infrastructure is available for future activation."
+  });
+
+  return {
+    version: 1,
+    mode: "passive",
+    slot_width: slotWidth,
+    slots,
+    validation: {
+      version: 1,
+      mode: "passive",
+      slot_width: slotWidth,
+      ok: warnings.length === 0,
+      warnings
+    },
+    legacy_comparison: {
+      branch_mode: branchMode,
+      branch_selected_object_count: branchSelectedObjects.length,
+      slot_selected_object_count: 0,
+      mismatch_count: 0
+    },
+    authoritative_selection: {
+      mode: "passive",
+      candidate_slot_index: null,
+      candidate_variant_key: null,
+      reason: "passive_mode",
+      prefer_slot_mode_enabled: false,
+      prefer_slot_mode_available: true
+    },
+    fallback: {
+      used: false,
+      reason: null
+    }
+  };
+}
+
+function objectSemVariantKeys(object) {
+  const records = Array.isArray(object?.semantic_metadata?.parsed) ? object.semantic_metadata.parsed : [];
+  const keys = [];
+  for (const record of records) {
+    const values = record && record.keys && typeof record.keys === "object" ? record.keys : {};
+    for (const key of ["variant", "variant_key", "geometry_variant"]) {
+      const value = String(values[key] || "").trim();
+      if (value) keys.push(value);
+    }
+  }
+  return Array.from(new Set(keys)).sort();
+}
+
+function buildSlotCompletenessMetrics(slot, slotWidth) {
+  const objects = Array.isArray(slot?.objects) ? slot.objects : [];
+  const boundaryX = (Number(slot?.slot_index || 0) + 1) * slotWidth;
+  const crossSlotObjects = objects.filter((object) => {
+    const maxX = Number(object?.bbox?.maxX);
+    return Number.isFinite(maxX) && maxX > boundaryX;
+  }).length;
+  const unexpectedObjects = objects.filter((object) => !object || !object.bbox || !Number.isInteger(object.slot_index)).length;
+  return {
+    missing_objects: 0,
+    unexpected_objects: unexpectedObjects,
+    cross_slot_objects: crossSlotObjects
+  };
+}
+
+function buildGeometryContextV1Projection(geometrySlotModel) {
+  const source = geometrySlotModel && typeof geometrySlotModel === "object" ? geometrySlotModel : {};
+  const slotWidth = source.slot_width || GEOMETRY_SLOT_WIDTH_MM;
+  const slots = (Array.isArray(source.slots) ? source.slots : []).map((slot) => {
+    const objects = Array.isArray(slot.objects) ? slot.objects : [];
+    const xdataVariantKeys = Array.from(new Set(objects.map((object) => String(object?.xdata_metadata?.geometry_variant || "").trim()).filter(Boolean))).sort();
+    const semVariantKeys = Array.from(new Set(objects.flatMap((object) => objectSemVariantKeys(object)))).sort();
+    const hasXdata = xdataVariantKeys.length > 0;
+    const hasSem = semVariantKeys.length > 0;
+    const hasMismatch = hasXdata && hasSem && !xdataVariantKeys.some((key) => semVariantKeys.includes(key));
+    return {
+      slot_index: slot.slot_index,
+      role: slot.slot_index === 0 ? "base" : "variant",
+      variant_key: xdataVariantKeys[0] || semVariantKeys[0] || null,
+      xdata_variant_keys: xdataVariantKeys,
+      sem_variant_keys: semVariantKeys,
+      has_xdata_variant: hasXdata,
+      has_sem_variant: hasSem,
+      has_variant_mismatch: hasMismatch,
+      bbox: slot.bbox || null,
+      object_ids: objects.map((object) => object?.id).filter(Boolean),
+      slot_completeness: buildSlotCompletenessMetrics(slot, slotWidth),
+      hygiene: slot.hygiene || null,
+      band_assignments: slot.band_assignments || null,
+      validation: slot.validation || { version: 1, mode: "passive", ok: true, warnings: [] }
+    };
+  });
+
+  return {
+    version: 1,
+    mode: "passive",
+    slot_width: slotWidth,
+    base_slot_index: 0,
+    slots,
+    authoritative_slot_index: null,
+    authoritative_variant_key: null,
+    validation: source.validation || { version: 1, mode: "passive", ok: true, warnings: [] }
+  };
+}
+
+function buildSlotContextProjectionV1(geometryContext) {
+  const slots = Array.isArray(geometryContext?.slots) ? geometryContext.slots : [];
+  return {
+    version: 1,
+    mode: "passive",
+    slot_width: geometryContext?.slot_width || GEOMETRY_SLOT_WIDTH_MM,
+    base_slot_index: geometryContext?.base_slot_index ?? 0,
+    slots: slots.map((slot) => ({
+      slot_index: slot.slot_index,
+      role: slot.role,
+      variant_key: slot.variant_key || null,
+      object_ids: Array.isArray(slot.object_ids) ? slot.object_ids.slice() : [],
+      bbox: slot.bbox || null,
+      slot_completeness: slot.slot_completeness || { missing_objects: 0, unexpected_objects: 0, cross_slot_objects: 0 },
+      validation: slot.validation || { version: 1, mode: "passive", ok: true, warnings: [] }
+    })),
+    validation: geometryContext?.validation || { version: 1, mode: "passive", ok: true, warnings: [] }
+  };
+}
+
+function buildVariantToSlotMapProjectionV1(geometryContext) {
+  const entries = [];
+  for (const slot of Array.isArray(geometryContext?.slots) ? geometryContext.slots : []) {
+    const keys = Array.from(new Set([
+      ...(Array.isArray(slot.xdata_variant_keys) ? slot.xdata_variant_keys : []),
+      ...(Array.isArray(slot.sem_variant_keys) ? slot.sem_variant_keys : []),
+      slot.variant_key || null
+    ].map((value) => String(value || "").trim()).filter(Boolean))).sort();
+    for (const key of keys) {
+      entries.push({
+        variant_key: key,
+        slot_index: slot.slot_index,
+        source: (slot.xdata_variant_keys || []).includes(key) ? "xdata" : (slot.sem_variant_keys || []).includes(key) ? "sem" : "slot",
+        confidence: "passive"
+      });
+    }
+  }
+  return {
+    version: 1,
+    mode: "passive",
+    entries,
+    ambiguous_variant_keys: entries
+      .filter((entry, index, list) => list.some((other, otherIndex) => otherIndex !== index && other.variant_key === entry.variant_key && other.slot_index !== entry.slot_index))
+      .map((entry) => entry.variant_key)
+      .filter((value, index, list) => list.indexOf(value) === index)
+  };
+}
+
+function buildResolverInputV2ExtendedSkeleton(session, geometryContext, domainContext) {
+  const slotContext = buildSlotContextProjectionV1(geometryContext);
+  const variantToSlotMap = buildVariantToSlotMapProjectionV1(geometryContext);
+  const config = normalizeConfigParameterSet(session.config_parameter_set);
+  const candidateVariantKey = readConfigVariantKey(config);
+  const candidateEntry = candidateVariantKey
+    ? variantToSlotMap.entries.find((entry) => entry.variant_key === candidateVariantKey) || null
+    : null;
+  return {
+    version: 2,
+    schema: "resolver_input_v2_extended",
+    mode: "prepared_disabled",
+    active: false,
+    session_id: session.session_id,
+    execution_authority: "core_shell_resolver",
+    geometry_authority: "slot_model_candidate_only",
+    slot_context: slotContext,
+    variant_to_slot_map: variantToSlotMap,
+    candidate_authoritative_slot_index: candidateEntry ? candidateEntry.slot_index : null,
+    candidate_variant_key: candidateVariantKey || null,
+    domain_context_v1: cloneJson(domainContext || null),
+    activation_blocked_reason: "slot_authority_not_active_in_task_6"
+  };
+}
+
+function readConfigVariantKey(config) {
+  const parameters = config && config.parameters && typeof config.parameters === "object" ? config.parameters : {};
+  for (const key of ["variant_key", "VARIANT_KEY", "GEOMETRY_VARIANT", "geometry_variant"]) {
+    const value = String(parameters[key] || "").trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+function buildDomainContextV1Projection(documentSem, configParameterSet, xdataContext, sessionContext = null) {
+  const config = normalizeConfigParameterSet(configParameterSet);
+  const xdataVariantKeys = Array.from(new Set((Array.isArray(xdataContext?.geometry_variants) ? xdataContext.geometry_variants : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))).sort();
+  const variantKey = readConfigVariantKey(config);
+  const branchMode = normalizeBranchMode(sessionContext?.branch_mode || effectiveBranchModeForConfig(config));
+  const warnings = [];
+
+  if (!documentSem) {
+    warnings.push({
+      code: "MISSING_SEM_DATA",
+      severity: "warning",
+      message: "Document SEM data is missing; domain context falls back to config parameter set."
+    });
+  }
+  if (!variantKey && xdataVariantKeys.length === 0) {
+    warnings.push({
+      code: "MISSING_VARIANT_KEY",
+      severity: "warning",
+      message: "No config variant key or XDATA geometry variant key is present."
+    });
+  }
+  if (xdataVariantKeys.length > 1) {
+    warnings.push({
+      code: "MULTIPLE_XDATA_VARIANTS",
+      severity: "warning",
+      variant_keys: xdataVariantKeys,
+      message: "Multiple XDATA geometry variant keys are present."
+    });
+  }
+  if (branchMode !== "ALL") {
+    warnings.push({
+      code: "LEGACY_BRANCH_MODE_ACTIVE",
+      severity: "warning",
+      branch_mode: branchMode,
+      message: "Legacy branch mode is active."
+    });
+  }
+
+  return {
+    version: 1,
+    mode: "passive",
+    family: documentSem?.family || config.family || null,
+    product: documentSem?.product || config.product || null,
+    part: documentSem?.part || config.part || config.product_code || null,
+    technology_unit_id: config.technology_unit_id || null,
+    parameter_catalog_id: config.parameter_catalog_id || null,
+    variant_key: variantKey,
+    branch_mode: branchMode,
+    xdata_variant_keys: xdataVariantKeys,
+    validation: {
+      version: 1,
+      mode: "passive",
+      ok: warnings.length === 0,
+      warnings
+    }
+  };
+}
+
+
+function normalizeDomainToken(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function extractSemVariantKeys(documentSem) {
+  const comments = Array.isArray(documentSem?.raw_comments) ? documentSem.raw_comments : [];
+  const keys = [];
+  for (const comment of comments) {
+    const raw = String(comment || "");
+    const pairs = raw.replace(/^SEM:/i, "").split(";");
+    for (const pair of pairs) {
+      const index = pair.indexOf("=");
+      if (index < 0) continue;
+      const key = pair.slice(0, index).trim().toLowerCase();
+      const value = pair.slice(index + 1).trim();
+      if (["variant", "variant_key", "geometry_variant"].includes(key) && value) keys.push(value);
+    }
+  }
+  return Array.from(new Set(keys));
+}
+
+function buildGeometryValidationV1(session, view) {
+  const geometryContext = view?.geometry_context_v1 || null;
+  const slotModel = view?.geometry_slot_model || null;
+  const documentBBox = view?.document_bbox || null;
+  const warnings = [];
+  const errors = [];
+  const addWarning = (item) => warnings.push({ severity: "warning", ...item });
+  const addError = (item) => errors.push({ severity: "error", blocking: true, ...item });
+  const slots = Array.isArray(geometryContext?.slots) ? geometryContext.slots : [];
+  if (!geometryContext) {
+    addError({ code: "GEOMETRY_CONTEXT_MISSING", message: "geometry_context_v1 is missing." });
+  }
+  if (!slots.length) {
+    addError({ code: "GEOMETRY_SLOTS_MISSING", message: "No geometry slots were projected from raw DXF." });
+  }
+  const globalWidth = Number(documentBBox?.width);
+  const slotWidth = Number(geometryContext?.slot_width || GEOMETRY_SLOT_WIDTH_MM);
+  const globalSpansMultipleSlots = Number.isFinite(globalWidth) && Number.isFinite(slotWidth) && slotWidth > 0 && globalWidth > slotWidth;
+  if (globalSpansMultipleSlots) {
+    addWarning({
+      code: "SLOT_MODEL_GLOBAL_BBOX_LEAK",
+      message: "Global document bbox spans multiple slot widths; per-slot classification should be preferred for diagnostics.",
+      document_bbox: documentBBox,
+      slot_width: slotWidth
+    });
+  }
+  for (const slot of slots) {
+    const completeness = slot.slot_completeness || {};
+    if (Number(completeness.cross_slot_objects || 0) > 0) {
+      addError({
+        code: "SLOT_BOUNDARY_CROSSING",
+        slot_index: slot.slot_index,
+        cross_slot_objects: completeness.cross_slot_objects,
+        message: "One or more objects cross the physical slot boundary."
+      });
+    }
+    if (slot.has_variant_mismatch) {
+      addWarning({
+        code: "SLOT_VARIANT_EVIDENCE_MISMATCH",
+        slot_index: slot.slot_index,
+        xdata_variant_keys: slot.xdata_variant_keys || [],
+        sem_variant_keys: slot.sem_variant_keys || [],
+        message: "Slot SEM variant evidence and XDATA variant evidence do not overlap."
+      });
+    }
+    const slotWarnings = Array.isArray(slot.validation?.warnings) ? slot.validation.warnings : [];
+    for (const warning of slotWarnings) {
+      addWarning({
+        code: warning?.code || "SLOT_VALIDATION_WARNING",
+        slot_index: slot.slot_index,
+        message: warning?.message || "Slot validation warning.",
+        details: warning
+      });
+    }
+  }
+  const slotWarnings = Array.isArray(slotModel?.validation?.warnings) ? slotModel.validation.warnings : [];
+  for (const warning of slotWarnings) {
+    if (String(warning?.code || "") === "SLOT_BOUNDARY_CROSSING") continue;
+    addWarning({
+      code: warning?.code || "GEOMETRY_SLOT_MODEL_WARNING",
+      message: warning?.message || "Geometry slot model warning.",
+      details: warning
+    });
+  }
+  return {
+    version: 1,
+    status: errors.length === 0 ? "projected" : "blocked",
+    ok: errors.length === 0,
+    blocking_error_count: errors.length,
+    warning_count: warnings.length,
+    global_bbox: documentBBox ? cloneJson(documentBBox) : null,
+    slot_width: geometryContext?.slot_width || GEOMETRY_SLOT_WIDTH_MM,
+    slot_count: slots.length,
+    global_spans_multiple_slots: globalSpansMultipleSlots,
+    geometry_context_v1: geometryContext ? cloneJson(geometryContext) : null,
+    geometry_slot_model: slotModel ? cloneJson(slotModel) : null,
+    legacy_comparison: slotModel?.legacy_comparison ? cloneJson(slotModel.legacy_comparison) : null,
+    errors,
+    warnings
+  };
+}
+
+function buildDomainValidationV1(session, view) {
+  const sessionContext = view?.session_context_v1 || session?.session_context_v1 || normalizeSessionContextV1({});
+  const domainContext = view?.domain_context_v1 || null;
+  const semEvidence = view?.document_sem || null;
+  const xdataEvidence = view?.xdata_context || null;
+  const geometryContext = view?.geometry_context_v1 || null;
+  const warnings = [];
+  const errors = [];
+  const addWarning = (item) => warnings.push({ severity: "warning", ...item });
+  const addError = (item) => errors.push({ severity: "error", blocking: true, ...item });
+
+  if (!sessionContextIsLocked(sessionContext)) {
+    addError({
+      code: "SESSION_CONTEXT_INVALID",
+      message: "Session context must be locked before domain validation."
+    });
+  }
+  const lifecycleState = String(session?.session_lifecycle_v1?.state || "");
+  if (!["geometry_projected", "domain_validated"].includes(lifecycleState)) {
+    addError({
+      code: "GEOMETRY_CONTEXT_INVALID",
+      lifecycle_state: lifecycleState || null,
+      message: "Geometry context must be projected before domain validation."
+    });
+  }
+
+  const semFields = ["family", "product", "part"];
+  if (semEvidence) {
+    for (const field of semFields) {
+      const semValue = normalizeDomainToken(semEvidence[field]);
+      const sessionValue = normalizeDomainToken(sessionContext[`${field}_id`]);
+      if (semValue && sessionValue && semValue !== sessionValue) {
+        addError({
+          code: "SEM_CONTEXT_MISMATCH",
+          field,
+          session_value: sessionContext[`${field}_id`] || null,
+          sem_value: semEvidence[field] || null,
+          message: `Document SEM ${field} does not match locked session context.`
+        });
+      }
+    }
+  } else {
+    addWarning({
+      code: "MISSING_SEM_DATA",
+      message: "Document SEM evidence is missing."
+    });
+  }
+
+  const policy = normalizeExpectedVariantPolicy(sessionContext.expected_variant_policy);
+  const xdataVariantKeys = Array.isArray(xdataEvidence?.geometry_variants) ? xdataEvidence.geometry_variants : [];
+  const normalizedXdataKeys = new Set(xdataVariantKeys.map(normalizeDomainToken).filter(Boolean));
+  const expectedKeys = policy.expected_variant_keys || [];
+  const normalizedExpectedKeys = new Set(expectedKeys.map(normalizeDomainToken).filter(Boolean));
+  if (policy.mode === "required" && expectedKeys.length > 0) {
+    for (const expectedKey of expectedKeys) {
+      if (!normalizedXdataKeys.has(normalizeDomainToken(expectedKey))) {
+        addError({
+          code: "XDATA_VARIANT_UNMAPPED",
+          expected_variant_key: expectedKey,
+          xdata_variant_keys: xdataVariantKeys,
+          message: "Expected variant key is not present in XDATA evidence."
+        });
+      }
+    }
+  }
+  if (policy.mode !== "none" && normalizedExpectedKeys.size > 0) {
+    for (const xdataKey of xdataVariantKeys) {
+      if (!normalizedExpectedKeys.has(normalizeDomainToken(xdataKey))) {
+        addWarning({
+          code: "XDATA_VARIANT_UNMAPPED",
+          xdata_variant_key: xdataKey,
+          expected_variant_keys: expectedKeys,
+          message: "XDATA variant key is outside the expected variant policy."
+        });
+      }
+    }
+  }
+
+  const semVariantKeys = extractSemVariantKeys(semEvidence);
+  const normalizedSemVariantKeys = new Set(semVariantKeys.map(normalizeDomainToken).filter(Boolean));
+  if (normalizedSemVariantKeys.size > 0 && normalizedXdataKeys.size > 0) {
+    const overlap = Array.from(normalizedSemVariantKeys).some((key) => normalizedXdataKeys.has(key));
+    if (!overlap) {
+      const item = {
+        code: "SEM_XDATA_CONTRADICTION",
+        sem_variant_keys: semVariantKeys,
+        xdata_variant_keys: xdataVariantKeys,
+        message: "SEM variant evidence contradicts XDATA variant evidence."
+      };
+      if (policy.mode === "optional") addWarning(item);
+      else addError(item);
+    }
+  }
+
+  const sessionBranchMode = normalizeBranchMode(sessionContext.branch_mode);
+  const rawBranchMode = normalizeDomainToken(sessionContext.branch_mode || "ALL");
+  if (sessionBranchMode !== rawBranchMode) {
+    addError({
+      code: "BRANCH_MODE_INVALID",
+      session_branch_mode: sessionContext.branch_mode || null,
+      normalized_branch_mode: sessionBranchMode,
+      message: "Session branch mode is not a supported branch mode."
+    });
+  }
+  if (domainContext?.branch_mode && sessionBranchMode !== normalizeBranchMode(domainContext.branch_mode)) {
+    addWarning({
+      code: "LEGACY_BRANCH_MODE_CONTEXT_MISMATCH",
+      session_branch_mode: sessionContext.branch_mode || null,
+      legacy_branch_mode: domainContext.branch_mode,
+      message: "Legacy config branch mode differs from locked session context branch mode."
+    });
+  }
+
+  const sessionParameterCatalogId = normalizeDomainToken(sessionContext.parameter_catalog_id);
+  const domainParameterCatalogId = normalizeDomainToken(domainContext?.parameter_catalog_id);
+  if (sessionParameterCatalogId && domainParameterCatalogId && sessionParameterCatalogId !== domainParameterCatalogId) {
+    addError({
+      code: "PARAMETER_CATALOG_SCOPE_MISMATCH",
+      session_parameter_catalog_id: sessionContext.parameter_catalog_id || null,
+      active_parameter_catalog_id: domainContext?.parameter_catalog_id || null,
+      message: "Active parameter catalog does not match locked session context."
+    });
+  }
+
+  const selectedRuleSetId = normalizeDomainToken(sessionContext.rule_set_id);
+  const documentRuleRefs = Array.isArray(semEvidence?.rule_refs) ? semEvidence.rule_refs : [];
+  if (selectedRuleSetId && documentRuleRefs.length > 0) {
+    const hasSelectedRule = documentRuleRefs.some((ruleRef) => normalizeDomainToken(ruleRef) === selectedRuleSetId);
+    if (!hasSelectedRule) {
+      addError({
+        code: "RULE_SET_SCOPE_MISMATCH",
+        session_rule_set_id: sessionContext.rule_set_id || null,
+        document_rule_refs: documentRuleRefs,
+        message: "Document SEM rule refs do not include the locked session rule set."
+      });
+    }
+  }
+
+  const domainWarnings = Array.isArray(domainContext?.validation?.warnings) ? domainContext.validation.warnings : [];
+  for (const warning of domainWarnings) {
+    addWarning({
+      code: warning?.code || "DOMAIN_CONTEXT_WARNING",
+      message: warning?.message || "Domain context warning.",
+      source: "domain_context_v1",
+      details: warning
+    });
+  }
+
+  return {
+    version: 1,
+    status: errors.length === 0 ? "valid" : "blocked",
+    ok: errors.length === 0,
+    blocking_error_count: errors.length,
+    warning_count: warnings.length,
+    session_context_v1: cloneJson(sessionContext),
+    sem_evidence: semEvidence ? cloneJson(semEvidence) : null,
+    xdata_evidence: xdataEvidence ? cloneJson(xdataEvidence) : null,
+    domain_context_v1: domainContext ? cloneJson(domainContext) : null,
+    geometry_context_v1_summary: geometryContext ? {
+      version: geometryContext.version || 1,
+      slot_width: geometryContext.slot_width || null,
+      slot_count: Array.isArray(geometryContext.slots) ? geometryContext.slots.length : 0,
+      validation_ok: geometryContext.validation ? Boolean(geometryContext.validation.ok) : null
+    } : null,
+    errors,
+    warnings
+  };
+}
+
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function stableJsonValue(value) {
+  if (Array.isArray(value)) return value.map(stableJsonValue);
+  if (value && typeof value === "object") {
+    return Object.keys(value).sort().reduce((acc, key) => {
+      acc[key] = stableJsonValue(value[key]);
+      return acc;
+    }, {});
+  }
+  return value;
+}
+
+function hashJson(value) {
+  return crypto.createHash("sha256").update(JSON.stringify(stableJsonValue(value))).digest("hex");
 }
 
 function normalizeSessionStatus(value) {
@@ -2550,6 +3465,48 @@ function suggestLayerForBBox(objectBBox, documentBBox, bands) {
   return "A";
 }
 
+function suggestSlotLayerForBBox(objectBBox, slotBBox, bands) {
+  if (!objectBBox || !slotBBox) return null;
+  const center = bboxCenter(objectBBox);
+  if (!center) return null;
+
+  const inLeft = center.x <= Number(slotBBox.minX) + Number(bands.left || 0);
+  const inRight = center.x >= Number(slotBBox.maxX) - Number(bands.right || 0);
+  const inTop = center.y >= Number(slotBBox.maxY) - Number(bands.top || 0);
+  const inBottom = center.y <= Number(slotBBox.minY) + Number(bands.bottom || 0);
+
+  if (inLeft && inTop) return "TL";
+  if (inRight && inTop) return "TR";
+  if (inLeft && inBottom) return "BL";
+  if (inRight && inBottom) return "BR";
+  if (inTop) return "T";
+  if (inBottom) return "B";
+  if (inLeft) return "L";
+  if (inRight) return "R";
+  return "A";
+}
+
+function suggestSlotLayerForObject(object, slotBBox, bands) {
+  if (!object?.bbox || !slotBBox) return null;
+  if (String(object?.type || "").toUpperCase() === "INSERT") {
+    const touchesLeft = Number(object.bbox.minX) <= Number(slotBBox.minX) + Number(bands.left || 0);
+    const touchesRight = Number(object.bbox.maxX) >= Number(slotBBox.maxX) - Number(bands.right || 0);
+    const touchesTop = Number(object.bbox.maxY) >= Number(slotBBox.maxY) - Number(bands.top || 0);
+    const touchesBottom = Number(object.bbox.minY) <= Number(slotBBox.minY) + Number(bands.bottom || 0);
+
+    if (touchesLeft && touchesTop) return "TL";
+    if (touchesRight && touchesTop) return "TR";
+    if (touchesLeft && touchesBottom) return "BL";
+    if (touchesRight && touchesBottom) return "BR";
+    if (touchesTop) return "T";
+    if (touchesBottom) return "B";
+    if (touchesLeft) return "L";
+    if (touchesRight) return "R";
+    return "A";
+  }
+  return suggestSlotLayerForBBox(object.bbox, slotBBox, bands);
+}
+
 function buildRelevantState(document, bands, priorAssignments) {
   const slotProjection = projectSlotIndexOnRelevantObjects(listRelevantObjects(document));
   const relevantObjects = slotProjection.relevant_objects;
@@ -2719,6 +3676,10 @@ function normalizeBranchMode(mode) {
 
 function effectiveBranchModeForConfig(config, explicitMode = null) {
   return coreBranchModeFromConfigParameterSet(config, explicitMode);
+}
+
+function effectiveBranchModeForSession(session, config = null, explicitMode = null) {
+  return normalizeBranchMode(explicitMode || session?.session_context_v1?.branch_mode || effectiveBranchModeForConfig(config || session?.config_parameter_set || {}, null));
 }
 
 function branchMetadataMatchesMode(metadata, branchMode) {
@@ -3214,6 +4175,7 @@ function buildSessionArrangementSnapshot(session, context = {}) {
 }
 
 function projectViewModel(session) {
+  ensureSessionContextShape(session);
   reindexDocumentSources(session.document);
   const state = buildRelevantState(session.document, session.bands, session.assignments);
   session.assignments = state.assignments;
@@ -3254,12 +4216,18 @@ function projectViewModel(session) {
       xdata_metadata: collectEntityXdataMetadata(session, item.entityId)
     };
   });
+  const geometry_slot_model = buildGeometrySlotModelProjection(objects, state.slot_validation, GEOMETRY_SLOT_WIDTH_MM, session.bands, session.config_parameter_set, session.session_context_v1?.branch_mode || null);
+  const geometry_context_v1 = buildGeometryContextV1Projection(geometry_slot_model);
   const topo_metadata = projectTopoMetadata(session);
   const document_sem = collectDocumentSemMetadata(session.document);
   const document_rules = collectDocumentRuleMetadata(session.document);
   const blockInternalObjects = collectBlockInternalLineObjects(session, session.document);
   const geometry_hygiene = analyzeGeometryHygiene(session, session.document, objects);
   const xdata_context = collectXdataContext(objects, blockInternalObjects);
+  const domain_context_v1 = buildDomainContextV1Projection(document_sem, session.config_parameter_set, xdata_context, session.session_context_v1);
+  const slot_context = buildSlotContextProjectionV1(geometry_context_v1);
+  const variant_to_slot_map = buildVariantToSlotMapProjectionV1(geometry_context_v1);
+  const resolver_input_v2_extended = buildResolverInputV2ExtendedSkeleton(session, geometry_context_v1, domain_context_v1);
   session.activity_log = normalizeSessionActivityLog(session.activity_log);
   const arrangement_snapshot = buildSessionArrangementSnapshot(session, {
     objects,
@@ -3272,6 +4240,8 @@ function projectViewModel(session) {
     title: session.title,
     status: session.status,
     artifact_state: session.artifact_state,
+    session_context_v1: session.session_context_v1,
+    session_lifecycle_v1: session.session_lifecycle_v1,
     source_name: session.source_name,
     bands: session.bands,
     document_bbox: session.document_bbox,
@@ -3283,6 +4253,21 @@ function projectViewModel(session) {
     topo_metadata,
     geometry_hygiene,
     slot_validation: state.slot_validation,
+    prefer_slot_mode: false,
+    geometry_slot_model,
+    geometry_context_v1,
+    slot_context,
+    variant_to_slot_map,
+    resolver_input_v2_extended,
+    domain_context_v1,
+    domain_validation_v1: session.domain_validation_v1 || null,
+    geometry_validation_v1: session.geometry_validation_v1 || null,
+    resolver_input_v1_minimal: session.resolver_input_v1_minimal || null,
+    resolver_preview_v1: session.resolver_preview_v1 || null,
+    resolver_child_v1: session.resolver_child_v1 || null,
+    resolver_export_v1: session.resolver_export_v1 || null,
+    wysiwyg_gate_v1: session.wysiwyg_gate_v1 || null,
+    artifact_lineage_v1: session.artifact_lineage_v1 || buildArtifactLineageV1(session),
     xdata_context,
     arrangement_snapshot,
     activity_log: session.activity_log,
@@ -4746,7 +5731,7 @@ function materializeChildLabelsOnDocument(outputDocument, session) {
     const keys = group.info.keys || {};
     const rotation = Number(keys.rotation || action.rotation || 0);
     const textEntityId = nextRuntimeEntityId(outputDocument);
-    const payload = String(action.payload_template || ";|{{WORKORDERCODE}}|{{TIP_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}").replaceAll("{{MODEL}}", "{{TIP_VRATA}}");
+    const payload = String(action.payload_template || ";|{{WORKORDERCODE}}|{{MODEL_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}}").replaceAll("{{MODEL}}", "{{MODEL_VRATA}}").replaceAll("{{TIP_LEGACY}}", "{{TIP_VRATA}}");
     const textEntity = makeRuntimeTextEntity({
       id: textEntityId,
       x: center.x,
@@ -5803,7 +6788,7 @@ function validateCombinedPreviewGeometry(objects, items, topologyMode) {
 function simulateChildPreview(session) {
   const view = projectViewModel(session);
   const config = normalizeConfigParameterSet(session.config_parameter_set);
-  const branchMode = effectiveBranchModeForConfig(config);
+  const branchMode = effectiveBranchModeForSession(session, config);
   const sourceObjects = filterObjectsByBranchMode(view.objects, branchMode);
   const resolverRuleContext = {
     rule_catalog: normalizeRuleCatalogSnapshot(session.rule_catalog),
@@ -6148,21 +7133,135 @@ async function saveSessionArtifactSnapshots(session, eventType, details, storeRo
   }, root);
 }
 
-async function createSession({ dxfText, sourceName, bands, forceRefresh = false, storeRoot }) {
+async function createContextDraftSession({ context = {}, storeRoot }) {
+  const nowIso = new Date().toISOString();
+  const session = {
+    session_id: crypto.randomUUID(),
+    use_case: "mother_dxf_v1",
+    created_at: nowIso,
+    updated_at: nowIso,
+    title: "Mother DXF context draft",
+    status: "draft",
+    artifact_state: "context_draft",
+    source_name: "context_pending.dxf",
+    bands: normalizeBands({}),
+    config_parameter_set: buildDefaultConfigFromParameterCatalog(DEFAULT_PARAMETER_CATALOG, DEFAULT_CONFIG_CONTEXT),
+    parameter_catalog: cloneJson(DEFAULT_PARAMETER_CATALOG),
+    rule_catalog: cloneJson(DEFAULT_RULE_CATALOG),
+    topo_comments: [],
+    assignments: {},
+    xdata_assignments: {},
+    document: sanitizeDocument(""),
+    session_context_v1: normalizeSessionContextV1(context, { locked: false }),
+    domain_validation_v1: null,
+    geometry_validation_v1: null,
+    activity_log: []
+  };
+  ensureSessionContextShape(session);
+  appendSessionActivity(session, {
+    type: "context_draft_created",
+    severity: "ok",
+    summary: "Mother DXF session context draft created.",
+    details: {}
+  });
+  projectViewModel(session);
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return session;
+}
+
+async function lockSessionContext({ sessionId, context, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  const nextContext = normalizeSessionContextV1({ ...(context || {}), status: "context_locked" }, { locked: true });
+  if (!nextContext.validation.ok) {
+    const err = new Error("Session context cannot be locked because required fields are missing or invalid.");
+    err.code = "SESSION_CONTEXT_INVALID";
+    err.validation = nextContext.validation;
+    throw err;
+  }
+  session.session_context_v1 = nextContext;
+  session.domain_validation_v1 = null;
+  session.geometry_validation_v1 = null;
+  ensureSessionContextShape(session);
+  session.artifact_state = session.document && Array.isArray(session.document.entities) && session.document.entities.length
+    ? session.artifact_state
+    : "context_locked";
+  session.updated_at = new Date().toISOString();
+  appendSessionActivity(session, {
+    type: "session_context_locked",
+    severity: "ok",
+    summary: "Session context locked.",
+    details: {
+      production_program_id: nextContext.production_program_id,
+      family_id: nextContext.family_id,
+      product_id: nextContext.product_id,
+      part_id: nextContext.part_id
+    }
+  });
+  projectViewModel(session);
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return session;
+}
+
+async function resetSessionContext({ sessionId, storeRoot }) {
+  const session = await getSession({ sessionId, storeRoot });
+  session.session_context_v1 = normalizeSessionContextV1(session.session_context_v1 || {}, { locked: false });
+  session.domain_validation_v1 = null;
+  session.geometry_validation_v1 = null;
+  ensureSessionContextShape(session);
+  session.artifact_state = "context_draft";
+  session.updated_at = new Date().toISOString();
+  appendSessionActivity(session, {
+    type: "session_context_reset",
+    severity: "warn",
+    summary: "Session context reset to draft.",
+    details: {}
+  });
+  projectViewModel(session);
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return session;
+}
+
+function makeDomainContextRequiredError() {
+  const err = new Error("Raw DXF upload is not allowed before session context is locked.");
+  err.code = "DOMAIN_CONTEXT_REQUIRED";
+  err.status = 400;
+  return err;
+}
+
+async function createSession({ dxfText, sourceName, bands, forceRefresh = false, storeRoot, sessionId, sessionContext }) {
   const normalizedSourceName = String(sourceName || "mother_dxf_input.dxf");
   const nowIso = new Date().toISOString();
+  let contextSession = null;
+  if (sessionId) {
+    try {
+      contextSession = await loadSession({ rootDir: storeRoot || defaultRoot(), sessionId: String(sessionId) });
+      ensureSessionContextShape(contextSession);
+    } catch (err) {
+      contextSession = null;
+    }
+  }
+  const lockedContext = sessionContextIsLocked(sessionContext)
+    ? normalizeSessionContextV1(sessionContext, { locked: true })
+    : contextSession && sessionContextIsLocked(contextSession)
+      ? contextSession.session_context_v1
+      : null;
+  if (!lockedContext) {
+    throw makeDomainContextRequiredError();
+  }
   const document = sanitizeDocument(dxfText);
   const importedXdataAssignments = hoistMotherXdataFromDocument(document);
   const existingSessions = await listSessions({ rootDir: storeRoot || defaultRoot() });
   const matchingSessions = existingSessions
     .filter((item) => String(item?.source_name || "").trim() === normalizedSourceName)
     .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
-  const currentSession = matchingSessions[0] || null;
+  const currentSession = contextSession || matchingSessions[0] || null;
   const preserveCustomTitle = currentSession && !titleLooksLikeDefault(currentSession.title, currentSession.source_name);
   if (currentSession && sessionHasAuthoringState(currentSession) && !forceRefresh) {
     currentSession.parameter_catalog = normalizeParameterCatalogSnapshot(currentSession.parameter_catalog || DEFAULT_PARAMETER_CATALOG);
     currentSession.rule_catalog = normalizeRuleCatalogSnapshot(currentSession.rule_catalog || DEFAULT_RULE_CATALOG);
     currentSession.config_parameter_set = normalizeConfigParameterSet(currentSession.config_parameter_set || buildDefaultConfigFromParameterCatalog(currentSession.parameter_catalog, defaultConfigContextForSource(normalizedSourceName)));
+    currentSession.session_context_v1 = lockedContext;
+    ensureSessionContextShape(currentSession);
     appendSessionActivity(currentSession, {
       type: "raw_refresh_preserved",
       severity: "ok",
@@ -6193,6 +7292,11 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
     currentSession.rule_catalog = normalizeRuleCatalogSnapshot(currentSession.rule_catalog || DEFAULT_RULE_CATALOG);
     currentSession.config_parameter_set = normalizeConfigParameterSet(currentSession.config_parameter_set || buildDefaultConfigFromParameterCatalog(currentSession.parameter_catalog, defaultConfigContextForSource(normalizedSourceName)));
     currentSession.xdata_assignments = mergeImportedXdataAssignments(currentSession.document, importedXdataAssignments);
+    currentSession.session_context_v1 = lockedContext;
+    currentSession.domain_validation_v1 = null;
+    currentSession.geometry_validation_v1 = null;
+    currentSession.session_lifecycle_v1 = { version: 1, state: "raw_loaded", allowed_transitions: lifecycleTransitionsForState("raw_loaded") };
+    ensureSessionContextShape(currentSession);
     appendSessionActivity(currentSession, {
       type: "raw_refresh_forced",
       severity: "warn",
@@ -6221,6 +7325,7 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
       ? normalizeSessionTitle(currentSession.title, defaultSessionTitleForSource(normalizedSourceName))
       : defaultSessionTitleForSource(normalizedSourceName),
     status: "draft",
+    revision: currentSession?.__mother_dxf_session_revision || currentSession?.revision || 0,
     artifact_state: "sanitized",
     source_name: normalizedSourceName,
     bands: normalizeBands(bands),
@@ -6231,8 +7336,13 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
     assignments: {},
     xdata_assignments: normalizeXdataAssignments(document, importedXdataAssignments),
     document,
+    session_context_v1: lockedContext,
+    domain_validation_v1: null,
+    geometry_validation_v1: null,
+    session_lifecycle_v1: { version: 1, state: "raw_loaded", allowed_transitions: lifecycleTransitionsForState("raw_loaded") },
     activity_log: []
   };
+  ensureSessionContextShape(session);
   appendSessionActivity(session, {
     type: currentSession ? "session_refreshed" : "session_created",
     severity: "ok",
@@ -6255,6 +7365,7 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
 
 async function getSession({ sessionId, storeRoot }) {
   const session = await loadSession({ rootDir: storeRoot || defaultRoot(), sessionId });
+  ensureSessionContextShape(session);
   const importedXdataAssignments = hoistMotherXdataFromDocument(session.document);
   session.title = normalizeSessionTitle(session.title, defaultSessionTitleForSource(session.source_name));
   session.status = normalizeSessionStatus(session.status || "draft");
@@ -6300,13 +7411,66 @@ async function assignPrimaryLayer({ sessionId, ids, layer, storeRoot }) {
   return session;
 }
 
-async function updateBands({ sessionId, bands, storeRoot }) {
-  const session = await getSession({ sessionId, storeRoot });
-  session.bands = normalizeBands(bands);
-  projectViewModel(session);
+async function computeGeometryContext({ sessionId, storeRoot, bands = null }) {
+  const session = await loadSession({ rootDir: storeRoot || defaultRoot(), sessionId });
+  ensureSessionContextShape(session);
+  if (bands && typeof bands === "object") {
+    session.bands = normalizeBands(bands);
+  }
+  const view = projectViewModel(session);
+  const validation = buildGeometryValidationV1(session, view);
+  session.geometry_validation_v1 = validation;
+  session.domain_validation_v1 = null;
+  const nextState = validation.ok ? "geometry_projected" : "raw_loaded";
+  session.session_lifecycle_v1 = {
+    version: 1,
+    state: nextState,
+    allowed_transitions: lifecycleTransitionsForState(nextState)
+  };
   session.updated_at = new Date().toISOString();
+  appendSessionActivity(session, {
+    type: "geometry_context_computed",
+    severity: validation.ok ? "ok" : "error",
+    summary: validation.ok ? "Geometry context projected." : "Geometry context projection blocked execution.",
+    details: {
+      blocking_error_count: validation.blocking_error_count,
+      warning_count: validation.warning_count,
+      slot_count: validation.slot_count,
+      lifecycle_state: nextState
+    }
+  });
+  projectViewModel(session);
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-  return session;
+  return { session, validation };
+}
+
+async function validateDomainContext({ sessionId, storeRoot }) {
+  const session = await loadSession({ rootDir: storeRoot || defaultRoot(), sessionId });
+  ensureSessionContextShape(session);
+  const view = projectViewModel(session);
+  const validation = buildDomainValidationV1(session, view);
+  session.domain_validation_v1 = validation;
+  const hasGeometryBlockingError = Array.isArray(validation.errors) && validation.errors.some((item) => String(item?.code || "") === "GEOMETRY_CONTEXT_INVALID");
+  const nextState = validation.ok ? "authoring_ready" : hasGeometryBlockingError ? "raw_loaded" : "geometry_projected";
+  session.session_lifecycle_v1 = {
+    version: 1,
+    state: nextState,
+    allowed_transitions: lifecycleTransitionsForState(nextState)
+  };
+  session.updated_at = new Date().toISOString();
+  appendSessionActivity(session, {
+    type: "domain_context_validated",
+    severity: validation.ok ? "ok" : "error",
+    summary: validation.ok ? "Domain context validated." : "Domain context validation blocked execution.",
+    details: {
+      blocking_error_count: validation.blocking_error_count,
+      warning_count: validation.warning_count,
+      lifecycle_state: nextState
+    }
+  });
+  projectViewModel(session);
+  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+  return { session, validation };
 }
 
 async function updateLabelDefinition({ sessionId, payload, storeRoot }) {
@@ -6399,35 +7563,6 @@ async function clearLabelDefinition({ sessionId, ruleId, storeRoot }) {
   session.updated_at = new Date().toISOString();
   session.artifact_state = "mother_draft";
   await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-  return session;
-}
-
-async function resetConfigParameterSetFromCatalog({ sessionId, context, storeRoot }) {
-  const session = await getSession({ sessionId, storeRoot });
-  const documentSem = collectDocumentSemMetadata(session.document);
-  const semContext = documentSem ? {
-    family: documentSem.family,
-    product: documentSem.product,
-    part: documentSem.part
-  } : {};
-  const config = buildDefaultConfigFromParameterCatalog(session.parameter_catalog || DEFAULT_PARAMETER_CATALOG, {
-    ...defaultConfigContextForSource(session.source_name),
-    ...semContext,
-    ...(context && typeof context === "object" ? context : {})
-  });
-  session.config_parameter_set = normalizeConfigParameterSet(config);
-  appendSessionActivity(session, {
-    type: "config_reset_from_catalog",
-    severity: "ok",
-    summary: "Config parameter set reset from catalog defaults.",
-    details: {
-      context: { family: config.family, product: config.product, part: config.part },
-      parameter_count: Object.keys(config.parameters || {}).length
-    }
-  });
-  session.updated_at = new Date().toISOString();
-  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-  await saveParamSet(session.session_id, session.config_parameter_set || {}, storeRoot || defaultRoot());
   return session;
 }
 
@@ -6666,44 +7801,454 @@ async function updateEntityXdataMetadata({ sessionId, entityIds, value, previous
   };
 }
 
-async function simulateSession({ sessionId, configParameterSet, storeRoot }) {
-  const session = await getSession({ sessionId, storeRoot });
-  if (configParameterSet) {
-    session.config_parameter_set = normalizeConfigParameterSet(configParameterSet);
-    session.updated_at = new Date().toISOString();
-    await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-    await saveParamSet(session.session_id, session.config_parameter_set || {}, storeRoot || defaultRoot());
+function summarizeResolverPreviewItems(items) {
+  const visibleItems = (Array.isArray(items) ? items : []).filter((item) => item?.preview?.visible !== false && item?.preview?.included !== false);
+  const shapes = [];
+  const layer_summary = {};
+  for (const item of visibleItems) {
+    const layer = item.primary_layer || "UNCLASSIFIED";
+    layer_summary[layer] = Number(layer_summary[layer] || 0) + 1;
+    for (const shape of item.preview?.simulated_shapes || []) shapes.push(shape);
   }
-  const simulation = simulateChildPreview(session);
-  const previewId = crypto.randomUUID();
-  const previewInfo = await savePreview(session.session_id, previewId, {
-    session_id: session.session_id,
-    preview_id: previewId,
-    type: "simulate_session",
-    simulation
-  }, null, storeRoot || defaultRoot());
-  await registerArtifact(session.session_id, "preview_json", previewId, previewInfo.jsonPath, storeRoot || defaultRoot());
-  await appendEvent(session.session_id, {
-    type: "preview_saved",
-    details: { preview_id: previewId, mode: "simulate_session" }
-  }, storeRoot || defaultRoot());
+  const bbox = shapes.length ? bboxFromShapes(shapes) : null;
   return {
-    session,
-    simulation
+    input_object_count: Array.isArray(items) ? items.length : 0,
+    output_object_count: visibleItems.length,
+    bbox: bbox ? {
+      minX: roundNumber(bbox.minX),
+      minY: roundNumber(bbox.minY),
+      maxX: roundNumber(bbox.maxX),
+      maxY: roundNumber(bbox.maxY),
+      width: roundNumber(bbox.width),
+      height: roundNumber(bbox.height)
+    } : null,
+    layer_summary
   };
 }
 
-async function persistSessionConfigParameterSet(session, parameterSet, storeRoot) {
-  if (!parameterSet || isEmptyConfigParameterSetInput(parameterSet)) {
-    return normalizeConfigParameterSet(session.config_parameter_set);
-  }
-  const config = normalizeConfigParameterSet(parameterSet);
-  session.config_parameter_set = config;
-  session.updated_at = new Date().toISOString();
-  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-  await saveParamSet(session.session_id, session.config_parameter_set || {}, storeRoot || defaultRoot());
-  return config;
+function buildUiProjectionSnapshotV1(session) {
+  const config = normalizeConfigParameterSet(session.config_parameter_set);
+  const branchMode = effectiveBranchModeForSession(session, config);
+  const documentEntityCount = Array.isArray(session.document?.entities) ? session.document.entities.length : 0;
+  const assignmentCount = session.assignments && typeof session.assignments === "object" ? Object.keys(session.assignments).length : 0;
+  return {
+    version: 1,
+    session_id: session.session_id,
+    branch_mode: branchMode,
+    geometry_authority: "legacy_branch",
+    selected_slot_index: null,
+    selected_variant_key: null,
+    session_context_v1: cloneJson(session.session_context_v1 || null),
+    domain_validation_ok: session.domain_validation_v1?.ok === true,
+    geometry_validation_ok: session.geometry_validation_v1?.ok === true,
+    parameter_catalog_id: config.parameter_catalog_id || session.session_context_v1?.parameter_catalog_id || null,
+    rule_set_id: session.session_context_v1?.rule_set_id || null,
+    parameter_hash: hashJson(config.parameters || {}),
+    document_entity_count: documentEntityCount,
+    assignment_count: assignmentCount,
+    geometry_slot_count: session.geometry_validation_v1?.slot_count ?? null
+  };
 }
+function buildUiProjectionHashV1(session) {
+  return hashJson(buildUiProjectionSnapshotV1(session));
+}
+
+function buildResolverInputV1Minimal(session) {
+  const view = projectViewModel(session);
+  const config = normalizeConfigParameterSet(session.config_parameter_set);
+  const branchMode = effectiveBranchModeForSession(session, config);
+  const selectedObjects = filterObjectsByBranchMode(view.objects, branchMode);
+  const selectedIds = selectedObjects.map((object) => object.id);
+  const selectedIdSet = new Set(selectedIds.map((id) => String(id)));
+  const filteredIds = (view.objects || [])
+    .map((object) => object.id)
+    .filter((id) => !selectedIdSet.has(String(id)));
+  return {
+    version: 1,
+    schema: "resolver_input_v1_minimal",
+    session_id: session.session_id,
+    ui_projection_hash: buildUiProjectionHashV1(session),
+    execution_authority: "core_shell_resolver",
+    geometry_authority: "legacy_branch",
+    branch_mode: branchMode,
+    selected_slot_index: null,
+    selected_variant_key: null,
+    session_context_v1: cloneJson(session.session_context_v1 || null),
+    domain_context_v1: cloneJson(view.domain_context_v1 || null),
+    geometry_context_v1_summary: {
+      version: view.geometry_context_v1?.version || 1,
+      slot_width: view.geometry_context_v1?.slot_width || GEOMETRY_SLOT_WIDTH_MM,
+      slot_count: Array.isArray(view.geometry_context_v1?.slots) ? view.geometry_context_v1.slots.length : 0,
+      base_slot_index: view.geometry_context_v1?.base_slot_index ?? 0,
+      authoritative_slot_index: view.geometry_context_v1?.authoritative_slot_index ?? null,
+      authoritative_variant_key: view.geometry_context_v1?.authoritative_variant_key ?? null
+    },
+    legacy_branch_context: {
+      branch_mode: branchMode,
+      selected_objects: selectedIds,
+      filtered_objects: filteredIds
+    },
+    parameter_context: {
+      valid: session.domain_validation_v1?.ok === true,
+      parameter_catalog_id: config.parameter_catalog_id || session.session_context_v1?.parameter_catalog_id || null,
+      parameter_count: Object.keys(config.parameters || {}).length
+    },
+    rule_context: {
+      valid: session.domain_validation_v1?.ok === true,
+      rule_set_id: session.session_context_v1?.rule_set_id || null,
+      rule_catalog_id: view.rule_catalog?.catalog_id || null
+    },
+    objects: selectedObjects.map((object) => ({
+      id: object.id,
+      entity_id: object.entity_id,
+      type: object.type,
+      primary_layer: object.primary_layer,
+      classification_state: object.classification_state,
+      bbox: object.bbox,
+      slot_index: object.slot_index,
+      semantic_metadata: cloneJson(object.semantic_metadata || null),
+      xdata_metadata: cloneJson(object.xdata_metadata || null),
+      topo_role_metadata: cloneJson(object.topo_role_metadata || null)
+    })),
+    config_parameter_set: cloneJson(config)
+  };
+}
+
+function buildResolverOutputV1({ session, resolverInput, simulation, previewInfo }) {
+  const inputHash = hashJson(resolverInput);
+  const itemSummary = summarizeResolverPreviewItems(simulation?.items || []);
+  const validation = simulation?.validation || { ok: true, errors: [], warnings: [] };
+  const outputBase = {
+    version: 1,
+    schema: "resolver_output_v1",
+    session_id: session.session_id,
+    resolver_run_id: previewInfo?.resolver_run_id || null,
+    execution_authority: "core_shell_resolver",
+    geometry_authority: "legacy_branch",
+    branch_mode: resolverInput.branch_mode,
+    selected_slot_index: null,
+    selected_variant_key: null,
+    resolver_input_hash: inputHash,
+    ui_projection_hash: resolverInput.ui_projection_hash || null,
+    resolver_geometry_summary: {
+      input_object_count: itemSummary.input_object_count,
+      output_object_count: itemSummary.output_object_count,
+      bbox: itemSummary.bbox
+    },
+    resolver_layer_summary: itemSummary.layer_summary,
+    execution_plan_summary: {
+      topology_mode: simulation?.topology_mode || "none",
+      technology_profile: simulation?.technology_profile || null,
+      product_code: simulation?.product_code || null,
+      document_rules_applied: Array.isArray(simulation?.summary?.document_rules_applied) ? simulation.summary.document_rules_applied.length : 0,
+      post_topo_rules_applied: Array.isArray(simulation?.summary?.post_topo_rules_applied) ? simulation.summary.post_topo_rules_applied.length : 0,
+      final_orientation_rules_applied: Array.isArray(simulation?.summary?.final_orientation_rules_applied) ? simulation.summary.final_orientation_rules_applied.length : 0
+    },
+    validation: {
+      ok: validation.ok !== false && !(Array.isArray(validation.errors) && validation.errors.length),
+      errors: cloneJson(validation.errors || []),
+      warnings: cloneJson(validation.warnings || []),
+      counts: cloneJson(validation.counts || {})
+    },
+    preview_artifact: previewInfo ? {
+      preview_id: previewInfo.previewId || previewInfo.preview_id || null,
+      json_path: previewInfo.jsonPath || previewInfo.json_path || null
+    } : null
+  };
+  return {
+    ...outputBase,
+    resolver_output_hash: hashJson(outputBase)
+  };
+}
+
+function validateResolverPreviewReadiness(session) {
+  ensureSessionContextShape(session);
+  const state = lifecycleStateForSession(session);
+  const errors = [];
+  if (!sessionContextIsLocked(session)) errors.push({ code: "SESSION_CONTEXT_INVALID", message: "Session context must be locked before resolver preview." });
+  if (session.geometry_validation_v1?.ok !== true) errors.push({ code: "GEOMETRY_CONTEXT_INVALID", message: "Geometry context must be projected before resolver preview." });
+  if (session.domain_validation_v1?.ok !== true) errors.push({ code: "DOMAIN_CONTEXT_INVALID", message: "Domain context must be validated before resolver preview." });
+  if (!["authoring_ready", "domain_validated", "preview_ready"].includes(state)) {
+    errors.push({ code: "RESOLVER_PREVIEW_STATE_INVALID", message: "Resolver preview requires authoring_ready lifecycle state.", lifecycle_state: state });
+  }
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings: [],
+    lifecycle_state: state,
+    parameter_context: { valid: session.domain_validation_v1?.ok === true },
+    rule_context: { valid: session.domain_validation_v1?.ok === true }
+  };
+}
+
+async function generateResolverPreview({ sessionId, storeRoot }) {
+  const rootDir = storeRoot || defaultRoot();
+  const session = await getSession({ sessionId, storeRoot: rootDir });
+  const readiness = validateResolverPreviewReadiness(session);
+  if (!readiness.ok) {
+    const err = new Error(readiness.errors.map((item) => item.message).join(" | "));
+    err.code = "RESOLVER_PREVIEW_NOT_READY";
+    err.validation = readiness;
+    throw err;
+  }
+  const resolverInput = buildResolverInputV1Minimal(session);
+  const simulation = simulateChildPreview(session);
+  const previewId = crypto.randomUUID();
+  const resolverRunId = crypto.randomUUID();
+  const previewInfo = await savePreview(session.session_id, previewId, {
+    session_id: session.session_id,
+    preview_id: previewId,
+    type: "resolver_preview_v1",
+    resolver_input_v1_minimal: resolverInput,
+    simulation
+  }, null, rootDir);
+  previewInfo.preview_id = previewId;
+  previewInfo.resolver_run_id = resolverRunId;
+  const resolverOutput = buildResolverOutputV1({ session, resolverInput, simulation, previewInfo });
+  await savePreview(session.session_id, previewId, {
+    session_id: session.session_id,
+    preview_id: previewId,
+    type: "resolver_preview_v1",
+    resolver_input_v1_minimal: resolverInput,
+    resolver_output_v1: resolverOutput,
+    simulation
+  }, null, rootDir);
+  await registerArtifact(session.session_id, "preview_json", previewId, previewInfo.jsonPath, rootDir);
+  await appendEvent(session.session_id, {
+    type: "resolver_preview_saved",
+    details: {
+      preview_id: previewId,
+      resolver_input_hash: resolverOutput.resolver_input_hash,
+      resolver_output_hash: resolverOutput.resolver_output_hash,
+      geometry_authority: resolverOutput.geometry_authority
+    }
+  }, rootDir);
+  const nextState = resolverOutput.validation.ok ? "preview_ready" : "authoring_ready";
+  session.resolver_input_v1_minimal = resolverInput;
+  session.resolver_preview_v1 = resolverOutput;
+  session.session_lifecycle_v1 = {
+    version: 1,
+    state: nextState,
+    allowed_transitions: lifecycleTransitionsForState(nextState)
+  };
+  session.artifact_lineage_v1 = buildArtifactLineageV1(session);
+  session.wysiwyg_gate_v1 = buildWysiwygGateV1(session, "child");
+  session.updated_at = new Date().toISOString();
+  appendSessionActivity(session, {
+    type: "resolver_preview_generated",
+    severity: resolverOutput.validation.ok ? "ok" : "error",
+    summary: resolverOutput.validation.ok ? "Resolver preview generated." : "Resolver preview returned blocking errors.",
+    details: {
+      preview_id: previewId,
+      lifecycle_state: nextState,
+      resolver_input_hash: resolverOutput.resolver_input_hash,
+      resolver_output_hash: resolverOutput.resolver_output_hash,
+      geometry_authority: resolverOutput.geometry_authority
+    }
+  });
+  await saveSession({ rootDir, session });
+  return {
+    session,
+    resolver_input_v1_minimal: resolverInput,
+    resolver_output_v1: resolverOutput
+  };
+}
+
+function resolverOutputHashForValidation(output) {
+  if (!output || typeof output !== "object") return null;
+  const copy = cloneJson(output);
+  delete copy.resolver_output_hash;
+  return hashJson(copy);
+}
+
+function buildArtifactLineageV1(session) {
+  const preview = session.resolver_preview_v1 || null;
+  const child = session.resolver_child_v1 || null;
+  const exported = session.resolver_export_v1 || null;
+  return {
+    version: 1,
+    resolver_run_id: preview?.resolver_run_id || null,
+    resolver_input_hash: preview?.resolver_input_hash || null,
+    resolver_output_hash: preview?.resolver_output_hash || null,
+    preview_id: preview?.preview_artifact?.preview_id || null,
+    child_artifact_id: child?.child_artifact_id || null,
+    export_artifact_id: exported?.export_artifact_id || null,
+    dbr_handoff_manifest_id: exported?.dbr_handoff_manifest_id || null,
+    parent_child_relationships: {
+      preview_to_child: preview?.preview_artifact?.preview_id && child?.child_artifact_id ? { parent: preview.preview_artifact.preview_id, child: child.child_artifact_id } : null,
+      child_to_export: child?.child_artifact_id && exported?.export_artifact_id ? { parent: child.child_artifact_id, child: exported.export_artifact_id } : null,
+      export_to_dbr: exported?.export_artifact_id && exported?.dbr_handoff_manifest_id ? { parent: exported.export_artifact_id, child: exported.dbr_handoff_manifest_id } : null
+    },
+    complete_for_child: Boolean(preview?.resolver_input_hash && preview?.resolver_output_hash && preview?.preview_artifact?.preview_id),
+    complete_for_export: Boolean(preview?.resolver_input_hash && preview?.resolver_output_hash && preview?.preview_artifact?.preview_id && child?.child_artifact_id),
+    complete_for_dbr: Boolean(exported?.export_artifact_id && exported?.dbr_handoff_manifest_id)
+  };
+}
+
+function buildWysiwygGateV1(session, action = "child") {
+  const errors = [];
+  const warnings = [];
+  ensureSessionContextShape(session);
+  const lifecycle = lifecycleStateForSession(session);
+  const preview = session.resolver_preview_v1 || null;
+  const currentUiProjectionHash = preview ? buildUiProjectionHashV1(session) : null;
+  const storedOutputHashValid = preview?.resolver_output_hash ? resolverOutputHashForValidation(preview) === preview.resolver_output_hash : false;
+  const lineage = buildArtifactLineageV1(session);
+
+  if (!sessionContextIsLocked(session)) errors.push({ code: "SESSION_CONTEXT_INVALID", message: "Session context is not locked." });
+  if (session.domain_validation_v1?.ok !== true) errors.push({ code: "DOMAIN_CONTEXT_INVALID", message: "Domain context is not valid." });
+  if (session.geometry_validation_v1?.ok !== true) errors.push({ code: "GEOMETRY_CONTEXT_INVALID", message: "Geometry context is not valid." });
+  if (!preview || preview.validation?.ok !== true) errors.push({ code: "resolver_invalid", message: "Resolver preview is missing or invalid." });
+  if (!["preview_ready", "child_ready", "export_ready"].includes(lifecycle)) errors.push({ code: "preview_stale", message: "Lifecycle is not preview_ready or beyond.", lifecycle_state: lifecycle });
+  if (preview && currentUiProjectionHash !== preview.ui_projection_hash) errors.push({ code: "WYSIWYG_CONTRACT_MISMATCH", message: "Current UI projection hash differs from preview UI projection hash." });
+  if (preview && !preview.resolver_input_hash) errors.push({ code: "WYSIWYG_CONTRACT_MISMATCH", message: "Resolver input hash is missing." });
+  if (preview && !storedOutputHashValid) errors.push({ code: "WYSIWYG_CONTRACT_MISMATCH", message: "Stored resolver output hash is not reproducible." });
+  if (preview && preview.geometry_authority !== "legacy_branch") errors.push({ code: "WYSIWYG_CONTRACT_MISMATCH", message: "Unsupported geometry authority for v1 child/export gating." });
+  if (action === "child" && !lineage.complete_for_child) errors.push({ code: "artifact_lineage_incomplete", message: "Preview lineage is incomplete; child generation is blocked." });
+  if (action === "export" && !lineage.complete_for_export) errors.push({ code: "artifact_lineage_incomplete", message: "Child lineage is incomplete; export/DBR is blocked." });
+
+  return {
+    version: 1,
+    action,
+    ok: errors.length === 0,
+    mismatch: errors.some((item) => item.code === "WYSIWYG_CONTRACT_MISMATCH"),
+    lifecycle_state: lifecycle,
+    ui_projection_hash: currentUiProjectionHash,
+    resolver_input_hash: preview?.resolver_input_hash || null,
+    current_resolver_input_hash: preview?.resolver_input_hash || null,
+    resolver_output_hash: preview?.resolver_output_hash || null,
+    resolver_output_hash_valid: storedOutputHashValid,
+    blocking_error_count: errors.length,
+    warning_count: warnings.length,
+    errors,
+    warnings,
+    artifact_lineage_v1: lineage
+  };
+}
+function assertWysiwygGate(session, action) {
+  const gate = buildWysiwygGateV1(session, action);
+  if (!gate.ok) {
+    const err = new Error(gate.errors.map((item) => item.message).join(" | "));
+    err.code = gate.mismatch ? "WYSIWYG_CONTRACT_MISMATCH" : "RESOLVER_EXECUTION_BLOCKED";
+    err.validation = gate;
+    throw err;
+  }
+  return gate;
+}
+
+function sessionHasTopoRuntime(session) {
+  const topo = projectTopoMetadata(session);
+  return Boolean(topo?.runtime_model && topo.runtime_model.mode && topo.runtime_model.mode !== "none");
+}
+
+async function generateResolverChild({ sessionId, storeRoot }) {
+  const rootDir = storeRoot || defaultRoot();
+  const session = await getSession({ sessionId, storeRoot: rootDir });
+  const gate = assertWysiwygGate(session, "child");
+  const config = normalizeConfigParameterSet(session.config_parameter_set);
+  const result = generateChildDxfNoTopo(session, config);
+  const childArtifactId = "resolver_child_v1";
+  const childInfo = await saveChildExport({
+    rootDir,
+    sessionId,
+    dxfText: result.dxf_text,
+    suffix: childArtifactId
+  });
+  const childDxfInfo = await saveChildDxf(sessionId, childArtifactId, result.dxf_text, rootDir);
+  await registerArtifact(sessionId, "child_dxf", childArtifactId, childDxfInfo.filePath, rootDir);
+  const childMetadata = {
+    version: 1,
+    session_id: String(sessionId),
+    child_artifact_id: childArtifactId,
+    created_at: new Date().toISOString(),
+    resolver_run_id: session.resolver_preview_v1?.resolver_run_id || null,
+    resolver_input_hash: session.resolver_preview_v1?.resolver_input_hash || null,
+    resolver_output_hash: session.resolver_preview_v1?.resolver_output_hash || null,
+    preview_id: session.resolver_preview_v1?.preview_artifact?.preview_id || null,
+    generation_summary: cloneJson(result.generation_summary || {})
+  };
+  await writeChildMetadata(sessionId, childArtifactId, childMetadata, rootDir);
+  await appendEvent(sessionId, {
+    type: "resolver_child_artifacts_saved",
+    details: { child_artifact_id: childArtifactId, resolver_input_hash: childMetadata.resolver_input_hash, resolver_output_hash: childMetadata.resolver_output_hash }
+  }, rootDir);
+  session.resolver_child_v1 = {
+    version: 1,
+    child_artifact_id: childArtifactId,
+    child_file: childInfo.filePath,
+    child_dxf_path: childDxfInfo.filePath,
+    child_metadata: childMetadata,
+    generation_summary: cloneJson(result.generation_summary || {})
+  };
+  session.artifact_lineage_v1 = buildArtifactLineageV1(session);
+  session.wysiwyg_gate_v1 = buildWysiwygGateV1(session, "child");
+  session.session_lifecycle_v1 = { version: 1, state: "child_ready", allowed_transitions: lifecycleTransitionsForState("child_ready") };
+  session.updated_at = new Date().toISOString();
+  appendSessionActivity(session, {
+    type: "resolver_child_generated",
+    severity: "ok",
+    summary: "Resolver child DXF generated with WYSIWYG gate.",
+    details: { child_artifact_id: childArtifactId, child_file: childInfo.filePath }
+  });
+  await saveSession({ rootDir, session });
+  return { session, dxf_text: result.dxf_text, child_artifact: session.resolver_child_v1, wysiwyg_gate_v1: gate, artifact_lineage_v1: session.artifact_lineage_v1 };
+}
+
+async function generateResolverExport({ sessionId, storeRoot }) {
+  const rootDir = storeRoot || defaultRoot();
+  const session = await getSession({ sessionId, storeRoot: rootDir });
+  const gate = assertWysiwygGate(session, "export");
+  const outputDocument = materializeDocumentForExport(session);
+  const dxfText = serializeDocument(outputDocument);
+  const exportInfo = await saveExport({ rootDir, sessionId, dxfText });
+  await saveMotherJson(sessionId, session.document, rootDir);
+  const exportArtifactId = "resolver_export_v1";
+  const dbrManifestId = "dbr_handoff_manifest_v1";
+  await registerArtifact(sessionId, "mother_dxf", exportArtifactId, exportInfo.artifactPath || exportInfo.filePath, rootDir);
+  await registerArtifact(sessionId, "mother_export", exportArtifactId, exportInfo.filePath, rootDir);
+  const dbrManifest = {
+    version: 1,
+    manifest_id: dbrManifestId,
+    session_id: String(sessionId),
+    created_at: new Date().toISOString(),
+    execution_authority: "core_shell_resolver",
+    geometry_authority: "legacy_branch",
+    resolver_run_id: session.resolver_preview_v1?.resolver_run_id || null,
+    resolver_input_hash: session.resolver_preview_v1?.resolver_input_hash || null,
+    resolver_output_hash: session.resolver_preview_v1?.resolver_output_hash || null,
+    child_artifact_id: session.resolver_child_v1?.child_artifact_id || null,
+    export_artifact_id: exportArtifactId,
+    reproducible: true
+  };
+  const manifestInfo = await savePreview(sessionId, dbrManifestId, { type: "dbr_handoff_manifest_v1", dbr_handoff_manifest_v1: dbrManifest }, null, rootDir);
+  await registerArtifact(sessionId, "dbr_handoff_manifest", dbrManifestId, manifestInfo.jsonPath, rootDir);
+  await appendEvent(sessionId, {
+    type: "resolver_export_artifacts_saved",
+    details: { export_artifact_id: exportArtifactId, dbr_handoff_manifest_id: dbrManifestId, export_file: exportInfo.filePath }
+  }, rootDir);
+  session.resolver_export_v1 = {
+    version: 1,
+    export_artifact_id: exportArtifactId,
+    export_file: exportInfo.filePath,
+    artifact_file: exportInfo.artifactPath || null,
+    dbr_handoff_manifest_id: dbrManifestId,
+    dbr_handoff_manifest_path: manifestInfo.jsonPath,
+    dbr_handoff_manifest_v1: dbrManifest
+  };
+  session.artifact_lineage_v1 = buildArtifactLineageV1(session);
+  session.wysiwyg_gate_v1 = buildWysiwygGateV1(session, "export");
+  session.session_lifecycle_v1 = { version: 1, state: "export_ready", allowed_transitions: lifecycleTransitionsForState("export_ready") };
+  session.updated_at = new Date().toISOString();
+  appendSessionActivity(session, {
+    type: "resolver_export_generated",
+    severity: "ok",
+    summary: "Resolver export and DBR handoff manifest generated with WYSIWYG gate.",
+    details: { export_artifact_id: exportArtifactId, dbr_handoff_manifest_id: dbrManifestId, export_file: exportInfo.filePath }
+  });
+  await saveSession({ rootDir, session });
+  return { session, dxf_text: dxfText, export_artifact: session.resolver_export_v1, wysiwyg_gate_v1: gate, artifact_lineage_v1: session.artifact_lineage_v1 };
+}
+
 
 async function runKskrExecutionCheck({ sessionId, parameterSet, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
@@ -6717,133 +8262,6 @@ async function runKskrExecutionCheck({ sessionId, parameterSet, storeRoot }) {
         ...(parameterSet && typeof parameterSet === "object" ? parameterSet : {})
       }
     })
-  };
-}
-
-async function generateCoreShellFourBandShadowChildDxfForSession({ sessionId, parameterSet, storeRoot }) {
-  const session = await getSession({ sessionId, storeRoot });
-  const config = normalizeConfigParameterSet(parameterSet || session.config_parameter_set || DEFAULT_KSKR_EXECUTION_CHECK_PARAMETER_SET);
-  const result = generateCoreShellFourBandShadowChildDxf(session, config);
-  appendSessionActivity(session, {
-    type: "core_shell_4_band_shadow_child_dxf_exported",
-    severity: "warn",
-    summary: "Core Shell 4-band shadow DXF exported for external viewer validation.",
-    details: {
-      mode: result.generation_summary?.mode || "core_shell_4_band_shadow_child_dxf_v0",
-      diagnostic_only: true,
-      production_activation_status: "not_approved",
-      updated_entity_count: result.generation_summary?.updated_entity_count ?? null,
-      removed_entity_count: result.generation_summary?.removed_entity_count ?? null
-    }
-  });
-  session.updated_at = new Date().toISOString();
-  session.artifact_state = "mother_draft";
-  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-  return {
-    session,
-    ...result
-  };
-}
-
-async function generateChildDxfNoTopoForSession({ sessionId, parameterSet, storeRoot }) {
-  const session = await getSession({ sessionId, storeRoot });
-  const config = await persistSessionConfigParameterSet(session, parameterSet, storeRoot);
-  const result = generateChildDxfNoTopo(session, config);
-  const childInfo = await saveChildExport({
-    rootDir: storeRoot || defaultRoot(),
-    sessionId,
-    dxfText: result.dxf_text,
-    suffix: "child_no_topo"
-  });
-  const childDxfInfo = await saveChildDxf(sessionId, "child_no_topo", result.dxf_text, storeRoot || defaultRoot());
-  await registerArtifact(sessionId, "child_dxf", "child_no_topo", childDxfInfo.filePath, storeRoot || defaultRoot());
-  await writeChildMetadata(sessionId, "child_no_topo", {
-    session_id: String(sessionId),
-    suffix: "child_no_topo",
-    created_at: new Date().toISOString()
-  }, storeRoot || defaultRoot());
-  await appendEvent(sessionId, {
-    type: "child_dxf_artifacts_saved",
-    details: { suffix: "child_no_topo" }
-  }, storeRoot || defaultRoot());
-  appendSessionActivity(session, {
-    type: "child_dxf_saved",
-    severity: "ok",
-    summary: "Resolver child DXF saved.",
-    details: { mode: result.generation_summary?.mode || "child_no_topo", child_file: childInfo.filePath }
-  });
-  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-  return {
-    session,
-    ...result,
-    child_file: childInfo.filePath
-  };
-}
-
-async function generateChildDxfTopoPocForSession({ sessionId, parameterSet, branchMode, storeRoot }) {
-  const session = await getSession({ sessionId, storeRoot });
-  const config = await persistSessionConfigParameterSet(session, parameterSet, storeRoot);
-  const result = generateChildDxfTopoPoc(session, config, { branchMode });
-  const childInfo = await saveChildExport({
-    rootDir: storeRoot || defaultRoot(),
-    sessionId,
-    dxfText: result.dxf_text,
-    suffix: "child_topo_poc"
-  });
-  const childDxfInfo = await saveChildDxf(sessionId, "child_topo_poc", result.dxf_text, storeRoot || defaultRoot());
-  await registerArtifact(sessionId, "child_dxf", "child_topo_poc", childDxfInfo.filePath, storeRoot || defaultRoot());
-  await writeChildMetadata(sessionId, "child_topo_poc", {
-    session_id: String(sessionId),
-    suffix: "child_topo_poc",
-    created_at: new Date().toISOString()
-  }, storeRoot || defaultRoot());
-  await appendEvent(sessionId, {
-    type: "child_dxf_artifacts_saved",
-    details: { suffix: "child_topo_poc" }
-  }, storeRoot || defaultRoot());
-  appendSessionActivity(session, {
-    type: "topo_child_dxf_saved",
-    severity: "ok",
-    summary: "Resolver TOPO child DXF saved.",
-    details: { mode: result.generation_summary?.mode || "child_topo_poc", child_file: childInfo.filePath, moved_count: result.generation_summary?.moved_count ?? null }
-  });
-  await saveSession({ rootDir: storeRoot || defaultRoot(), session });
-  return {
-    session,
-    ...result,
-    child_file: childInfo.filePath
-  };
-}
-
-async function generateChildDxfTopoPocPreviewForSession({ sessionId, parameterSet, branchMode, storeRoot }) {
-  const session = await getSession({ sessionId, storeRoot });
-  const config = await persistSessionConfigParameterSet(session, parameterSet, storeRoot);
-  const materialized = materializeChildDocumentTopoPoc(session, config, { branchMode });
-  const dxfText = serializeDocument(materialized.document);
-  const resolverPreview = buildResolverMaterializedSimulation(session, config, materialized);
-  const previewId = crypto.randomUUID();
-  const previewInfo = await savePreview(session.session_id, previewId, {
-    session_id: session.session_id,
-    preview_id: previewId,
-    type: "child_topo_poc_preview",
-    config_parameter_set: config,
-    generation_summary: materialized.generation_summary,
-    resolver_preview: resolverPreview
-  }, dxfText, storeRoot || defaultRoot());
-  await registerArtifact(session.session_id, "preview_json", previewId, previewInfo.jsonPath, storeRoot || defaultRoot());
-  if (previewInfo.dxfPath) {
-    await registerArtifact(session.session_id, "preview_dxf", previewId, previewInfo.dxfPath, storeRoot || defaultRoot());
-  }
-  await appendEvent(session.session_id, {
-    type: "preview_saved",
-    details: { preview_id: previewId, mode: "child_topo_poc_preview" }
-  }, storeRoot || defaultRoot());
-  return {
-    session,
-    config_parameter_set: config,
-    generation_summary: materialized.generation_summary,
-    dxf_text: dxfText,
-    resolver_preview: resolverPreview
   };
 }
 
@@ -6865,44 +8283,18 @@ async function validateMotherDraft({ sessionId, storeRoot }) {
   return { session, validation };
 }
 
-async function exportMotherDraft({ sessionId, storeRoot }) {
-  const session = await getSession({ sessionId, storeRoot });
-  const validation = validateSession(session);
-  if (!validation.ok) {
-    const err = new Error("Mother draft validation failed.");
-    err.validation = validation;
-    throw err;
-  }
-  const outputDocument = materializeDocumentForExport(session);
-  const dxfText = serializeDocument(outputDocument);
-  const exportInfo = await saveExport({
-    rootDir: storeRoot || defaultRoot(),
-    sessionId,
-    dxfText
-  });
-  await saveMotherJson(sessionId, session.document, storeRoot || defaultRoot());
-  await registerArtifact(sessionId, "mother_dxf", sessionId + "_mother", exportInfo.artifactPath || exportInfo.filePath, storeRoot || defaultRoot());
-  await registerArtifact(sessionId, "mother_export", sessionId + "_mother_export", exportInfo.filePath, storeRoot || defaultRoot());
-  await appendEvent(sessionId, {
-    type: "mother_export_artifacts_saved",
-    details: { export_file: exportInfo.filePath, artifact_file: exportInfo.artifactPath || null }
-  }, storeRoot || defaultRoot());
-  return {
-    validation,
-    dxf_text: dxfText,
-    export_file: exportInfo.filePath
-  };
-}
-
 module.exports = {
   use_case: "mother_dxf_v1",
   createSession,
+  createContextDraftSession,
+  lockSessionContext,
+  resetSessionContext,
+  computeGeometryContext,
+  validateDomainContext,
   getSession,
   listSessionSummaries,
   assignPrimaryLayer,
-  updateBands,
   updateConfigParameterSet,
-  resetConfigParameterSetFromCatalog,
   updateLabelDefinition,
   clearLabelDefinition,
   buildDefaultConfigFromParameterCatalog,
@@ -6915,17 +8307,14 @@ module.exports = {
   authorSemanticMetadata,
   clearSemanticMetadata,
   updateEntityXdataMetadata,
-  simulateSession,
+  generateResolverPreview,
+  generateResolverChild,
+  generateResolverExport,
   runKskrExecutionCheck,
   generateCoreShellFourBandShadowChildDxf,
-  generateCoreShellFourBandShadowChildDxfForSession,
   generateChildDxfNoTopo,
-  generateChildDxfNoTopoForSession,
   generateChildDxfTopoPoc,
-  generateChildDxfTopoPocForSession,
-  generateChildDxfTopoPocPreviewForSession,
   validateMotherDraft,
-  exportMotherDraft,
   projectViewModel,
   serializeCurrentMotherDraft,
   serializeDocument,

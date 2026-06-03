@@ -1018,8 +1018,8 @@ Current branch convention:
 - selected branch geometry is normalized to bbox minimum `X=0`, `Y=0` during
   child materialization
 
-For current catalog behavior, `TIP_VRATA=ECO` selects the `ECO` branch. Other
-non-empty `TIP_VRATA` values select implicit `BASE` unless an explicit non-ALL
+For current catalog behavior, `MODEL_VRATA=ECO` selects the `ECO` branch. Other
+non-empty `MODEL_VRATA` values select implicit `BASE` unless an explicit non-ALL
 branch mode is supplied by a diagnostic/authoring call.
 
 Validation target:
@@ -1407,7 +1407,7 @@ Execution meaning:
 - `Lijeva (SX)` and `Inverzna lijeva (INV SX)` mirror around the explicit catalog axis: X for unstacked parts and Y for stacked parts
 - after mirror, child geometry is normalized so final bbox starts at `minX=0`, `minY=0`
 - Mother DXF preview emits `MISSING_FINAL_ORIENTATION_RULE` when `STRANA_OTVARANJA` and part scope match one of these rules but the document has no explicit active `rule_ref` for it
-- TIP_VRATA drives geometry branch selection for BASE/ECO resolver preview: `ECO` selects ECO branch; other non-empty values select BASE branch unless an explicit non-ALL branch mode is supplied
+- MODEL_VRATA drives geometry branch selection for BASE/ECO resolver preview: `ECO` selects ECO branch; other non-empty values select BASE branch unless an explicit non-ALL branch mode is supplied
 - `topology_mode=none` preview uses identity geometry as its base. No implicit legacy layer resize may run without explicit TOPO metadata or document rule activation.
 - diagnostic Core Shell 4-band child export must materialize the same final-oriented simulation map shown in Combined Child Preview and must not execute final orientation a second time
 - future technology-level face/back processing may extend this with an XOR-like
@@ -1433,7 +1433,7 @@ coordinates:
 
 ```text
 999
-RULE:stage=child_label;id=S4P4_LBRA_LABEL_APPLICATION;operation=apply_label;coordinate_space=raw_part;anchor_transform=through_final_child;x=1276;y=39;z=0;label_width=50;label_height=20;rotation=0;collision_policy=warn;payload_carrier=TEXT;carrier_layer=0;carrier_height=1;carrier_color=1;carrier_h_align=1;carrier_v_align=2;payload_template=;|{{WORKORDERCODE}}|{{TIP_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}};payload_field_DIMENSION_SHORT=format({{SIRINA_VRATA_DIV10}}x{{VISINA_VRATA_DIV10}});payload_field_SIRINA_VRATA_DIV10=number_expr(SIRINA_VRATA/10,integer);payload_field_VISINA_VRATA_DIV10=number_expr(VISINA_VRATA/10,integer);payload_field_OPENING_SIDE_SHORT=map(STRANA_OTVARANJA:{Desna (DX)=D,Lijeva (SX)=L,Inverzna desna (INV DX)=D,Inverzna lijeva (INV SX)=L})
+RULE:stage=child_label;id=S4P4_LBRA_LABEL_APPLICATION;operation=apply_label;coordinate_space=raw_part;anchor_transform=through_final_child;x=1276;y=39;z=0;label_width=50;label_height=20;rotation=0;collision_policy=warn;payload_carrier=TEXT;carrier_layer=0;carrier_height=1;carrier_color=1;carrier_h_align=1;carrier_v_align=2;payload_template=;|{{WORKORDERCODE}}|{{MODEL_VRATA}}|{{SOURCE_REFERENCE}}|{{DIMENSION_SHORT}}|{{OPENING_SIDE_SHORT}};payload_field_DIMENSION_SHORT=format({{SIRINA_VRATA_DIV10}}x{{VISINA_VRATA_DIV10}});payload_field_SIRINA_VRATA_DIV10=number_expr(SIRINA_VRATA/10,integer);payload_field_VISINA_VRATA_DIV10=number_expr(VISINA_VRATA/10,integer);payload_field_OPENING_SIDE_SHORT=map(STRANA_OTVARANJA:{Desna (DX)=D,Lijeva (SX)=L,Inverzna desna (INV DX)=D,Inverzna lijeva (INV SX)=L})
 ```
 
 The resolver must treat `coordinate_space=raw_part` as an anchor that follows
@@ -1490,9 +1490,9 @@ Payload resolver policy:
 
 - direct placeholders resolve from merged context in this order: DBR batch row overrides document-level `999`, which overrides config parameter set
 - `WORKORDERCODE` and `SOURCE_REFERENCE` are expected from DBR/document metadata context
-- `TIP_VRATA`, `SIRINA_VRATA`, `VISINA_VRATA`, and `STRANA_OTVARANJA` are expected from configurator/catalog context unless DBR provides an override
+- `MODEL_VRATA` (legacy alias `TIP_VRATA`), `SIRINA_VRATA`, `VISINA_VRATA`, `VISINA_EFF`, and `STRANA_OTVARANJA` are expected from configurator/catalog context unless DBR provides an override
 - `DIMENSION_SHORT` formats width/height in decimeters as `SIRINA_VRATA/10` + `x` + `VISINA_VRATA/10`
-- `SKRACENJE` is not part of the current production-tested label payload unless a future rule explicitly adds it
+- `SKRACENJE` is not part of the current production-tested label payload unless a future rule explicitly adds it; `VISINA_EFF` is available as a derived payload parameter for downstream DBR usage
 - `OPENING_SIDE_SHORT` must be mapped from controlled enum values; it must not use naive first-letter extraction because inverse values start with `Inverzna`
 
 Planned child generation order becomes:
@@ -1556,7 +1556,7 @@ Current MXD rule example:
 
 - `MXD_LAYER_B_OFFSET_9P5`
   - `profile_scope = MXD`
-  - condition: `TIP_VRATA IN [Europa, EuroMax]`
+  - condition: `MODEL_VRATA IN [Europa, EuroMax]`
   - target scope: `Layer B`
   - action: `offset Y +9.5 mm`
   - post repair: `bounded local trim/rejoin`

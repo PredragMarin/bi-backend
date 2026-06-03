@@ -30,9 +30,25 @@ function createMotherDxfRouterV1() {
     }
   });
 
+  router.post("/sessions/context", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.createContextDraftSession({
+        context: req.body?.session_context_v1 || req.body?.context || {}
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_CREATE_CONTEXT_SESSION_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
   router.post("/sessions", async (req, res) => {
     try {
       const result = await motherDxfRuntime.createSession({
+        sessionId: req.body?.session_id ? String(req.body.session_id) : null,
+        sessionContext: req.body?.session_context_v1 || null,
         dxfText: String(req.body?.dxf_text || ""),
         sourceName: String(req.body?.source_name || "mother_dxf_input.dxf"),
         bands: req.body?.bands || {},
@@ -43,8 +59,44 @@ function createMotherDxfRouterV1() {
         session_action: result.action || "created_new"
       });
     } catch (err) {
+      if (err && err.code === "DOMAIN_CONTEXT_REQUIRED") {
+        return res.status(400).json({
+          error: "DOMAIN_CONTEXT_REQUIRED",
+          message: "Raw DXF upload is not allowed before session context is locked."
+        });
+      }
       res.status(400).json({
         error: "MOTHER_DXF_CREATE_SESSION_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/context/lock", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.lockSessionContext({
+        sessionId: String(req.params.sessionId || ""),
+        context: req.body?.session_context_v1 || req.body?.context || {}
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: err && err.code ? err.code : "MOTHER_DXF_LOCK_CONTEXT_FAILED",
+        message: err && err.message ? err.message : String(err),
+        validation: err && err.validation ? err.validation : null
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/context/reset", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.resetSessionContext({
+        sessionId: String(req.params.sessionId || "")
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_RESET_CONTEXT_FAILED",
         message: err && err.message ? err.message : String(err)
       });
     }
@@ -64,16 +116,58 @@ function createMotherDxfRouterV1() {
     }
   });
 
-  router.post("/sessions/:sessionId/bands", async (req, res) => {
+  router.post("/sessions/:sessionId/compute-geometry", async (req, res) => {
     try {
-      const session = await motherDxfRuntime.updateBands({
+      const result = await motherDxfRuntime.computeGeometryContext({
         sessionId: String(req.params.sessionId || ""),
-        bands: req.body?.bands || {}
+        bands: req.body?.bands || null
       });
-      res.json(buildSessionResponse(session));
+      res.json({
+        ...buildSessionResponse(result.session),
+        geometry_validation_v1: result.validation,
+        geometry_context_v1: result.validation.geometry_context_v1,
+        geometry_slot_model: result.validation.geometry_slot_model,
+        validation_summary: {
+          ok: result.validation.ok,
+          status: result.validation.status,
+          blocking_error_count: result.validation.blocking_error_count,
+          warning_count: result.validation.warning_count,
+          slot_count: result.validation.slot_count,
+          global_spans_multiple_slots: result.validation.global_spans_multiple_slots
+        },
+        validation_errors: result.validation.errors,
+        validation_warnings: result.validation.warnings
+      });
     } catch (err) {
       res.status(400).json({
-        error: "MOTHER_DXF_UPDATE_BANDS_FAILED",
+        error: "MOTHER_DXF_COMPUTE_GEOMETRY_FAILED",
+        message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/validate-domain", async (req, res) => {
+    try {
+      const result = await motherDxfRuntime.validateDomainContext({
+        sessionId: String(req.params.sessionId || "")
+      });
+      res.json({
+        ...buildSessionResponse(result.session),
+        domain_validation_v1: result.validation,
+        sem_evidence: result.validation.sem_evidence,
+        xdata_evidence: result.validation.xdata_evidence,
+        validation_summary: {
+          ok: result.validation.ok,
+          status: result.validation.status,
+          blocking_error_count: result.validation.blocking_error_count,
+          warning_count: result.validation.warning_count
+        },
+        validation_errors: result.validation.errors,
+        validation_warnings: result.validation.warnings
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: "MOTHER_DXF_VALIDATE_DOMAIN_FAILED",
         message: err && err.message ? err.message : String(err)
       });
     }
@@ -90,36 +184,6 @@ function createMotherDxfRouterV1() {
     } catch (err) {
       res.status(400).json({
         error: "MOTHER_DXF_ASSIGN_FAILED",
-        message: err && err.message ? err.message : String(err)
-      });
-    }
-  });
-
-  router.post("/sessions/:sessionId/config", async (req, res) => {
-    try {
-      const session = await motherDxfRuntime.updateConfigParameterSet({
-        sessionId: String(req.params.sessionId || ""),
-        configParameterSet: req.body?.config_parameter_set || {}
-      });
-      res.json(buildSessionResponse(session));
-    } catch (err) {
-      res.status(400).json({
-        error: "MOTHER_DXF_UPDATE_CONFIG_FAILED",
-        message: err && err.message ? err.message : String(err)
-      });
-    }
-  });
-
-  router.post("/sessions/:sessionId/config/reset-from-catalog", async (req, res) => {
-    try {
-      const session = await motherDxfRuntime.resetConfigParameterSetFromCatalog({
-        sessionId: String(req.params.sessionId || ""),
-        context: req.body?.context || {}
-      });
-      res.json(buildSessionResponse(session));
-    } catch (err) {
-      res.status(400).json({
-        error: "MOTHER_DXF_RESET_CONFIG_FROM_CATALOG_FAILED",
         message: err && err.message ? err.message : String(err)
       });
     }
@@ -206,20 +270,63 @@ function createMotherDxfRouterV1() {
     }
   });
 
-  router.post("/sessions/:sessionId/simulate", async (req, res) => {
+  router.post("/sessions/:sessionId/resolver/preview", async (req, res) => {
     try {
-      const result = await motherDxfRuntime.simulateSession({
-        sessionId: String(req.params.sessionId || ""),
-        configParameterSet: req.body?.config_parameter_set || null
+      const result = await motherDxfRuntime.generateResolverPreview({
+        sessionId: String(req.params.sessionId || "")
       });
       res.json({
         ...buildSessionResponse(result.session),
-        simulation: result.simulation
+        resolver_input_v1_minimal: result.resolver_input_v1_minimal,
+        resolver_output_v1: result.resolver_output_v1
       });
     } catch (err) {
       res.status(400).json({
-        error: "MOTHER_DXF_SIMULATE_FAILED",
-        message: err && err.message ? err.message : String(err)
+        error: err && err.code ? err.code : "MOTHER_DXF_RESOLVER_PREVIEW_FAILED",
+        message: err && err.message ? err.message : String(err),
+        validation: err && err.validation ? err.validation : null
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/resolver/child", async (req, res) => {
+    try {
+      const result = await motherDxfRuntime.generateResolverChild({
+        sessionId: String(req.params.sessionId || "")
+      });
+      res.json({
+        ...buildSessionResponse(result.session),
+        dxf_text: result.dxf_text,
+        child_artifact: result.child_artifact,
+        wysiwyg_gate_v1: result.wysiwyg_gate_v1,
+        artifact_lineage_v1: result.artifact_lineage_v1
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: err && err.code ? err.code : "MOTHER_DXF_RESOLVER_CHILD_FAILED",
+        message: err && err.message ? err.message : String(err),
+        validation: err && err.validation ? err.validation : null
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/resolver/export", async (req, res) => {
+    try {
+      const result = await motherDxfRuntime.generateResolverExport({
+        sessionId: String(req.params.sessionId || "")
+      });
+      res.json({
+        ...buildSessionResponse(result.session),
+        dxf_text: result.dxf_text,
+        export_artifact: result.export_artifact,
+        wysiwyg_gate_v1: result.wysiwyg_gate_v1,
+        artifact_lineage_v1: result.artifact_lineage_v1
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: err && err.code ? err.code : "MOTHER_DXF_RESOLVER_EXPORT_FAILED",
+        message: err && err.message ? err.message : String(err),
+        validation: err && err.validation ? err.validation : null
       });
     }
   });
@@ -238,120 +345,6 @@ function createMotherDxfRouterV1() {
     } catch (err) {
       res.status(400).json({
         error: "MOTHER_DXF_KSKR_EXECUTION_CHECK_FAILED",
-        message: err && err.message ? err.message : String(err)
-      });
-    }
-  });
-
-  router.post("/sessions/:sessionId/child/core-shell-shadow", async (req, res) => {
-    try {
-      const parameterSet = req.body?.config_parameter_set || req.body || {};
-      const result = await motherDxfRuntime.generateCoreShellFourBandShadowChildDxfForSession({
-        sessionId: String(req.params.sessionId || ""),
-        parameterSet
-      });
-      const summary = result.generation_summary || {};
-      res.setHeader("X-Mother-DXF-Artifact-State", String(result.session?.artifact_state || ""));
-      res.setHeader("X-Mother-DXF-Session-Status", String(result.session?.status || ""));
-      res.setHeader("X-Mother-DXF-Production-Safe", "false");
-      res.setHeader("X-Mother-DXF-Diagnostic-Only", "true");
-      res.setHeader("Content-Type", "application/dxf; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="${req.params.sessionId}_core_shell_4_band_shadow_child.dxf"`);
-      res.setHeader("X-Mother-DXF-Child-Mode", String(summary.mode || "core_shell_4_band_shadow_child_dxf_v0"));
-      res.setHeader("X-Mother-DXF-Included-Count", String(summary.included_count ?? ""));
-      res.setHeader("X-Mother-DXF-Excluded-Count", String(summary.excluded_count ?? ""));
-      res.setHeader("X-Mother-DXF-Updated-Entity-Count", String(summary.updated_entity_count ?? ""));
-      res.setHeader("X-Mother-DXF-Removed-Entity-Count", String(summary.removed_entity_count ?? ""));
-      res.send(result.dxf_text);
-    } catch (err) {
-      res.status(400).json({
-        error: "MOTHER_DXF_CORE_SHELL_SHADOW_CHILD_FAILED",
-        message: err && err.message ? err.message : String(err)
-      });
-    }
-  });
-
-  router.post("/sessions/:sessionId/child/no-topo", async (req, res) => {
-    try {
-      const parameterSet = req.body?.config_parameter_set || req.body || {};
-      const result = await motherDxfRuntime.generateChildDxfNoTopoForSession({
-        sessionId: String(req.params.sessionId || ""),
-        parameterSet
-      });
-      const summary = result.generation_summary || {};
-      const artifactState = String(result.session?.artifact_state || "");
-      const sessionStatus = String(result.session?.status || "");
-      const productionSafe = artifactState === "mother_validated" || sessionStatus === "in_review";
-      res.setHeader("X-Mother-DXF-Artifact-State", artifactState);
-      res.setHeader("X-Mother-DXF-Session-Status", sessionStatus);
-      res.setHeader("X-Mother-DXF-Production-Safe", productionSafe ? "true" : "false");
-      res.setHeader("Content-Type", "application/dxf; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="${req.params.sessionId}_child_no_topo.dxf"`);
-      res.setHeader("X-Mother-DXF-Child-Mode", String(summary.mode || "child_no_topo_poc_v0"));
-      res.setHeader("X-Mother-DXF-Included-Count", String(summary.included_count ?? ""));
-      res.setHeader("X-Mother-DXF-Excluded-Count", String(summary.excluded_count ?? ""));
-      res.setHeader("X-Mother-DXF-Unsupported-Geometry-Ops", String((summary.unsupported_geometry_ops || []).length));
-      res.send(result.dxf_text);
-    } catch (err) {
-      res.status(400).json({
-        error: "MOTHER_DXF_CHILD_NO_TOPO_FAILED",
-        message: err && err.message ? err.message : String(err)
-      });
-    }
-  });
-
-  router.post("/sessions/:sessionId/child/topo-poc", async (req, res) => {
-    try {
-      const parameterSet = req.body?.config_parameter_set || req.body || {};
-      const branchMode = String(req.body?.branch_mode || "ALL").trim() || "ALL";
-      const result = await motherDxfRuntime.generateChildDxfTopoPocForSession({
-        sessionId: String(req.params.sessionId || ""),
-        parameterSet,
-        branchMode
-      });
-      const summary = result.generation_summary || {};
-      const artifactState = String(result.session?.artifact_state || "");
-      const sessionStatus = String(result.session?.status || "");
-      const productionSafe = artifactState === "mother_validated" || sessionStatus === "in_review";
-      res.setHeader("X-Mother-DXF-Artifact-State", artifactState);
-      res.setHeader("X-Mother-DXF-Session-Status", sessionStatus);
-      res.setHeader("X-Mother-DXF-Production-Safe", productionSafe ? "true" : "false");
-      res.setHeader("Content-Type", "application/dxf; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="${req.params.sessionId}_child_topo_poc.dxf"`);
-      res.setHeader("X-Mother-DXF-Child-Mode", String(summary.mode || "child_topo_poc_v0"));
-      res.setHeader("X-Mother-DXF-Included-Count", String(summary.included_count ?? ""));
-      res.setHeader("X-Mother-DXF-Excluded-Count", String(summary.excluded_count ?? ""));
-      res.setHeader("X-Mother-DXF-Moved-Count", String(summary.moved_count ?? ""));
-      res.setHeader("X-Mother-DXF-Topo-Delta", String(summary.delta ?? ""));
-      res.setHeader("X-Mother-DXF-Trim-Policy-Status", String(summary.trim_policy_status || ""));
-      res.send(result.dxf_text);
-    } catch (err) {
-      res.status(400).json({
-        error: "MOTHER_DXF_CHILD_TOPO_POC_FAILED",
-        message: err && err.message ? err.message : String(err)
-      });
-    }
-  });
-
-  router.post("/sessions/:sessionId/child/topo-poc/preview", async (req, res) => {
-    try {
-      const parameterSet = req.body?.config_parameter_set || req.body || {};
-      const branchMode = String(req.body?.branch_mode || "ALL").trim() || "ALL";
-      const result = await motherDxfRuntime.generateChildDxfTopoPocPreviewForSession({
-        sessionId: String(req.params.sessionId || ""),
-        parameterSet,
-        branchMode
-      });
-      res.json({
-        ok: true,
-        session: motherDxfRuntime.projectViewModel(result.session),
-        generation_summary: result.generation_summary,
-        simulation: result.resolver_preview,
-        resolver_preview: result.resolver_preview
-      });
-    } catch (err) {
-      res.status(400).json({
-        error: "MOTHER_DXF_CHILD_TOPO_POC_PREVIEW_FAILED",
         message: err && err.message ? err.message : String(err)
       });
     }
@@ -495,24 +488,6 @@ function createMotherDxfRouterV1() {
       res.status(400).json({
         error: "MOTHER_DXF_VALIDATE_FAILED",
         message: err && err.message ? err.message : String(err)
-      });
-    }
-  });
-
-  router.get("/sessions/:sessionId/export", async (req, res) => {
-    try {
-      const result = await motherDxfRuntime.exportMotherDraft({
-        sessionId: String(req.params.sessionId || "")
-      });
-      res.setHeader("Content-Type", "application/dxf; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="${req.params.sessionId}_mother.dxf"`);
-      res.send(result.dxf_text);
-    } catch (err) {
-      const validation = err && err.validation ? err.validation : null;
-      res.status(400).json({
-        error: "MOTHER_DXF_EXPORT_FAILED",
-        message: err && err.message ? err.message : String(err),
-        validation
       });
     }
   });

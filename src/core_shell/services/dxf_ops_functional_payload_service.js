@@ -130,6 +130,7 @@ function parseCsvToJson(csvString) {
 function buildConfiguratorData(parsedCsv) {
   const width = parseDimension(parsedCsv.WIDTH);
   const height = parseDimension(parsedCsv.HEIGHT);
+  const shortening = parseDimension(parsedCsv.SKRACENJE) ?? parsedCsv.SKRACENJE;
   const segmentWidth = parseRange(parsedCsv.SEGMENT_SIRINE);
   const segmentHeight = parseRange(parsedCsv.SEGMENT_VISINE);
 
@@ -138,11 +139,16 @@ function buildConfiguratorData(parsedCsv) {
   if (!segmentWidth) throw new Error(`Invalid SEGMENT_SIRINE: ${parsedCsv.SEGMENT_SIRINE}`);
   if (!segmentHeight) throw new Error(`Invalid SEGMENT_VISINE: ${parsedCsv.SEGMENT_VISINE}`);
 
+  const effectiveHeight = Number.isFinite(height) && Number.isFinite(shortening)
+    ? height + shortening
+    : height;
+
   return {
     SIRINA_VRATA: width,
-    SKRACENJE: parseDimension(parsedCsv.SKRACENJE) ?? parsedCsv.SKRACENJE,
+    SKRACENJE: shortening,
     VANJSKI_PANEL: parsedCsv.VANJSKI_PANEL,
-    MODEL_VRATA: parsedCsv.MODEL_CODE,
+    KONF_ID: parsedCsv.MODEL_CODE,
+    MODEL_VRATA: parsedCsv.MODEL_NAME,
     TIP_VRATA: parsedCsv.MODEL_NAME,
     STRANA_OTVARANJA: parsedCsv.STRANA,
     BRAVA: parsedCsv.BRAVA,
@@ -164,7 +170,8 @@ function buildConfiguratorData(parsedCsv) {
     VANJSKA_VRATA: parsedCsv.VANJSKA_VRATA,
     SEGMENT_SIRINE: segmentWidth,
     SEGMENT_VISINE: segmentHeight,
-    VISINA_VRATA: height
+    VISINA_VRATA: height,
+    VISINA_EFF: effectiveHeight
   };
 }
 
