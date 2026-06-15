@@ -2,6 +2,7 @@
 
 const fs = require("fs/promises");
 const path = require("path");
+const { resolveSessionStorageKey } = require("../session/session_locator");
 
 function defaultRoot() {
   return path.join("out", "mother_dxf_v1");
@@ -13,10 +14,11 @@ function defaultRoot() {
  * out/mother_dxf_v1/children/<session_id>_<suffix>/child_metadata.json
  */
 async function writeChildMetadata(sessionId, suffix, metadata, rootDir) {
+  const storageKey = await resolveSessionStorageKey(sessionId, rootDir);
   const dir = path.join(
     rootDir || defaultRoot(),
     "children",
-    String(sessionId) + "_" + String(suffix)
+    storageKey + "_" + String(suffix)
   );
 
   const filePath = path.join(dir, "child_metadata.json");

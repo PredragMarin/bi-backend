@@ -51,6 +51,8 @@ function createMotherDxfRouterV1() {
         sessionContext: req.body?.session_context_v1 || null,
         dxfText: String(req.body?.dxf_text || ""),
         sourceName: String(req.body?.source_name || "mother_dxf_input.dxf"),
+        rawSourceName: String(req.body?.raw_source_name || ""),
+        title: req.body?.title == null ? null : String(req.body.title),
         bands: req.body?.bands || {},
         forceRefresh: req.body?.force_refresh === true
       });
@@ -120,7 +122,8 @@ function createMotherDxfRouterV1() {
     try {
       const result = await motherDxfRuntime.computeGeometryContext({
         sessionId: String(req.params.sessionId || ""),
-        bands: req.body?.bands || null
+        bands: req.body?.bands || null,
+        geometryStrategy: req.body?.geometry_strategy
       });
       res.json({
         ...buildSessionResponse(result.session),
@@ -142,6 +145,23 @@ function createMotherDxfRouterV1() {
       res.status(400).json({
         error: "MOTHER_DXF_COMPUTE_GEOMETRY_FAILED",
         message: err && err.message ? err.message : String(err)
+      });
+    }
+  });
+
+  router.post("/sessions/:sessionId/config", async (req, res) => {
+    try {
+      const session = await motherDxfRuntime.updateConfigParameterSet({
+        sessionId: String(req.params.sessionId || ""),
+        configParameterSet: req.body?.config_parameter_set || req.body?.config || req.body || {},
+        executionIntentAuthoringV1: req.body?.execution_intent_authoring_v1
+      });
+      res.json(buildSessionResponse(session));
+    } catch (err) {
+      res.status(400).json({
+        error: err && err.code ? err.code : "MOTHER_DXF_UPDATE_CONFIG_FAILED",
+        message: err && err.message ? err.message : String(err),
+        validation: err && err.validation ? err.validation : null
       });
     }
   });
@@ -194,6 +214,8 @@ function createMotherDxfRouterV1() {
       const session = await motherDxfRuntime.updateDocumentSemMetadata({
         sessionId: String(req.params.sessionId || ""),
         payload: {
+          nominal_dimensions: req.body?.nominal_dimensions,
+          nominal_length: req.body?.nominal_length,
           nominal_width: req.body?.nominal_width,
           nominal_height: req.body?.nominal_height,
           family: req.body?.family,
@@ -278,7 +300,8 @@ function createMotherDxfRouterV1() {
       res.json({
         ...buildSessionResponse(result.session),
         resolver_input_v1_minimal: result.resolver_input_v1_minimal,
-        resolver_output_v1: result.resolver_output_v1
+        resolver_output_v1: result.resolver_output_v1,
+        simulation: result.simulation
       });
     } catch (err) {
       res.status(400).json({

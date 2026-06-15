@@ -1,7 +1,6 @@
 ﻿// src/dev/db_fetch_epr.js
 const { transformDataset } = require("../../../core/validate");
 const { executeErpAllowedBatch } = require("../../../core_shell/services/erp_fetch_service");
-const { getActiveEmployeesForPeriod } = require("../../../core_shell/db/helpers/employee_registry_helper");
 const { buildSyntheticRowsFromHzzo } = require("./hzzo_ingest");
 const { resolveIngestSource } = require("../../../core/excel_shell/ingest_sources");
 
@@ -221,19 +220,15 @@ async function fetchEprDatasets({
     }
   }
 
-  const employee_registry_data = await getActiveEmployeesForPeriod(fromISO, toISO);
-
   return {
     epr_data: epr_data_merged,
     calendar,
     osebe_raw,
-    employee_registry_data,
     meta: {
       eprRows: epr_data_merged.length,
       eprRows_base: epr_data.length,
       calRows: calendar.length,
       osebeRows: osebe_raw.length,
-      employeeRegistryRows: Array.isArray(employee_registry_data) ? employee_registry_data.length : 0,
       erp_gateway: {
         request_id: requestId,
         duration_ms: dbResult.audit.duration_ms,

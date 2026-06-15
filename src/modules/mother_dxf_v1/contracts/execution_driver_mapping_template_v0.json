@@ -1,0 +1,31 @@
+{
+  "template_id": "execution_driver_mapping_template_v0",
+  "schema_version": "execution_driver_mapping_template.v0",
+  "activation_modes": [
+    "always",
+    "parameter_rule"
+  ],
+  "operators": [
+    "==",
+    "!=",
+    "IN"
+  ],
+  "examples": [
+    {
+      "slot_index": 0,
+      "activation_mode": "parameter_rule",
+      "parameter_key": "pjover",
+      "operator": "==",
+      "expected_value": "Ne",
+      "resolved_variant_key": "BASE"
+    },
+    {
+      "slot_index": 1,
+      "activation_mode": "parameter_rule",
+      "parameter_key": "pjover",
+      "operator": "==",
+      "expected_value": "Da",
+      "resolved_variant_key": "PJOVER"
+    }
+  ]
+}

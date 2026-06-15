@@ -406,6 +406,152 @@ Meanings:
 
 Slot completeness metrics are passive in Phase 1 and become blocking for slot-authoritative execution in Phase 2.
 
+
+### 9.2 9-Layer Assignment v2 (Authoring-Oriented Rule Set)
+
+Mother DXF 9-layer auto-assignment is an authoring aid, not a final execution authority.
+
+The purpose of 9-layer assignment is to provide a stable draft semantic layout for authoring, review, and later manual refinement.
+
+Rules:
+
+1. all 9-layer assignment must be computed per-slot
+2. global bbox or global 9-layer assignment is diagnostic-only and must not be authoritative for slot-aware authoring
+3. default auto-assignment for every entity is determined from the entity bbox center point:
+   - `cx = (minX + maxX) / 2`
+   - `cy = (minY + maxY) / 2`
+4. the bbox center point determines whether the draft assignment is `A`, `L`, `R`, `T`, `B`, `TL`, `TR`, `BL`, or `BR`
+5. touching a band with a single vertex, edge fragment, tangent, or partial bbox overlap is not sufficient for corner or edge assignment by itself
+6. `INSERT` and `BLOCK` entities are treated as single semantic authoring units before explode; their draft assignment is computed from the bbox center of the whole inserted block
+7. after explode, each child entity receives its own draft assignment from its own bbox center using the same per-slot rule
+8. `TL`, `TR`, `BL`, and `BR` are draft corner classifications only when the bbox center falls inside the corresponding corner band intersection
+9. manual force assignment is authoritative over draft auto-assignment and must not be silently overwritten by later auto-recompute
+10. the contract assumes that some corner refinement may intentionally happen during authoring after explode, SEM tagging, and manual review
+
+Authoring intent:
+
+- the default rule should minimize false-positive corner and edge assignments
+- large variant blocks and major feature groups should not be pulled into `T`, `L`, `R`, `B`, or corner layers only because a small protrusion touches a band
+- corner layers are expected to support precision refinement during authoring rather than aggressive early auto-classification
+
+Operational interpretation:
+
+- draft `A/L/R/T/B/TL/TR/BL/BR` assignment is a projection for authoring and diagnostics
+- final semantic correctness may still require operator review, explode, SEM enrichment, and force assignment
+- this is acceptable and expected in Mother DXF authoring workflow as long as the default rule reduces unnecessary manual correction
+
+Non-rules:
+
+- the contract does not require weighted area overlap, edge-fragment heuristics, or parent-inherited corner forcing
+- such strategies may be introduced later only as explicit approved extensions to this contract
+
+### 9.3 Variant Taxonomy for Slot and Semantic Variants
+
+Mother DXF v2 must distinguish between two different classes of variants. They are not interchangeable and must not be modeled as if they had the same execution authority.
+
+#### A. Slot Context Variants
+
+Slot context variants are the small set of domain-significant variants that select between complete geometry branches.
+
+Properties:
+
+- they map to whole-slot geometry
+- they are execution-relevant
+- they participate in `execution_intent_v1`
+- they may affect preview, child DXF generation, export, and DBR handoff
+- they must map deterministically to `variant_key` and then to `slot_index`
+
+Example for INOX `SUD / SPLO`:
+
+- `pjover = Da` -> `variant_key = PJOVER`
+- `pjover = Ne` -> `variant_key = BASE`
+
+These are slot-authoritative variants.
+
+#### B. Semantic Block Variants
+
+Semantic block variants are local in-slot alternatives that remain inside the already selected slot geometry.
+
+Properties:
+
+- they do not choose the active slot
+- they do not define `active_variant_key` for whole-part execution
+- they are expressed through block presence, SEM metadata, or equivalent authoring constructs inside the selected slot
+- they may affect local child geometry content, but they are not treated as slot-selection authority
+
+Example for INOX `SUD / SPLO`:
+
+- `ploca_alzatina` variants such as `Bez A`, `Tanka 40`, or `Debela 100`
+
+These are semantic in-slot variants.
+
+#### C. Modeling Rule
+
+The contract must prefer a small number of slot context variants and a larger number of semantic block variants when that tradeoff reduces slot explosion and keeps execution intent understandable.
+
+This means:
+
+- complete geometry branches should be represented as slot context variants
+- local feature alternatives may remain overlaid inside the slot and be activated or deactivated by semantic authoring
+- not every domain variant deserves its own slot
+
+#### D. Execution Rule
+
+Only slot context variants are allowed to directly determine:
+
+- `active_variant_key`
+- `active_slot_index`
+- slot-authoritative preview intent
+- slot-authoritative child generation intent
+
+Semantic block variants must not silently behave like slot context variants. If a semantic block variant ever needs whole-slot execution authority, that promotion must be modeled explicitly and approved as a contract change.
+
+#### E. Authoring Consequence
+
+This taxonomy intentionally accepts a tradeoff:
+
+- fewer slots
+- more local authoring density inside each slot
+
+That tradeoff is acceptable when it reduces combinatorial slot explosion and preserves a clearer execution model.
+
+### 9.4 Slot Technology Profile Awareness
+
+Mother DXF v2 must not assume that slot identity is defined only by variant semantics. A slot may also carry an explicit technology-profile meaning.
+
+Examples:
+
+- slot `0` = `BASE` geometry with technology profile `Laser`
+- slot `1` = `PJOVER` geometry with technology profile `Laser`
+- slot `2` = geometry for slot-context variant `PODLOGA` with technology profile `Router`
+
+In this model, slots may differ by one or more of the following:
+
+- whole-geometry variant meaning
+- technology profile
+- downstream manufacturing intent
+
+Rules:
+
+1. slot interpretation must support both `variant_key` and `technology_profile` as first-class slot descriptors
+2. a slot is not defined only by `base` versus `variant`; it may also represent a distinct manufacturing technology branch
+3. identical or near-identical product geometry may legally appear in multiple slots when the downstream technology profile differs
+4. technology-profile distinction does not automatically imply a new semantic product variant; it may instead represent a different manufacturing path for the same product geometry
+5. `execution_intent_v1` and future slot-authoritative resolver input must be able to select a slot using both variant context and technology-profile context when required
+
+Authoring implication:
+
+- slot-aware UI and contracts must be prepared for scenarios where two slots differ by product variant semantics and a third slot differs primarily by technology profile
+- the slot model must therefore remain general enough for both variant branching and technology branching
+
+This means future slot mapping may need to express combinations such as:
+
+- `variant_key = BASE`, `technology_profile = Laser`
+- `variant_key = PJOVER`, `technology_profile = Laser`
+- `variant_key = PODLOGA`, `technology_profile = Router`
+
+The contract accepts this as valid and expected when it reflects real manufacturing structure.
+
 ## 10. Session Lifecycle v2
 
 ### 10.1 Lifecycle States
@@ -670,6 +816,149 @@ Rules:
 Rollback invalidates all downstream readiness states after the target state.
 
 For example, rollback to `geometry_projected` invalidates `domain_validated`, `authoring_ready`, `preview_ready`, `child_ready`, and `export_ready` until they are recomputed from the new state.
+
+### 10.12 Provisional Workflow Spine
+
+Until all MXD and INOX use cases are fully validated in production authoring practice, Mother DXF v2 must treat the operator workflow as a provisional workflow spine rather than as a strictly one-way tunnel.
+
+The purpose of the provisional workflow spine is:
+
+- to preserve a clear domain-first working order
+- to allow iterative authoring and review without hidden state drift
+- to permit controlled returns to earlier phases when new domain evidence or geometry corrections appear
+- to avoid prematurely freezing an execution sequence that may still require domain-specific adjustment
+
+Canonical provisional workflow phases:
+
+1. `Context Setup`
+2. `Geometry Intake`
+3. `Execution Intent`
+4. `Semantic Authoring`
+5. `Validation & Simulation`
+6. `Delivery`
+
+Operational meanings:
+
+- `Context Setup` covers session context, selected catalogs, and expected variant policy
+- `Geometry Intake` covers raw DXF load, sanitize, slot projection, geometry context, and the mandatory raw-geometry parametrization strategy decision (`four_band_parameter_resize`, `fixed_envelope_slide`, or `static_geometry`)
+- `Execution Intent` covers slot-to-variant mapping, active variant selection, and other execution-relevant selection signals
+- upstream `MOTHERDXF` classification XDATA is discovered during `Geometry Intake` and exposed as an editable session-local `observed_xdata_hint`; the hint does not activate a slot or define a global variant key by itself
+- `Semantic Authoring` covers SEM, TOPO, labels, force assignment, and other authoring actions that enrich or refine the mother draft
+- `Validation & Simulation` covers domain validation, simulation preview, resolver preview, and WYSIWYG enforcement
+- `Delivery` covers child generation, export readiness, DBR readiness, and artifact lineage
+
+This workflow spine is authoritative for navigation and state reasoning, but it is not defined as strictly irreversible. A later phase may legitimately force a controlled return to an earlier phase when domain correctness requires it.
+
+### 10.12A Simple Path and Advanced Path Principle
+
+Mother DXF workflow is shared across programs, but it must not force trivial parts to pay the authoring cost of the most complex parts.
+
+This principle introduces two provisional workflow routes:
+
+- `Simple Path`: an auto-flow route for parts whose authoring does not require slot ambiguity resolution, explicit variant execution branching, TOPO-specific handling, or other advanced orchestration steps
+- `Advanced Path`: a full workflow route for parts whose domain structure requires slot-context variants, execution-intent decisions, TOPO handling, technology-profile branching, or other complex authoring controls
+
+`Simple Path` is intentionally defined as a provisional heuristic, not as a final ontology of simple parts. The heuristic may be refined as more real parts are authored.
+
+Current best-guess `Simple Path` heuristic:
+
+- 4-band parametric dependence only
+- optional limited `SEM` presence when it does not introduce slot-context ambiguity
+- no `TOPO` requirement
+- no slot-context variants
+- no explicit XDATA-driven variant branching
+- no technology-profile branching that requires execution-intent choice
+- no other advanced authoring procedures that materially change preview or child routing
+
+Operational consequences:
+
+- `Simple Path` parts may auto-resolve to a single `BASE`-only authoring route when evidence supports that interpretation
+- `Execution Intent` is not required as a manual step for `Simple Path` when no ambiguity exists
+- advanced panels, controls, and confirmations must remain hidden or auto-resolved for `Simple Path` whenever possible
+- `Advanced Path` must remain available whenever the observed geometry or metadata exceed the current `Simple Path` heuristic
+
+Governance note:
+
+- this principle exists to preserve ergonomics for the majority of simple parts while still supporting complex parts such as `SPLO`
+- the heuristic is domain-guided and may be revised without changing the deeper part-scoped Mother DXF concept
+
+### 10.13 Phase Return and Invalidation Matrix
+
+Mother DXF v2 must support explicit and deterministic return from later workflow phases to earlier ones when authoring actions invalidate downstream readiness.
+
+The following matrix defines the minimum return behavior.
+
+#### A. Context-affecting changes
+
+- Changing `production_program_id`, `family_id`, `product_id`, or `part_id`:
+  - returns the workflow to `Context Setup`
+  - invalidates all downstream geometry, execution intent, semantic authoring, preview, child, and export readiness
+
+- Changing `nominal_value_set_id`, `rule_set_id`, or `parameter_catalog_id`:
+  - returns the workflow to `Context Setup`
+  - preserves the conceptual product scope
+  - invalidates execution intent, preview, child, and export readiness
+  - requires downstream compatibility revalidation
+
+- Changing `expected_variant_policy`:
+  - returns the workflow to `Context Setup`
+  - invalidates any existing execution intent that no longer satisfies policy
+
+#### B. Geometry-affecting changes
+
+- Replacing raw DXF:
+  - returns the workflow to `Geometry Intake`
+  - invalidates all geometry-derived authoring, execution intent, preview, child, and export readiness
+
+- Changing band widths, fixed envelope, slot-sensitive geometry parameters, sanitize choices, or geometry hygiene-affecting inputs:
+  - returns the workflow to `Geometry Intake`
+  - requires recomputation of `geometry_context_v1`
+  - invalidates execution intent if slot shape or slot semantics may have changed
+
+- Geometry explode, merge, or other structural object changes:
+  - returns the workflow to `Geometry Intake`
+  - requires fresh geometry projection before semantic authoring is trusted again
+
+#### C. Execution-intent-affecting changes
+
+- Changing slot-to-variant mapping:
+  - returns the workflow to `Execution Intent`
+  - invalidates preview, child, and export readiness
+
+- Changing `active_variant_key`, `active_slot_index`, or equivalent execution-selection signals:
+  - returns the workflow to `Execution Intent`
+  - invalidates preview, child, and export readiness
+
+- Changing execution flags derived from nominal values, such as provisional `pjover` intent:
+  - returns the workflow to `Execution Intent`
+  - may additionally force `Validation & Simulation` rerun if rule or parameter compatibility is affected
+
+#### D. Semantic-authoring-affecting changes
+
+- Changing SEM, TOPO, labels, force layer assignments, or other semantic authoring outputs:
+  - returns the workflow to `Semantic Authoring`
+  - invalidates preview, child, and export readiness
+
+- Changing force assignment after slot-aware 9-layer authoring:
+  - must invalidate any preview or child artifact that depended on the prior assignment state
+
+#### E. Validation and simulation changes
+
+- Any blocking domain validation error discovered after authoring:
+  - returns the workflow to `Validation & Simulation`, or earlier if the cause is geometric or contextual
+  - blocks child and export promotion
+
+- Any WYSIWYG mismatch:
+  - returns the workflow to `Validation & Simulation`
+  - blocks child and export promotion until hashes and projections are aligned again
+
+#### F. Delivery invalidation
+
+- Any change that invalidates preview must also invalidate child and export readiness
+- Any change that invalidates child must also invalidate export readiness
+- Delivery phase must never remain valid when its upstream preview or execution intent is stale
+
+Return rules are part of the contract. UI, storage, and preview flows must not silently pretend that a downstream state is still valid after an upstream-invalidating change.
 
 ## 11. Session Reset Rules
 
@@ -1654,6 +1943,9 @@ GEOMETRY_VARIANT=<VALUE>
 Rules:
 
 - XDATA variant keys are evidence
+- ordered classification attributes such as `RAZINA1=INOX;RAZINA2=PLOCA;RAZINA3=MOKRA` are exposed as `observed_xdata_hint=INOX/PLOCA/MOKRA`
+- an observed hint is upstream context evidence, not a globally hardcoded feature or variant name
+- the operator may authorize a session-local mapping from the observed hint to a `variant_key`; DBR consumes the authorized mapping rather than reinterpreting the hint
 - XDATA does not override `session_context_v1`
 - XDATA does not independently activate slot execution
 - XDATA variant keys may become executable only through resolver input and resolver validation
@@ -1783,6 +2075,12 @@ Supported authoring modes:
 
 Authoring principles:
 
+- document SEM identity fields come from the locked session context, while the active parameter catalog declares the ordered nominal geometry dimensions; cross-program identity and dimension fallbacks are forbidden
+- nominal geometry dimensions describe the reference geometry authored in the Mother DXF and must not be silently copied from a production parameter set; values require operator authorization or explicit upstream evidence
+- document SEM stores nominal dimensions as a semantic map and preserves nominal_width and nominal_height only as legacy compatibility aliases
+- geometry strategy is selected and confirmed in `Geometry Context`, before Execution Intent and Metadata Authoring; Metadata Authoring must treat it as read-only session context
+- `static_geometry` is the only strategy that permits `Continue Without TOPO`; fixed-envelope and 4-band strategies require a matching file-level TOPO contract
+- program-specific TOPO groups, parameter mappings, and nominal values must never be silently inherited from another session or program
 - prefer explicit SEM metadata when intent is local, readable, and unambiguous
 - use `rule_ref` only when local SEM is no longer clear or maintainable
 - canonical SEM string is generated output of the authoring surface
@@ -2024,3 +2322,185 @@ core_shell must not import from modules
 ```
 
 All durable writes must go through Core Shell storage/I/O interfaces.
+
+## Appendix A: Strategic Principles v0
+
+These principles act as a stable strategic compass for Mother DXF evolution across MXD and INOX programs. They do not replace the contract, registry, governance, nominal sets, parameter catalogs, rules sets, or execution artifacts. They define the intended direction that keeps those artifacts convergent over time.
+
+1. One Mother DXF language
+
+Mother DXF must operate with one shared conceptual language across MXD and INOX.
+
+Shared concepts may include, but are not limited to:
+
+- slot context
+- XDATA context
+- 9-layer semantics
+- mirror semantics
+- labeling semantics
+- TOPO modes
+- preview and child execution discipline
+
+Programs may differ in feature combinations, priorities, and local constraints, but they must not drift into separate conceptual universes unless an explicit contract change approves such a split.
+
+2. Shared concepts, program-tagged application
+
+A concept may be shared while its valid application remains program-specific.
+
+This means:
+
+- MXD and INOX should reuse the same conceptual vocabulary where possible
+- actual use of a concept must still be filtered by program, family, product, and part scope
+- no feature may be assumed universal only because it first appeared in one program
+
+3. Governance is broader than rules sets
+
+`MOTHER_DXF_RULE_GOVERNANCE_v0` must remain broader than any single part rules set.
+
+Governance defines:
+
+- what kinds of rules are allowed
+- what belongs in contract versus registry versus rules set
+- severity and naming discipline
+- slot variant versus semantic variant discipline
+- technology-profile handling discipline
+
+Slim part rules sets must rely on governance rather than re-explaining the entire domain.
+
+4. Rules sets must stay slim and operational
+
+A part rules set must contain only rules that are materially relevant to:
+
+- local authoring decisions
+- preview gating
+- child generation
+- local parameter usage
+- slot and execution discipline when locally required
+
+Trivial identity facts, broad domain narrative, and already-guaranteed wizard or registry facts should stay outside slim rules sets unless they are genuinely evaluated as runtime guards.
+
+5. Parameter tree discipline
+
+Mother DXF must preserve a clear parameter-tree hierarchy.
+
+Default intended shape:
+
+- parameter catalog at program scope
+- nominal value set at family scope unless a narrower scope is genuinely required
+- slim rules set at product or part scope
+- execution intent at session or run scope
+
+New artifacts must justify any deviation from this hierarchy.
+
+6. Sparse parameter sets are legal when locally sufficient
+
+A narrower incoming parameter set is legal when missing keys are not required by the selected local child path, semantic branch, or execution mode.
+
+Therefore:
+
+- global legality and local usage must remain separate concerns
+- missing parameters are not automatically errors
+- they become errors only when an active path actually requires them
+
+7. Slot identity is multidimensional
+
+A slot must not be modeled only as `base` or `variant`.
+
+Slot identity may include:
+
+- variant meaning
+- technology profile
+- manufacturing intent
+
+This allows legitimate structures such as:
+
+- `BASE + Laser`
+- `PJOVER + Laser`
+- `PODLOGA + Router`
+
+The slot model must remain broad enough to support both variant branching and technology branching.
+
+8. Not every variant deserves a slot
+
+Mother DXF must distinguish between:
+
+- slot-context variants
+- semantic in-slot variants
+
+Slot-context variants select whole geometry branches and execution paths.
+Semantic in-slot variants remain inside the selected slot and are activated through SEM, block authoring, or similar local mechanisms.
+
+The system should prefer a small number of slot-context variants and a larger number of semantic in-slot variants when that reduces combinatorial slot explosion and keeps execution intent understandable.
+
+9. Execution intent must be explicit
+
+Preview and child generation must not depend on silent mental decisions by the operator.
+
+Whenever execution depends on choosing:
+
+- a slot
+- a variant
+- a technology profile
+
+that choice must become an explicit execution artifact rather than remain implicit in the operator's head.
+
+10. WYSIWYG outranks convenience
+
+When UI simplicity and execution truth diverge, Mother DXF must prefer WYSIWYG truth.
+
+The operator must be able to see:
+
+- what is draft projection
+- what is manual override
+- what is active execution intent
+- what preview or child state is currently valid
+
+The system must never silently present a legacy or inferred view as if it were the authoritative current state.
+
+11. Workflow is staged but revisitable
+
+Mother DXF should use staged workflow thinking, but not irreversible tunnel logic.
+
+Controlled return to earlier phases is expected whenever domain correctness requires it.
+
+The system should favor:
+
+- deterministic invalidation
+- explicit dirty-state propagation
+- clear recomputation requirements
+
+over hidden assumptions that downstream readiness is still valid.
+
+12. Convergence beats local cleverness
+
+When choosing between:
+
+- a clever local shortcut for one part
+- and a slightly slower but more convergent shared model
+
+Mother DXF should prefer the shared model unless the shortcut is explicitly approved and documented as a justified exception.
+
+13. Human authoring is part of the model
+
+Mother DXF is not required to eliminate all manual authoring.
+
+The intended balance is:
+
+- auto-assignment and presets should reduce unnecessary work
+- human refinement remains legitimate and expected
+- force assign, explode, SEM enrichment, and local review are not workflow failures when they are part of controlled authoring
+
+14. Memory is not governance
+
+Long-term correctness must not depend on whether a specific engineer, reviewer, or coding agent remembers prior reasoning.
+
+If a decision matters repeatedly, it belongs in:
+
+- contract
+- governance
+- registry
+- nominal set
+- rules set
+- execution artifact
+
+rather than in individual memory or oral tradition.

@@ -5,6 +5,11 @@ const path = require("path");
 const {
   saveSessionEnvelopeToDb
 } = require("../db/db_adapter");
+const {
+  resolveSessionStorageKey,
+  registerSessionStorageKey,
+  unregisterSessionStorageKey
+} = require("./session_locator");
 
 const SESSION_ENVELOPE_VERSION = 1;
 const PAYLOAD_REVISION_KEY = "__mother_dxf_session_revision";
@@ -13,12 +18,14 @@ function defaultRoot() {
   return path.join("out", "mother_dxf_v1");
 }
 
-function sessionEnvelopePath(rootDir, sessionId) {
-  return path.join(rootDir || defaultRoot(), "sessions", String(sessionId) + ".json");
+async function sessionEnvelopePath(rootDir, sessionId) {
+  const storageKey = await resolveSessionStorageKey(sessionId, rootDir);
+  return path.join(rootDir || defaultRoot(), "sessions", storageKey + ".json");
 }
 
-function sessionArtifactsDir(rootDir, sessionId) {
-  return path.join(rootDir || defaultRoot(), "sessions", String(sessionId));
+async function sessionArtifactsDir(rootDir, sessionId) {
+  const storageKey = await resolveSessionStorageKey(sessionId, rootDir);
+  return path.join(rootDir || defaultRoot(), "sessions", storageKey);
 }
 
 function readPayloadRevision(payload) {
@@ -121,10 +128,15 @@ async function readExistingEnvelope(sessionId, filePath) {
  * Runtime/API callers continue to receive only the legacy payload on load.
  */
 async function saveSessionEnvelope(sessionId, sessionJson, rootDir) {
-  const filePath = sessionEnvelopePath(rootDir, sessionId);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const currentStorageKey = await resolveSessionStorageKey(sessionId, rootDir);
+  const requestedStorageKey = String(sessionJson?.storage_key || currentStorageKey || sessionId);
+  const storageKey = await registerSessionStorageKey(sessionId, requestedStorageKey, rootDir);
+  const sessionsDir = path.join(rootDir || defaultRoot(), "sessions");
+  const filePath = path.join(sessionsDir, storageKey + ".json");
+  const previousFilePath = path.join(sessionsDir, currentStorageKey + ".json");
+  await fs.mkdir(sessionsDir, { recursive: true });
 
-  const existingEnvelope = await readExistingEnvelope(sessionId, filePath);
+  const existingEnvelope = await readExistingEnvelope(sessionId, previousFilePath);
   const incomingRevision = readPayloadRevision(sessionJson);
   const existingRevision = existingEnvelope ? existingEnvelope.revision : 0;
 
@@ -134,35 +146,46 @@ async function saveSessionEnvelope(sessionId, sessionJson, rootDir) {
 
   const envelope = buildSessionEnvelope(sessionId, sessionJson, existingEnvelope);
   await atomicWriteJson(filePath, envelope);
+  if (previousFilePath !== filePath) {
+    await fs.unlink(previousFilePath).catch((error) => {
+      if (!error || error.code !== "ENOENT") throw error;
+    });
+    const previousDir = path.join(sessionsDir, currentStorageKey);
+    const nextDir = path.join(sessionsDir, storageKey);
+    await fs.rename(previousDir, nextDir).catch((error) => {
+      if (!error || error.code !== "ENOENT") throw error;
+    });
+  }
   try {
     await saveSessionEnvelopeToDb(sessionId, envelope);
   } catch (_) {
     // FS remains canonical; DB sink is best-effort in A5.4.
   }
   attachPayloadRevision(sessionJson, envelope.revision);
-  return { filePath, revision: envelope.revision };
+  return { filePath, revision: envelope.revision, storageKey };
 }
 
 /**
  * Loads the canonical session envelope and returns the legacy payload for runtime compatibility.
  */
 async function loadSessionEnvelope(sessionId, rootDir) {
-  const filePath = sessionEnvelopePath(rootDir, sessionId);
+  const filePath = await sessionEnvelopePath(rootDir, sessionId);
   const content = await fs.readFile(filePath, "utf8");
   const envelope = normalizeSessionEnvelope(sessionId, JSON.parse(content));
   return extractLegacySessionFromEnvelope(envelope);
 }
 
 async function loadRawSessionEnvelope(sessionId, rootDir) {
-  const filePath = sessionEnvelopePath(rootDir, sessionId);
+  const filePath = await sessionEnvelopePath(rootDir, sessionId);
   const content = await fs.readFile(filePath, "utf8");
   return normalizeSessionEnvelope(sessionId, JSON.parse(content));
 }
 
 async function deleteSessionEnvelope(sessionId, rootDir) {
-  const filePath = sessionEnvelopePath(rootDir, sessionId);
+  const filePath = await sessionEnvelopePath(rootDir, sessionId);
   try {
     await fs.unlink(filePath);
+    await unregisterSessionStorageKey(sessionId, rootDir);
     return { filePath, deleted: true };
   } catch (err) {
     if (err && err.code === "ENOENT") {
@@ -181,13 +204,15 @@ async function listSessionEnvelopes(rootDir) {
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
     const filePath = path.join(dirPath, entry.name);
-    const sessionId = entry.name.replace(/\.json$/i, "");
+    const fileStorageKey = entry.name.replace(/\.json$/i, "");
     try {
       const text = await fs.readFile(filePath, "utf8");
-      sessions.push(extractLegacySessionFromEnvelope(normalizeSessionEnvelope(sessionId, JSON.parse(text))));
+      const parsed = JSON.parse(text);
+      const sessionId = String(parsed?.session_id || parsed?.payload?.session_id || fileStorageKey);
+      sessions.push(extractLegacySessionFromEnvelope(normalizeSessionEnvelope(sessionId, parsed)));
     } catch (err) {
       sessions.push({
-        session_id: sessionId,
+        session_id: fileStorageKey,
         status: "corrupt",
         source_name: entry.name,
         load_error: err && err.message ? err.message : String(err)
@@ -204,7 +229,7 @@ async function listSessionEnvelopes(rootDir) {
  * out/mother_dxf_v1/sessions/<session_id>/mother.json
  */
 async function saveMotherJson(sessionId, motherJson, rootDir) {
-  const filePath = path.join(sessionArtifactsDir(rootDir, sessionId), "mother.json");
+  const filePath = path.join(await sessionArtifactsDir(rootDir, sessionId), "mother.json");
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await atomicWriteJson(filePath, motherJson == null ? null : motherJson);
   return { filePath };

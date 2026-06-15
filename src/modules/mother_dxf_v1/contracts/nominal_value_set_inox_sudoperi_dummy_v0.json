@@ -1,0 +1,30 @@
+{
+  "nominal_value_set_id": "nominal_value_set_inox_sudoperi_dummy_v0",
+  "schema_version": "nominal_value_set.v0",
+  "program": "INOX",
+  "families": [
+    "SUDOPERI"
+  ],
+  "scope": {
+    "products": [
+      "SUD"
+    ],
+    "parts": [
+      "SPLO"
+    ]
+  },
+  "defaults": {
+    "technology_profile": "Laser",
+    "parameters": {
+      "model_code": "SDP",
+      "duzina": 900,
+      "sirina": 500,
+      "visina": 600,
+      "debljina_ploce": 40,
+      "pjover": "Ne",
+      "variant_key": "BASE",
+      "ploca_alzatina": "Bez A",
+      "korito_1": "340x340x200"
+    }
+  }
+}

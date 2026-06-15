@@ -1,7 +1,34 @@
 {
-  "catalog_id": "legacy_door_configurator_catalog_v0",
+  "artifact_id": "legacy_door_configurator_catalog_v0",
+  "artifact_type": "parameter_catalog",
   "schema_version": "parameter_catalog.v0",
+  "program": "MXD",
+  "families": ["VRATA"],
+  "products": ["*"],
+  "parts": ["*"],
+  "status": "draft",
+  "version_no": 0,
+  "catalog_id": "legacy_door_configurator_catalog_v0",
   "source": "legacy_table_user_supplied",
+  "metadata": {
+    "program": "MXD",
+    "document_dimensions": [
+      {
+        "semantic": "width",
+        "parameter_key": "SIRINA_VRATA",
+        "label": "Nominal door width",
+        "unit": "mm",
+        "order": 1
+      },
+      {
+        "semantic": "height",
+        "parameter_key": "VISINA_VRATA",
+        "label": "Nominal door height",
+        "unit": "mm",
+        "order": 2
+      }
+    ]
+  },
   "parameters": {
     "KONF_ID": {
       "key": "KONF_ID",

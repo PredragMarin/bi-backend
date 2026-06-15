@@ -1,0 +1,133 @@
+{
+  "registry_id": "motherfile_domain_aware_registry_v1",
+  "schema_version": "domain_aware_registry.v1",
+  "lifecycle_status": "draft",
+  "source": "mother_dxf_domain_refactor",
+  "metadata": {
+    "module": "mother_dxf_v1",
+    "purpose": "canonical_domain_scope_and_artifact_reference_manifest",
+    "notes": [
+      "This registry is the canonical domain-aware source for Mother DXF program, family, product, and part filtering.",
+      "It is not a parameter catalog and it is not a nominal value payload.",
+      "It acts as a scoped relationship manifest that connects domain nodes to allowed artifact references and allowed processing modes.",
+      "It declares allowed references, geometry modes, slot profile expectations, and semantic variant domains.",
+      "MXD and INOX share one Mother DXF conceptual language; program-specific differences are expressed as scoped configuration, not separate conceptual universes."
+    ],
+    "supporting_templates": [
+      "technology_profile_catalog_v0",
+      "slot_intent_rule_template_v0",
+      "execution_driver_mapping_template_v0"
+    ]
+  },
+  "programs": {
+    "MXD": {
+      "parameter_catalogs": [
+        "legacy_door_configurator_catalog_v0"
+      ],
+      "child_dxf_999_sets": [
+        "child_dxf_999_set_mxd_v1"
+      ],
+      "shared_concepts": [
+        "slot_context",
+        "xdata_context",
+        "nine_layer_semantics",
+        "mirror_semantics",
+        "labeling_semantics",
+        "topo_modes",
+        "preview_child_execution"
+      ],
+      "families": {
+        "VRATA": {
+          "nominal_value_sets": [
+            "nominal_value_set_mxd_v0"
+          ],
+          "products": {
+            "PPV": {
+              "parts": {
+                "LBRA": {
+                  "rule_sets": [
+                    "rule_catalog_mxd_door_v0"
+                  ],
+                  "geometry_modes": [
+                    "fixed_envelope",
+                    "four_band_parameter_resize"
+                  ],
+                  "expected_variant_keys": [],
+                  "slot_profiles": [],
+                  "semantic_variant_domains": []
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "INOX": {
+      "parameter_catalogs": [
+        "parameter_catalog_inox_v0"
+      ],
+      "child_dxf_999_sets": [
+        "child_dxf_999_set_inox_v1"
+      ],
+      "shared_concepts": [
+        "slot_context",
+        "xdata_context",
+        "nine_layer_semantics",
+        "mirror_semantics",
+        "labeling_semantics",
+        "topo_modes",
+        "preview_child_execution"
+      ],
+      "families": {
+        "SUDOPERI": {
+          "nominal_value_sets": [
+            "nominal_value_set_inox_sudoperi_dummy_v0"
+          ],
+          "products": {
+            "SUD": {
+              "parts": {
+                "SPLO": {
+                  "rule_sets": [
+                    "rule_catalog_inox_sud_splo_v0"
+                  ],
+                  "geometry_modes": [
+                    "four_band_parameter_resize",
+                    "fixed_envelope"
+                  ],
+                  "expected_variant_keys": [
+                    "BASE",
+                    "PJOVER",
+                    "PODLOGA"
+                  ],
+                  "slot_profiles": [
+                    {
+                      "slot_role": "base",
+                      "variant_key": "BASE",
+                      "technology_profile": "Laser"
+                    },
+                    {
+                      "slot_role": "variant",
+                      "variant_key": "PJOVER",
+                      "technology_profile": "Laser"
+                    },
+                    {
+                      "slot_role": "variant",
+                      "variant_key": "PODLOGA",
+                      "technology_profile": "Router"
+                    }
+                  ],
+                  "semantic_variant_domains": [
+                    {
+                      "parameter_key": "ploca_alzatina",
+                      "activation_mode": "sem_block_variant"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

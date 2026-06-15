@@ -35,6 +35,19 @@ function parseMotherXdataAttributes(value) {
     }, {});
 }
 
+function buildObservedXdataHint(attributes) {
+  const source = attributes && typeof attributes === "object" ? attributes : {};
+  const levelEntries = Object.entries(source)
+    .filter(([key, value]) => /^RAZINA\d+$/i.test(String(key || "")) && String(value || "").trim())
+    .sort(([left], [right]) => {
+      const leftLevel = Number(String(left).replace(/\D+/g, ""));
+      const rightLevel = Number(String(right).replace(/\D+/g, ""));
+      return leftLevel - rightLevel;
+    });
+  if (!levelEntries.length) return null;
+  return levelEntries.map(([, value]) => String(value).trim()).join("/");
+}
+
 function extractMotherXdataValue(entity) {
   const pairs = Array.isArray(entity?.pairs) ? entity.pairs : [];
   for (let index = 0; index < pairs.length; index += 1) {
@@ -61,10 +74,11 @@ function collectEntityXdataMetadata(entity) {
   const attributes = parseMotherXdataAttributes(value);
   const keys = Object.keys(attributes);
   const rawGeometryVariant = String(attributes.GEOMETRY_VARIANT || "").trim() || null;
+  const observedXdataHint = buildObservedXdataHint(attributes);
   let branchIssue = null;
-  if (!rawGeometryVariant) {
+  if (!rawGeometryVariant && !observedXdataHint) {
     branchIssue = "missing_geometry_variant";
-  } else if (keys.length !== 1) {
+  } else if (keys.length !== 1 && rawGeometryVariant) {
     branchIssue = "unexpected_branch_attributes";
   }
   return {
@@ -73,7 +87,11 @@ function collectEntityXdataMetadata(entity) {
     attributes,
     geometry_variant: branchIssue ? null : rawGeometryVariant,
     raw_geometry_variant: rawGeometryVariant,
-    branch_valid: !branchIssue,
+    observed_xdata_hint: observedXdataHint,
+    xdata_classification: rawGeometryVariant
+      ? (branchIssue ? "invalid_branch_variant" : "branch_variant")
+      : (observedXdataHint ? "classification_hint" : "unrecognized"),
+    branch_valid: rawGeometryVariant ? !branchIssue : (observedXdataHint ? null : false),
     branch_issue: branchIssue
   };
 }
@@ -518,11 +536,23 @@ function analyzeGeometryHygiene(document, objects) {
 function collectXdataContext(objects) {
   const sourceObjects = Array.isArray(objects) ? objects : [];
   const geometryVariants = new Set();
+  const observedXdataHints = new Map();
   let taggedObjectCount = 0;
   let baseObjectCount = 0;
   let invalidBranchXdataCount = 0;
   for (const object of sourceObjects) {
     const metadata = object?.xdata_metadata;
+    const observedHint = String(metadata?.observed_xdata_hint || "").trim();
+    if (observedHint) {
+      const current = observedXdataHints.get(observedHint) || {
+        hint: observedHint,
+        app: String(metadata?.app || MOTHER_XDATA_APP_NAME),
+        attributes: metadata?.attributes && typeof metadata.attributes === "object" ? { ...metadata.attributes } : {},
+        object_count: 0
+      };
+      current.object_count += 1;
+      observedXdataHints.set(observedHint, current);
+    }
     const geometryVariant = String(metadata?.geometry_variant || "").trim();
     if (geometryVariant) {
       geometryVariants.add(geometryVariant);
@@ -537,6 +567,7 @@ function collectXdataContext(objects) {
   }
   return {
     geometry_variants: Array.from(geometryVariants.values()).sort(),
+    observed_xdata_hints: Array.from(observedXdataHints.values()).sort((a, b) => a.hint.localeCompare(b.hint)),
     tagged_object_count: taggedObjectCount,
     base_object_count: baseObjectCount,
     invalid_branch_xdata_count: invalidBranchXdataCount
@@ -559,6 +590,7 @@ function buildSanitizeReview(document) {
 module.exports = {
   MOTHER_XDATA_APP_NAME,
   parseMotherXdataAttributes,
+  buildObservedXdataHint,
   extractMotherXdataValue,
   collectEntityXdataMetadata,
   analyzeGeometryHygiene,

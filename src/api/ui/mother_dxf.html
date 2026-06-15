@@ -300,7 +300,7 @@
             <div id="dxfUploadGateBanner" class="status" style="margin-top:10px">Please complete and lock session context before uploading DXF.</div>
             <div class="meta" style="margin-top:10px">Ovdje otvaraš postojeći session ili pokrećeš novi rad nad novim raw DXF fileom.</div>
             <div class="grid-2" style="margin-top:10px">
-              <label>Session title<input id="sessionTitle" type="text" placeholder="KSKR smoke 001" /></label>
+              <label>Current session title<input id="sessionTitle" type="text" placeholder="Session title" /></label>
               <label>Status
                 <select id="sessionStatus">
                   <option value="draft">draft</option>
@@ -324,11 +324,12 @@
             <div class="row" style="margin:0 0 10px">
               <input id="fileInput" type="file" accept=".dxf,text/plain" />
             </div>
-            <div class="row" style="margin:0 0 10px">
-              <input id="sessionSourceOverride" type="text" placeholder="Working name / source override (e.g. SBRA_MJ)" />
-            </div>
+            <label style="display:block;margin:0 0 10px">Session name
+              <input id="sessionSourceOverride" type="text" placeholder="Select raw DXF to generate a name proposal" />
+            </label>
+            <div id="sessionNameHint" class="meta" style="margin:0 0 10px">Session name will be proposed from the raw DXF filename and can be edited before creation.</div>
             <div class="toolbar" style="margin-top:12px">
-              <button id="startSessionBtn" type="button" disabled>Create / Refresh Working Session</button>
+              <button id="startSessionBtn" type="button" disabled>Create New Working Session</button>
             </div>
           </details>
         </div>
@@ -338,13 +339,24 @@
             <summary><strong>Geometry Context</strong></summary>
             <div id="geometryReadinessBanner" class="status" style="margin-top:10px">Geometry context has not been computed.</div>
             <div class="grid-2" style="margin-top:10px">
+              <label>Geometry parametrization strategy
+                <select id="geometryStrategy">
+                  <option value="">Select strategy</option>
+                  <option value="four_band_parameter_resize">4-band parameter resize</option>
+                  <option value="fixed_envelope_slide">fixed envelope slide</option>
+                  <option value="static_geometry">none / static geometry</option>
+                </select>
+              </label>
+              <div id="geometryStrategyMeta" class="meta" style="display:flex;align-items:end">Required raw-geometry decision. It controls the later TOPO authoring surface.</div>
+            </div>
+            <div class="grid-2" style="margin-top:10px">
               <label>Left band (mm)<input id="geometryBandLeft" type="number" value="80" min="0" step="1" /></label>
               <label>Right band (mm)<input id="geometryBandRight" type="number" value="80" min="0" step="1" /></label>
               <label>Top band (mm)<input id="geometryBandTop" type="number" value="80" min="0" step="1" /></label>
               <label>Bottom band (mm)<input id="geometryBandBottom" type="number" value="80" min="0" step="1" /></label>
             </div>
             <div class="toolbar" style="margin-top:12px">
-              <button id="computeGeometryBtn" class="warn" type="button" disabled>Apply Bands + Compute Geometry Context</button>
+              <button id="computeGeometryBtn" class="warn" type="button" disabled>Confirm Strategy + Apply Bands + Compute Geometry Context</button>
             </div>
             <div class="phase-summary" style="margin-top:10px">
               <div class="phase-summary-title">Global geometry context</div>
@@ -418,25 +430,18 @@
             <div id="documentSemMeta" class="meta" style="margin-bottom:8px">Document SEM not saved.</div>
             <div class="meta" style="margin-bottom:10px">Identity definira document contract. Document rules aktiviraju profile/product-specific ponašanja nad resolved geometry branchom; ALL je samo authoring/debug view.</div>
             <div class="meta" style="margin-bottom:8px"><strong>Identity</strong></div>
-            <div class="grid-2">
-              <label>Nominal width
-                <input id="documentSemNominalWidth" type="number" step="1" min="0" placeholder="900" />
-              </label>
-              <label>Nominal height
-                <input id="documentSemNominalHeight" type="number" step="1" min="0" placeholder="2100" />
-              </label>
-            </div>
+            <div id="documentSemDimensions" class="grid-2"><div class="meta">Dimension fields are resolved from the active parameter catalog.</div></div>
             <div class="grid-2" style="margin-top:10px">
               <label>Family
-                <input id="documentSemFamily" type="text" placeholder="VRATA" />
+                <input id="documentSemFamily" type="text" placeholder="From locked context" />
               </label>
               <label>Product
-                <input id="documentSemProduct" type="text" placeholder="PPV" />
+                <input id="documentSemProduct" type="text" placeholder="From locked context" />
               </label>
             </div>
             <div class="grid-2" style="margin-top:10px">
               <label>Part
-                <input id="documentSemPart" type="text" placeholder="LBRA" />
+                <input id="documentSemPart" type="text" placeholder="From locked context" />
               </label>
             </div>
             <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
@@ -469,17 +474,12 @@
           <div id="authoringStageMeta" class="meta" style="margin-bottom:10px">Execution order: SEM presence/variant filters define effective geometry before TOPO resolver preview.</div>
           <div id="topoStagePanel">
             <div id="topoMeta" class="meta" style="margin-bottom:8px">No active TOPO metadata.</div>
+            <div class="toolbar" style="margin-bottom:10px"><button id="openDocumentIdentityBtn" type="button" class="secondary">Open Document Identity</button></div>
             <div class="grid-2">
-              <label>Topology Family
-                <select id="topoFamily">
-                  <option value="fixed_envelope_slide">fixed envelope slide</option>
-                  <option value="four_band_parameter_resize">4-band parameter resize</option>
-                  <option value="none">none / skip topology</option>
-                </select>
+              <label>Confirmed geometry strategy
+                <input id="topoFamily" type="text" readonly />
               </label>
-              <div class="meta" id="topoFamilyMeta" style="display:flex;align-items:end">
-                Choose the topology family for this session. 4-band uses L/R/T/B mapping; fixed-envelope uses LEC/REC mover authoring.
-              </div>
+              <div class="meta" id="topoFamilyMeta" style="display:flex;align-items:end">Strategy is confirmed earlier in Geometry Context.</div>
             </div>
             <div id="topoFixedEnvelopePanel">
               <div class="grid-2" style="margin-top:10px">
@@ -487,7 +487,7 @@
                   <input id="topoMode" type="text" value="fixed_envelope_slide" readonly />
                 </label>
                 <label>Group
-                  <input id="topoGroup" type="text" value="LBRA_X_SLIDE" />
+                  <input id="topoGroup" type="text" />
                 </label>
               </div>
               <div class="grid-2" style="margin-top:10px">
@@ -551,7 +551,7 @@
                   </label>
                 </div>
                 <label style="margin-top:10px;display:block">Group reference
-                  <input id="topoEntityGroup" type="text" value="LBRA_X_SLIDE" readonly />
+                  <input id="topoEntityGroup" type="text" readonly />
                 </label>
                 <label style="margin-top:10px;display:block">Generated entity-level `999`
                   <textarea id="topoEntityInput" style="min-height:72px" readonly></textarea>
@@ -825,10 +825,27 @@
 
         <div class="card" id="cardConfigParameterSet">
           <details id="configParameterSetDetails">
-            <summary><strong>Parameter Context</strong></summary>
-            <div class="meta" style="margin:10px 0 8px">Parameter context is read-only in Mother DXF v2. Free-form JSON editing and catalog fallback reset are disabled; parameters are resolved from session_context_v1.parameter_catalog_id.</div>
+            <summary><strong>Execution Intent</strong></summary>
+            <div class="meta" style="margin:10px 0 8px">Define slot identity, activation rules, and the effective execution set used by preview, child DXF, and DBR simulation.</div>
+            <div id="executionIntentBanner" class="status" style="margin-top:10px">No execution intent resolved yet.</div>
+            <div id="executionIntentAuthoringArea" style="margin-top:10px"></div>
+            <div class="toolbar" style="margin-top:12px">
+              <button id="saveExecutionIntentBtn" class="good" type="button" disabled>Save Slot Intent</button>
+              <button id="reloadExecutionIntentBtn" class="secondary" type="button" disabled>Reload From Session</button>
+            </div>
+            <div class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">Active slots for current simulation</div>
+              <div id="executionIntentSummaryBox" class="selection"><div class="meta">No execution intent summary yet.</div></div>
+            </div>
+            <div class="phase-summary" style="margin-top:10px">
+              <div class="phase-summary-title">Suppressed slots</div>
+              <div id="executionIntentSlotSetBox" class="selection"><div class="meta">No suppressed slot set yet.</div></div>
+            </div>
             <textarea id="configInput" style="display:none" readonly></textarea>
-            <pre id="parameterContextOut">{"ok":false,"note":"No parameter context loaded yet."}</pre>
+            <details style="margin-top:10px">
+              <summary>Execution Diagnostics</summary>
+              <pre id="parameterContextOut" style="margin-top:10px">{"ok":false,"note":"No execution intent diagnostics loaded yet."}</pre>
+            </details>
           </details>
         </div>
 
@@ -865,6 +882,16 @@
             <div id="artifactLineageBanner" class="meta" style="margin:10px 0 8px">Artifact lineage incomplete — export/DBR blocked.</div>
             <div id="artifactLineageBox" class="selection" style="margin-top:10px">No artifact lineage yet.</div>
             <pre id="artifactLineageOut">{"ok":false,"note":"No artifact lineage yet."}</pre>
+          </details>
+        </div>
+
+        <div class="card" id="cardChildDxf999Enrichment">
+          <details id="childDxf999EnrichmentDetails">
+            <summary><strong>Child DXF 999 Enrichment</strong></summary>
+            <div id="childDxf999Banner" class="meta" style="margin:10px 0 8px">No child DXF 999 enrichment generated yet.</div>
+            <div id="childDxf999SummaryBox" class="selection" style="margin-top:10px">No 999 enrichment summary yet.</div>
+            <div id="childDxf999Signals" style="margin-top:10px"><div class="meta">No 999 validation signals.</div></div>
+            <pre id="childDxf999PreviewOut">{"ok":false,"note":"Generate resolver child DXF to preview 999 enrichment."}</pre>
           </details>
         </div>
 
@@ -990,7 +1017,8 @@
       microShiftAssigning: false,
       metadataEdit: {
         replaceSemanticComment: null
-      }
+      },
+      executionIntentLiveProjection: null
     };
 
     const LAYERS = ["L","R","T","B","TL","TR","BL","BR","A"];
@@ -1039,6 +1067,11 @@
     const artifactLineageBanner = document.getElementById("artifactLineageBanner");
     const artifactLineageBox = document.getElementById("artifactLineageBox");
     const artifactLineageOut = document.getElementById("artifactLineageOut");
+    const childDxf999EnrichmentDetails = document.getElementById("childDxf999EnrichmentDetails");
+    const childDxf999Banner = document.getElementById("childDxf999Banner");
+    const childDxf999SummaryBox = document.getElementById("childDxf999SummaryBox");
+    const childDxf999Signals = document.getElementById("childDxf999Signals");
+    const childDxf999PreviewOut = document.getElementById("childDxf999PreviewOut");
     const geometryHygieneMeta = document.getElementById("geometryHygieneMeta");
     const geometryHygieneList = document.getElementById("geometryHygieneList");
     const geometryHygieneOut = document.getElementById("geometryHygieneOut");
@@ -1048,11 +1081,14 @@
     const headerBadgeRow = document.getElementById("headerBadgeRow");
     const dxfInput = document.getElementById("dxfInput");
     const sessionSourceOverride = document.getElementById("sessionSourceOverride");
+    const sessionNameHint = document.getElementById("sessionNameHint");
     const sessionLifecycleStatePanel = document.getElementById("sessionLifecycleStatePanel");
     const sessionContextValidationBox = document.getElementById("sessionContextValidationBox");
     const dxfUploadGateBanner = document.getElementById("dxfUploadGateBanner");
     const geometryReadinessBanner = document.getElementById("geometryReadinessBanner");
     const computeGeometryBtn = document.getElementById("computeGeometryBtn");
+    const geometryStrategy = document.getElementById("geometryStrategy");
+    const geometryStrategyMeta = document.getElementById("geometryStrategyMeta");
     const geometryBandLeft = document.getElementById("geometryBandLeft");
     const geometryBandRight = document.getElementById("geometryBandRight");
     const geometryBandTop = document.getElementById("geometryBandTop");
@@ -1089,6 +1125,12 @@
     const jumpEntitiesSectionBtn = document.getElementById("jumpEntitiesSectionBtn");
     const configInput = document.getElementById("configInput");
     const parameterContextOut = document.getElementById("parameterContextOut");
+    const executionIntentBanner = document.getElementById("executionIntentBanner");
+    const executionIntentAuthoringArea = document.getElementById("executionIntentAuthoringArea");
+    const executionIntentSummaryBox = document.getElementById("executionIntentSummaryBox");
+    const executionIntentSlotSetBox = document.getElementById("executionIntentSlotSetBox");
+    const saveExecutionIntentBtn = document.getElementById("saveExecutionIntentBtn");
+    const reloadExecutionIntentBtn = document.getElementById("reloadExecutionIntentBtn");
     const generateChildBtn = document.getElementById("generateChildBtn");
     const generateTopoChildBtn = document.getElementById("generateTopoChildBtn");
     const generateDraftChildBtn = document.getElementById("generateDraftChildBtn");
@@ -1165,6 +1207,7 @@
     const viewerModeBadge = document.getElementById("viewerModeBadge");
     const topoInput = document.getElementById("topoInput");
     const topoMeta = document.getElementById("topoMeta");
+    const openDocumentIdentityBtn = document.getElementById("openDocumentIdentityBtn");
     const topoOut = document.getElementById("topoOut");
     const topoFamily = document.getElementById("topoFamily");
     const topoFamilyMeta = document.getElementById("topoFamilyMeta");
@@ -1221,8 +1264,7 @@
     const documentSemEditorPanel = document.getElementById("documentSemEditorPanel");
     const documentSemMeta = document.getElementById("documentSemMeta");
     const documentSemOut = document.getElementById("documentSemOut");
-    const documentSemNominalWidth = document.getElementById("documentSemNominalWidth");
-    const documentSemNominalHeight = document.getElementById("documentSemNominalHeight");
+    const documentSemDimensions = document.getElementById("documentSemDimensions");
     const documentSemFamily = document.getElementById("documentSemFamily");
     const documentSemProduct = document.getElementById("documentSemProduct");
     const documentSemPart = document.getElementById("documentSemPart");
@@ -1262,9 +1304,9 @@
           VRATA: {
             products: {
               PPV: {
-                parts: ["LBRA", "DBRA", "SPLO"],
-                nominal_sets: ["MXD_PPV_STANDARD_V1"],
-                rule_sets: ["mxd_ppv_rules_v1"],
+                parts: ["LBRA"],
+                nominal_sets: ["nominal_value_set_mxd_v0"],
+                rule_sets: ["rule_catalog_mxd_door_v0"],
                 parameter_catalogs: ["legacy_door_configurator_catalog_v0"]
               }
             }
@@ -1277,9 +1319,9 @@
             products: {
               SUD: {
                 parts: ["SPLO"],
-                nominal_sets: ["INOX_SUD_SPLO_STANDARD_V1"],
-                rule_sets: ["inox_sud_splo_rules_v1"],
-                parameter_catalogs: ["inox_sud_parameter_catalog_v1"]
+                nominal_sets: ["nominal_value_set_inox_sudoperi_dummy_v0"],
+                rule_sets: ["rule_catalog_inox_sud_splo_v0"],
+                parameter_catalogs: ["parameter_catalog_inox_v0"]
               }
             }
           }
@@ -1353,15 +1395,21 @@
       move(leftStack, [
         "cardSessionLifecycle",
         "cardInput",
-        "cardAutoSuggestion",
+        "cardGeometryContext",
+        "cardConfigParameterSet",
+        "cardDomainValidation",
         "cardSanitizeCheck",
         "cardXdataContext",
         "cardSelection",
         "cardForceAssign",
+        "cardForceXdata",
         "cardMetadataAuthoring",
         "cardLabelDefinition",
-        "cardConfigParameterSet",
-        "cardForceXdata"
+        "cardResolverPreview",
+        "cardWysiwygGate",
+        "cardArtifactLineage",
+        "cardChildDxf999Enrichment",
+        "cardAutoSuggestion"
       ]);
       move(workStack, []);
       move(viewerStack, ["cardViewer"]);
@@ -1378,6 +1426,24 @@
       forceXdataDetails.open = false;
       configParameterSetDetails.open = false;
       sessionLifecycleDetails.open = false;
+      geometryContextDetails.open = false;
+      domainValidationDetails.open = false;
+      if (step === "geometry") {
+        sanitizeCheckDetails.open = false;
+        xdataContextDetails.open = false;
+        selectionDetails.open = false;
+        metadataAuthoringDetails.open = false;
+        geometryContextDetails.open = true;
+        return;
+      }
+      if (step === "domain") {
+        sanitizeCheckDetails.open = false;
+        xdataContextDetails.open = false;
+        selectionDetails.open = false;
+        metadataAuthoringDetails.open = false;
+        domainValidationDetails.open = true;
+        return;
+      }
       if (step === "sanitize") {
         sanitizeCheckDetails.open = true;
         xdataContextDetails.open = false;
@@ -1399,12 +1465,19 @@
         metadataAuthoringDetails.open = false;
         return;
       }
+      if (step === "intent") {
+        sanitizeCheckDetails.open = false;
+        xdataContextDetails.open = false;
+        selectionDetails.open = false;
+        metadataAuthoringDetails.open = false;
+        configParameterSetDetails.open = true;
+        return;
+      }
       if (step === "metadata") {
         sanitizeCheckDetails.open = false;
         xdataContextDetails.open = false;
         selectionDetails.open = false;
         metadataAuthoringDetails.open = true;
-        configParameterSetDetails.open = true;
       }
     }
 
@@ -1440,7 +1513,11 @@
     }
 
     function currentSessionContext() {
-      return state.session?.session_context_v1 || state.contextDraft || defaultSessionContextDraft();
+      const sessionContext = state.session?.session_context_v1 || null;
+      if (sessionContext && String(sessionContext.status || "") === "context_locked" && sessionContext.validation?.ok !== false) {
+        return sessionContext;
+      }
+      return state.contextDraft || sessionContext || defaultSessionContextDraft();
     }
 
     function sessionContextLocked() {
@@ -1522,7 +1599,7 @@
 
     function syncSessionContextDraftFromSession() {
       const context = state.session?.session_context_v1 || state.contextDraft || defaultSessionContextDraft();
-      state.contextDraft = {
+      const next = {
         ...defaultSessionContextDraft(),
         ...context,
         expected_variant_policy: {
@@ -1532,6 +1609,11 @@
             : []
         }
       };
+      if (next.production_program_id === "INOX" && next.family_id === "SUDOPERI" && next.product_id === "SUD" && next.part_id === "SPLO") {
+        if (next.nominal_value_set_id === "INOX_SUD_SPLO_STANDARD_V1") next.nominal_value_set_id = "nominal_value_set_inox_sudoperi_dummy_v0";
+        if (next.parameter_catalog_id === "inox_sud_parameter_catalog_v1") next.parameter_catalog_id = "parameter_catalog_inox_v0";
+      }
+      state.contextDraft = next;
     }
 
     function renderSessionContextWizard() {
@@ -1681,6 +1763,9 @@
     }
 
     function geometryIsProjected() {
+      const confirmedStrategy = String(state.session?.geometry_strategy_v1?.mode || "").trim();
+      const selectedStrategy = String(geometryStrategy?.value || confirmedStrategy).trim();
+      if (!confirmedStrategy || selectedStrategy !== confirmedStrategy) return false;
       const lifecycle = domainLifecycleState();
       const validation = geometryValidationState();
       return ["geometry_projected", "domain_validated", "authoring_ready", "preview_ready"].includes(lifecycle) && validation && validation.ok === true;
@@ -1720,8 +1805,23 @@
       const geometryContext = state.session?.geometry_context_v1 || geometryValidation?.geometry_context_v1 || null;
       const slotModel = state.session?.geometry_slot_model || geometryValidation?.geometry_slot_model || null;
       const lifecycle = domainLifecycleState();
-      const canCompute = Boolean(state.session && sessionContextLocked() && hasLoadedRawDxf());
+      const confirmedStrategy = String(state.session?.geometry_strategy_v1?.mode || "").trim();
+      if (!geometryStrategy.value && confirmedStrategy) geometryStrategy.value = confirmedStrategy;
+      const selectedStrategy = String(geometryStrategy.value || "").trim();
+      const canEditStrategy = Boolean(state.session && sessionContextLocked() && hasLoadedRawDxf());
+      const canCompute = Boolean(canEditStrategy && selectedStrategy);
+      geometryStrategy.disabled = !canEditStrategy;
       computeGeometryBtn.disabled = !canCompute;
+      geometryStrategyMeta.textContent = selectedStrategy
+        ? "Selected: " + selectedStrategy + (selectedStrategy === confirmedStrategy ? " | confirmed" : " | confirmation pending")
+        : "Select the raw-geometry parametrization strategy before projection.";
+      computeGeometryBtn.title = canCompute
+        ? "Confirm geometry strategy, apply band widths, and project slot-aware geometry context."
+        : !state.session
+          ? "Create a session first."
+          : !sessionContextLocked()
+            ? "Lock Session Context first."
+            : hasLoadedRawDxf() ? "Select geometry parametrization strategy." : "Load raw DXF first.";
       if (!state.session) {
         geometryReadinessBanner.textContent = "No active session. Lock context and load raw DXF before geometry projection.";
         setDomainBannerTone(geometryReadinessBanner, "info");
@@ -1744,6 +1844,7 @@
       const activeBandSource = state.session?.bands ? "session" : "ui";
       globalGeometryContextBox.innerHTML = [
         '<div class="selection-item"><strong>Global bbox</strong><br>' + esc(bboxText(state.session.document_bbox)) + '</div>',
+        '<div class="selection-item"><strong>Geometry strategy</strong><br>' + esc(state.session?.geometry_strategy_v1?.mode || "not confirmed") + ' | status=' + esc(state.session?.geometry_strategy_v1?.status || "pending") + '</div>',
         '<div class="selection-item"><strong>Active band widths</strong><br>L=' + esc(bands.left) + ' | R=' + esc(bands.right) + ' | T=' + esc(bands.top) + ' | B=' + esc(bands.bottom) + ' | source=' + esc(activeBandSource) + '</div>',
         '<div class="selection-item"><strong>Authoritative slot-aware 9-layer classification</strong><br>' + esc(JSON.stringify(globalCounts)) + '</div>',
         '<div class="selection-item"><strong>geometry_context_v1</strong><br>slot_width=' + esc(geometryContext?.slot_width || "-") + ' | base_slot_index=' + esc(geometryContext?.base_slot_index ?? "-") + '</div>'
@@ -1788,11 +1889,16 @@
         setStatus("Load raw DXF before computing geometry context.", "error");
         return;
       }
-      setStatus("Computing geometry context...");
+      if (!String(geometryStrategy.value || "").trim()) {
+        setStatus("Select geometry parametrization strategy before computing geometry context.", "error");
+        return;
+      }
+      setStatus("Confirming geometry strategy and computing geometry context...");
       const data = await fetchJson('/api/mother-dxf/v1/sessions/' + state.session.session_id + '/compute-geometry', {
         method: "POST",
         body: JSON.stringify({
-          bands: bandsPayload()
+          bands: bandsPayload(),
+          geometry_strategy: String(geometryStrategy.value || "").trim()
         })
       });
       state.session = data.session;
@@ -1800,6 +1906,7 @@
       syncBandsInputFromSession();
       render();
       geometryContextDetails.open = true;
+      openWorkflowStep("intent");
       const validation = state.session.geometry_validation_v1 || data.geometry_validation_v1 || null;
       if (validation && validation.ok) {
         setStatus("Geometry context projected. slots=" + (validation.slot_count || 0) + ", warnings=" + (validation.warning_count || 0) + ".", "ok");
@@ -1976,6 +2083,7 @@
       state.session = data.session;
       if (data.resolver_output_v1) state.session.resolver_preview_v1 = data.resolver_output_v1;
       if (data.resolver_input_v1_minimal) state.session.resolver_input_v1_minimal = data.resolver_input_v1_minimal;
+      if (data.simulation) state.simulation = data.simulation;
       syncSessionContextDraftFromSession();
       render();
       resolverPreviewDetails.open = true;
@@ -2068,6 +2176,57 @@
       artifactLineageOut.textContent = JSON.stringify(lineage || { ok: false, note: "No artifact lineage yet." }, null, 2);
     }
 
+    function childDxf999EnrichmentState() {
+      return state.session?.resolver_child_v1?.child_dxf_999_enrichment_v1
+        || state.session?.resolver_child_v1?.child_metadata?.child_dxf_999_enrichment_v1
+        || null;
+    }
+
+    function renderChildDxf999EnrichmentPanel() {
+      const enrichment = childDxf999EnrichmentState();
+      if (!enrichment) {
+        childDxf999Banner.textContent = "No child DXF 999 enrichment generated yet.";
+        setDomainBannerTone(childDxf999Banner, "warn");
+        childDxf999SummaryBox.textContent = "Generate resolver child DXF to materialize program-specific 999 metadata.";
+        childDxf999Signals.innerHTML = '<div class="selection-item" style="background:#fef3c7;color:#92400e"><strong>CHILD_DXF_999_PENDING</strong><br>No 999 enrichment snapshot is available yet.</div>';
+        childDxf999PreviewOut.textContent = JSON.stringify({ ok: false, note: "Generate resolver child DXF to preview 999 enrichment." }, null, 2);
+        return;
+      }
+      const ok = enrichment?.validation?.ok !== false && !(Array.isArray(enrichment?.validation?.errors) && enrichment.validation.errors.length);
+      const fieldCount = Array.isArray(enrichment?.resolved_fields) ? enrichment.resolved_fields.length : 0;
+      const sourceCounts = new Map();
+      for (const field of Array.isArray(enrichment?.resolved_fields) ? enrichment.resolved_fields : []) {
+        const key = String(field?.source_kind || "derived");
+        sourceCounts.set(key, Number(sourceCounts.get(key) || 0) + 1);
+      }
+      const sourceSummary = Array.from(sourceCounts.entries()).map(([key, count]) => `${key}:${count}`).join(' | ') || '-';
+      childDxf999Banner.textContent = ok
+        ? `999 enrichment ready (${enrichment.metadata_set_id || '-'}).`
+        : `999 enrichment incomplete (${enrichment.metadata_set_id || '-'}).`;
+      setDomainBannerTone(childDxf999Banner, ok ? "ok" : "warn");
+      childDxf999SummaryBox.innerHTML = [
+        '<div class="selection-item"><strong>metadata_set_id</strong><br>' + esc(enrichment?.metadata_set_id || '-') + '</div>',
+        '<div class="selection-item"><strong>program_scope</strong><br>' + esc(enrichment?.program_scope || '-') + '</div>',
+        '<div class="selection-item"><strong>resolved_fields</strong><br>' + esc(String(fieldCount)) + '</div>',
+        '<div class="selection-item"><strong>inserted_lines</strong><br>' + esc(String(enrichment?.insertion?.inserted_line_count || 0)) + '</div>',
+        '<div class="selection-item"><strong>insertion</strong><br>' + esc(enrichment?.insertion?.inserted_after_first_endsec ? 'after first ENDSEC' : 'prepended fallback') + '</div>',
+        '<div class="selection-item"><strong>sources</strong><br>' + esc(sourceSummary) + '</div>'
+      ].join('');
+      const signals = (Array.isArray(enrichment?.validation?.errors) ? enrichment.validation.errors : []).concat(Array.isArray(enrichment?.validation?.warnings) ? enrichment.validation.warnings : []);
+      childDxf999Signals.innerHTML = signals.length
+        ? signals.map((item) => {
+            const isError = String(item?.code || '').includes('REQUIRED') || String(item?.code || '').includes('FAILED');
+            const bg = isError ? '#fee4e2' : '#fef3c7';
+            const color = isError ? '#b42318' : '#92400e';
+            return '<div class="selection-item" style="background:' + bg + ';color:' + color + '"><strong>' + esc(item?.code || 'CHILD_DXF_999_SIGNAL') + '</strong><br>' + esc(item?.message || '999 enrichment signal.') + '</div>';
+          }).join('')
+        : '<div class="selection-item" style="background:#dcfce7;color:#166534"><strong>CHILD_DXF_999_OK</strong><br>No blocking 999 enrichment signals.</div>';
+      const previewLines = Array.isArray(enrichment?.serialized_lines) && enrichment.serialized_lines.length
+        ? enrichment.serialized_lines.join('\n')
+        : JSON.stringify(enrichment || { ok: false, note: 'No 999 enrichment preview.' }, null, 2);
+      childDxf999PreviewOut.textContent = previewLines;
+    }
+
     async function generateResolverChildDxf() {
       if (!state.session) return;
       if (!resolverPreviewReady()) {
@@ -2086,6 +2245,7 @@
       render();
       wysiwygGateDetails.open = true;
       artifactLineageDetails.open = true;
+      childDxf999EnrichmentDetails.open = true;
       childSummaryBox.style.display = "";
       childSummaryBox.textContent = "Resolver child DXF generated: artifact=" + (data.child_artifact?.child_artifact_id || "-") + ", lifecycle=" + domainLifecycleState();
       setStatus("Resolver child DXF generated and lifecycle moved to child_ready.", "ok");
@@ -2119,10 +2279,12 @@
 
     function enforceDomainValidationGates() {
       renderGeometryContextPanel();
+      renderExecutionIntentPanel();
       renderDomainValidationPanel();
       renderResolverPreviewPanel();
       renderWysiwygGatePanel();
       renderArtifactLineagePanel();
+      renderChildDxf999EnrichmentPanel();
       const locked = sessionContextLocked();
       const valid = domainIsValidated();
       const blockDomainWork = Boolean(state.session) && !valid;
@@ -2189,7 +2351,8 @@
       domainValidationDetails.open = true;
       const validation = state.session.domain_validation_v1 || data.domain_validation_v1 || null;
       if (validation && validation.ok) {
-        setStatus(`Domain context validated. warnings=${validation.warning_count || 0}.`, "ok");
+        openWorkflowStep("sanitize");
+        setStatus(`Domain context validated. Continue with Sanitize Check. warnings=${validation.warning_count || 0}.`, "ok");
       } else {
         setStatus(`Domain context blocked. errors=${validation?.blocking_error_count || 0}, warnings=${validation?.warning_count || 0}.`, "error");
       }
@@ -2209,6 +2372,7 @@
     }
 
     function syncBandsInputFromSession() {
+      if (geometryStrategy) geometryStrategy.value = String(state.session?.geometry_strategy_v1?.mode || "").trim();
       const bands = state.session && state.session.bands ? state.session.bands : null;
       if (!bands) return;
       const leftValue = Number(bands.left ?? 80);
@@ -2231,6 +2395,51 @@
 
     function stripDxfExtension(name) {
       return String(name || "").replace(/\.[^.]+$/i, "").trim();
+    }
+
+    function normalizeSessionName(value) {
+      return stripDxfExtension(value)
+        .replace(/[\\/]+/g, "_")
+        .replace(/\s+/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_+|_+$/g, "");
+    }
+
+    function sessionNameTaken(name, ignoredSessionId = null) {
+      const normalized = normalizeSessionName(name).toLowerCase();
+      if (!normalized) return false;
+      return (state.sessionSummaries || []).some((session) => {
+        if (ignoredSessionId && String(session?.session_id || "") === String(ignoredSessionId)) return false;
+        const title = normalizeSessionName(session?.title || "").toLowerCase();
+        const source = normalizeSessionName(session?.source_name || "").toLowerCase();
+        return title === normalized || source === normalized;
+      });
+    }
+
+    function suggestAvailableSessionName(rawFileName) {
+      const base = normalizeSessionName(rawFileName) || "mother_dxf_session";
+      if (!sessionNameTaken(base)) return base;
+      let suffix = 1;
+      while (sessionNameTaken(base + "_" + suffix)) suffix += 1;
+      return base + "_" + suffix;
+    }
+
+    function renderSessionNameHint() {
+      if (!sessionNameHint) return;
+      const name = normalizeSessionName(sessionSourceOverride?.value || "");
+      const rawFile = document.getElementById("fileInput").files[0];
+      const ignoredSessionId = state.session?.artifact_state === "context_draft" || state.session?.artifact_state === "context_locked"
+        ? state.session?.session_id
+        : null;
+      if (!name) {
+        sessionNameHint.textContent = "Select raw DXF to generate a name proposal, then confirm or edit it before creation.";
+        return;
+      }
+      const collision = sessionNameTaken(name, ignoredSessionId);
+      const rawLabel = rawFile?.name || state.session?.raw_source_name || "-";
+      sessionNameHint.textContent = collision
+        ? "Name " + name + " already exists. Creating with this name requires explicit confirmation. Raw source: " + rawLabel + "."
+        : "New session: " + name + " | raw source: " + rawLabel + ". You may edit the name before Create.";
     }
 
     function humanWorkingNameFromSession(session) {
@@ -2336,7 +2545,8 @@
     }
 
     function objectBandAssignment(object) {
-      const slots = Array.isArray(state.session?.geometry_context_v1?.slots) ? state.session.geometry_context_v1.slots : [];
+      const slots = (Array.isArray(state.session?.geometry_context_v1?.slots) ? state.session.geometry_context_v1.slots : [])
+        .filter((slot) => !executionViewActive() || activeExecutionSlotIndices().includes(Number(slot?.slot_index)));
       for (const slot of slots) {
         const assignment = slot?.band_assignments?.assignments && typeof slot.band_assignments.assignments === "object"
           ? slot.band_assignments.assignments[object?.id]
@@ -2414,12 +2624,60 @@
       }
     }
 
+    function currentExecutionIntentProjection() {
+      return state.executionIntentLiveProjection || state.session?.execution_intent_v1 || null;
+    }
+
+    function refreshExecutionIntentLiveProjection() {
+      if (!state.session) {
+        state.executionIntentLiveProjection = null;
+        return null;
+      }
+      let projection = state.session.execution_intent_v1 || null;
+      try {
+        const config = state.configDirty ? buildExecutionIntentDraftConfig() : readConfigInput();
+        const slotRows = state.configDirty
+          ? buildExecutionIntentAuthoringDraftFromDom()
+          : (executionIntentProjectionSource().slot_authoring_rows || []);
+        projection = buildExecutionIntentProjectionFromConfig(config, slotRows);
+      } catch (error) {}
+      state.executionIntentLiveProjection = projection;
+      return projection;
+    }
+
+    function activeExecutionSlotIndices() {
+      const projection = currentExecutionIntentProjection();
+      const direct = Array.isArray(projection?.active_slot_indices) ? projection.active_slot_indices : [];
+      const fallback = Array.isArray(projection?.active_slot_set) ? projection.active_slot_set.map((slot) => Number(slot?.slot_index)) : [];
+      return Array.from(new Set(direct.concat(fallback).map((value) => Number(value)).filter(Number.isInteger))).sort((a, b) => a - b);
+    }
+
+    function executionViewActive() {
+      if (combinedPreviewActive()) return false;
+      const projection = currentExecutionIntentProjection();
+      const activeSlotIndices = activeExecutionSlotIndices();
+      const totalSlots = Array.isArray(state.session?.geometry_context_v1?.slots) ? state.session.geometry_context_v1.slots.length : 0;
+      const hasSlotIntent = Array.isArray(projection?.slot_authoring_rows) && projection.slot_authoring_rows.length > 0;
+      if (!hasSlotIntent || !activeSlotIndices.length || totalSlots <= 0) return false;
+      return activeSlotIndices.length < totalSlots || state.configDirty === true;
+    }
+
+    function isObjectVisibleInExecutionView(object) {
+      if (!executionViewActive()) return true;
+      const activeSlotIndices = activeExecutionSlotIndices();
+      if (!activeSlotIndices.length) return false;
+      return activeSlotIndices.includes(Number(object?.slot_index));
+    }
+
     function effectiveRenderObjects() {
       const renderObjects = state.simulation && Array.isArray(state.simulation.render_objects)
         ? state.simulation.render_objects
         : null;
       if (renderObjects && renderObjects.length) return renderObjects;
-      return state.session && Array.isArray(state.session.objects) ? state.session.objects : [];
+      const baseObjects = state.session && Array.isArray(state.session.objects) ? state.session.objects : [];
+      return executionViewActive()
+        ? baseObjects.filter((object) => isObjectVisibleInExecutionView(object))
+        : baseObjects;
     }
 
     function currentPreviewBBox() {
@@ -2820,7 +3078,8 @@
     }
 
     function currentViewerModeLabel() {
-      return combinedPreviewActive() ? "COMBINED CHILD PREVIEW" : "RAW DRAFT VIEW";
+      if (combinedPreviewActive()) return "COMBINED CHILD PREVIEW";
+      return executionViewActive() ? "EXECUTION VIEW" : "RAW DRAFT VIEW";
     }
 
     function effectiveBBoxForObject(object) {
@@ -4078,7 +4337,7 @@
         return;
       }
       if (viewerModeBadge) viewerModeBadge.textContent = currentViewerModeLabel();
-      sessionMeta.textContent = `${state.session.source_name} | ${state.session.artifact_state} | ${state.session.status} | objects ${effectiveRenderObjects().length}`;
+      sessionMeta.textContent = `${state.session.title || stripDxfExtension(state.session.source_name)} | raw ${state.session.raw_source_name || state.session.source_name} | ${state.session.artifact_state} | ${state.session.status} | objects ${effectiveRenderObjects().length}`;
       const bbox = state.session.document_bbox || null;
       const bboxWidth = bbox ? Math.max(0, (bbox.maxX || 0) - (bbox.minX || 0)) : null;
       const bboxHeight = bbox ? Math.max(0, (bbox.maxY || 0) - (bbox.minY || 0)) : null;
@@ -4115,16 +4374,6 @@
       if (!state.session || !state.session.config_parameter_set) return;
       if (state.configDirty && !force) return;
       configInput.value = JSON.stringify(state.session.config_parameter_set, null, 2);
-      if (parameterContextOut) {
-        parameterContextOut.textContent = JSON.stringify({
-          version: 1,
-          mode: "read_only",
-          parameter_catalog_id: state.session.session_context_v1?.parameter_catalog_id || state.session.config_parameter_set.parameter_catalog_id || null,
-          parameter_count: Object.keys(state.session.config_parameter_set.parameters || {}).length,
-          resolved_from: "session_context_v1.parameter_catalog_id",
-          free_form_json_editor_enabled: false
-        }, null, 2);
-      }
       state.configDirty = false;
       renderMetadataParameterOptions();
     }
@@ -4135,6 +4384,379 @@
         throw new Error("Config parameter set is empty.");
       }
       return JSON.parse(text);
+    }
+
+
+    function readExecutionIntentDriverFromConfig(config = null) {
+      const activeConfig = config || state.session?.config_parameter_set || {};
+      const parameters = activeConfig.parameters && typeof activeConfig.parameters === "object" ? activeConfig.parameters : {};
+      for (const key of ["pjover", "PJOVER"]) {
+        const value = String(parameters[key] || "").trim();
+        if (!value) continue;
+        const upper = value.toUpperCase();
+        if (["DA", "YES", "TRUE", "1"].includes(upper)) return { key, value, derived_variant_key: "PJOVER", source: "derived" };
+        if (["NE", "NO", "FALSE", "0"].includes(upper)) return { key, value, derived_variant_key: "BASE", source: "derived" };
+        return { key, value, source: "derived_unknown" };
+      }
+      for (const key of ["variant_key", "VARIANT_KEY", "GEOMETRY_VARIANT", "geometry_variant"]) {
+        const value = String(parameters[key] || "").trim();
+        if (value) return { key, value, source: "explicit" };
+      }
+      return null;
+    }
+
+    function deriveVariantKeyFromConfig(config = null) {
+      const driver = readExecutionIntentDriverFromConfig(config);
+      if (!driver) return null;
+      return String(driver.derived_variant_key || driver.value || "").trim() || null;
+    }
+
+    function executionIntentProjectionSource() {
+      return state.session?.execution_intent_v1 || {
+        discovered_slots: [],
+        slot_authoring_rows: [],
+        active_slot_set: [],
+        suppressed_slot_set: [],
+        simulation_parameters: [],
+        warnings: []
+      };
+    }
+
+    function executionIntentParameterValue(config, key) {
+      const parameters = config && config.parameters && typeof config.parameters === "object" ? config.parameters : {};
+      const rawKey = String(key || "").trim();
+      if (!rawKey) return "";
+      for (const candidate of [rawKey, rawKey.toUpperCase(), rawKey.toLowerCase()]) {
+        if (Object.prototype.hasOwnProperty.call(parameters, candidate)) return parameters[candidate];
+      }
+      return "";
+    }
+
+    function executionIntentTechnologyProfiles() {
+      const projection = executionIntentProjectionSource();
+      const values = new Set((projection.slot_authoring_rows || []).map((row) => String(row?.technology_profile || "").trim()).filter(Boolean));
+      const configValue = String(state.session?.config_parameter_set?.technology_profile || "").trim();
+      if (configValue) values.add(configValue);
+      return Array.from(values);
+    }
+
+    function executionIntentParameterCatalogItem(key) {
+      return selectedCatalogParameterByKey(String(key || "").trim()) || null;
+    }
+
+    function topologySimulationParameterKeys() {
+      const keys = new Set();
+      const runtimeKeys = state.session?.topo_metadata?.runtime_model?.keys || {};
+      for (const name of ["l_parameter", "r_parameter", "t_parameter", "b_parameter", "lec_parameter", "rec_parameter"]) {
+        const value = String(runtimeKeys[name] || "").trim();
+        if (value) keys.add(value);
+      }
+      if (activeGeometryStrategy() === "four_band_parameter_resize") {
+        [topoFourBandParameterL, topoFourBandParameterR, topoFourBandParameterT, topoFourBandParameterB].forEach((select) => {
+          const value = String(select?.value || "").trim();
+          if (value) keys.add(value);
+        });
+      } else if (activeGeometryStrategy() === "fixed_envelope_slide") {
+        [topoLecParameter, topoRecParameter].forEach((select) => {
+          const value = String(select?.value || "").trim();
+          if (value) keys.add(value);
+        });
+      }
+      return Array.from(keys);
+    }
+
+    function executionIntentParameterKeys(rows = null) {
+      const sourceRows = Array.isArray(rows) ? rows : (executionIntentProjectionSource().slot_authoring_rows || []);
+      const values = new Set(sourceRows.map((row) => String(row?.parameter_key || "").trim()).filter(Boolean));
+      const simulationParameters = Array.isArray(executionIntentProjectionSource().simulation_parameters)
+        ? executionIntentProjectionSource().simulation_parameters
+        : [];
+      simulationParameters.forEach((entry) => values.add(String(entry?.key || "").trim()));
+      topologySimulationParameterKeys().forEach((key) => values.add(key));
+      return Array.from(values).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    }
+
+    function executionIntentSelectableParameterKeys(rows = null) {
+      const values = new Set(executionIntentParameterKeys(rows));
+      currentCatalogParameters().forEach((parameter) => values.add(String(parameter.key || "").trim()));
+      return Array.from(values).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    }
+
+    function executionIntentSelectOptions(options, selectedValue, placeholder = "-") {
+      const current = String(selectedValue ?? "");
+      const values = Array.from(new Set((options || []).map((value) => String(value ?? "").trim())));
+      if (current && !values.includes(current)) values.push(current);
+      const rendered = [`<option value="">${esc(placeholder)}</option>`].concat(values.map((value) => `<option value="${esc(value)}"${value === current ? " selected" : ""}>${esc(value)}</option>`));
+      return rendered.join("");
+    }
+
+    function executionIntentInputControl(parameter, value, attrs = "") {
+      const current = value == null ? "" : String(value);
+      if (parameter && isEnumCatalogParameter(parameter)) {
+        const values = Array.isArray(parameter.values) ? parameter.values : [];
+        return `<select ${attrs}>${executionIntentSelectOptions(values, current, "Select value")}</select>`;
+      }
+      if (parameter && isNumericCatalogParameter(parameter)) {
+        const step = parameter.step != null ? ` step="${esc(String(parameter.step))}"` : "";
+        return `<input type="number" value="${esc(current)}"${step} ${attrs}>`;
+      }
+      return `<input type="text" value="${esc(current)}" ${attrs}>`;
+    }
+
+    function buildExecutionIntentAuthoringDraftFromDom() {
+      const authoringRows = executionIntentAuthoringArea
+        ? Array.from(executionIntentAuthoringArea.querySelectorAll('tr[data-exec-row="intent"][data-slot-index]'))
+        : [];
+      const activationRows = executionIntentAuthoringArea
+        ? Array.from(executionIntentAuthoringArea.querySelectorAll('tr[data-exec-row="rule"][data-slot-index]'))
+        : [];
+      const activationBySlot = new Map();
+      activationRows.forEach((row) => {
+        activationBySlot.set(Number(row.dataset.slotIndex), {
+          activation_mode: String(row.querySelector('.exec-activation-mode')?.value || 'always').trim() || 'always',
+          parameter_key: String(row.querySelector('.exec-parameter-key')?.value || '').trim(),
+          operator: String(row.querySelector('.exec-operator')?.value || '==').trim() || '==',
+          expected_value: String(row.querySelector('.exec-expected-value')?.value || '').trim(),
+          derived_meaning: String(row.querySelector('.exec-derived-meaning')?.value || '').trim()
+        });
+      });
+      const rows = authoringRows.map((row) => {
+        const slotIndex = Number(row.dataset.slotIndex);
+        const activation = activationBySlot.get(slotIndex) || {};
+        return {
+          slot_index: slotIndex,
+          slot_role: String(row.querySelector('.exec-slot-role')?.value || 'variant').trim() || 'variant',
+          variant_key: String(row.querySelector('.exec-variant-key')?.value || '').trim(),
+          technology_profile: String(row.querySelector('.exec-tech-profile')?.value || '').trim(),
+          evidence_source: String(row.querySelector('.exec-evidence-source')?.value || 'manual').trim() || 'manual',
+          observed_xdata_hint: String(row.querySelector(".exec-observed-xdata-hint")?.value || "").trim() || null,
+          note: String(row.querySelector('.exec-note')?.value || '').trim(),
+          activation_mode: String(activation.activation_mode || 'always').trim() || 'always',
+          parameter_key: String(activation.parameter_key || '').trim(),
+          operator: String(activation.operator || '==').trim() || '==',
+          expected_value: String(activation.expected_value || '').trim(),
+          derived_meaning: String(activation.derived_meaning || '').trim()
+        };
+      });
+      return rows.sort((a, b) => Number(a.slot_index) - Number(b.slot_index));
+    }
+
+    function buildExecutionIntentDraftConfig() {
+      const config = readConfigInput();
+      config.parameters = config.parameters && typeof config.parameters === "object" ? config.parameters : {};
+      const rows = buildExecutionIntentAuthoringDraftFromDom();
+      const simulationControls = executionIntentAuthoringArea ? executionIntentAuthoringArea.querySelectorAll("[data-exec-sim-key]") : [];
+      simulationControls.forEach((input) => {
+        const key = String(input.getAttribute("data-exec-sim-key") || "").trim();
+        if (!key) return;
+        config.parameters[key] = input.value;
+      });
+      const derivedVariantKey = deriveVariantKeyFromConfig(config);
+      if (derivedVariantKey) config.parameters.variant_key = derivedVariantKey;
+      const activeTechnology = rows.map((row) => String(row.technology_profile || "").trim()).filter(Boolean)[0] || config.technology_profile || "";
+      config.technology_profile = String(activeTechnology || "").trim() || config.technology_profile;
+      return config;
+    }
+
+    function evaluateExecutionIntentRuleClient(row, config) {
+      const activationMode = String(row?.activation_mode || "always").trim() || "always";
+      if (activationMode === "always") return { active: true, actualValue: null, warning: null };
+      const parameterKey = String(row?.parameter_key || "").trim();
+      if (!parameterKey) {
+        return { active: false, actualValue: null, warning: { code: "PARAMETER_KEY_MISSING", message: "Activation rule has no parameter key." } };
+      }
+      const actualValue = executionIntentParameterValue(config, parameterKey);
+      if (actualValue === "") {
+        return { active: false, actualValue: "", warning: { code: "PARAMETER_VALUE_MISSING", message: `Missing parameter value for ${parameterKey}.` } };
+      }
+      const actualText = String(actualValue).trim();
+      const expectedText = String(row?.expected_value || "").trim();
+      let active = false;
+      switch (String(row?.operator || "==").trim()) {
+        case "!=":
+          active = actualText !== expectedText;
+          break;
+        case "IN":
+          active = expectedText.split(",").map((item) => item.trim()).filter(Boolean).includes(actualText);
+          break;
+        case "==":
+        default:
+          active = actualText === expectedText;
+          break;
+      }
+      return { active, actualValue, warning: null };
+    }
+
+    function buildExecutionIntentProjectionFromConfig(config = null, slotRows = null) {
+      const activeConfig = config || state.session?.config_parameter_set || {};
+      const sourceProjection = executionIntentProjectionSource();
+      const rows = Array.isArray(slotRows) && slotRows.length ? slotRows : (sourceProjection.slot_authoring_rows || []);
+      const discoveredSlots = Array.isArray(sourceProjection.discovered_slots) ? sourceProjection.discovered_slots : [];
+      const discoveredBySlot = new Map(discoveredSlots.map((slot) => [Number(slot.slot_index), slot]));
+      const activeSlotSet = [];
+      const suppressedSlotSet = [];
+      const warnings = [];
+      rows.forEach((row) => {
+        const discovered = discoveredBySlot.get(Number(row.slot_index)) || null;
+        const evaluation = evaluateExecutionIntentRuleClient(row, activeConfig);
+        if (evaluation.warning) warnings.push({ ...evaluation.warning, slot_index: Number(row.slot_index) });
+        const slotRecord = {
+          slot_index: Number(row.slot_index),
+          slot_role: row.slot_role || discovered?.role || null,
+          variant_key: row.variant_key || null,
+          technology_profile: row.technology_profile || null,
+          evidence_source: row.evidence_source || null,
+          observed_xdata_hint: row.observed_xdata_hint || discovered?.observed_xdata_hints?.[0]?.hint || null,
+          note: row.note || "",
+          activation_mode: row.activation_mode || "always",
+          parameter_key: row.parameter_key || "",
+          operator: row.operator || "==",
+          expected_value: row.expected_value || "",
+          derived_meaning: row.derived_meaning || "",
+          activation_actual_value: evaluation.actualValue,
+          bbox: discovered?.bbox || null,
+          object_count: Number(discovered?.object_count || 0)
+        };
+        (evaluation.active ? activeSlotSet : suppressedSlotSet).push(slotRecord);
+      });
+      const parameterDriver = readExecutionIntentDriverFromConfig(activeConfig);
+      return {
+        ...sourceProjection,
+        active_variant_key: deriveVariantKeyFromConfig(activeConfig),
+        active_slot_index: activeSlotSet.length === 1 ? Number(activeSlotSet[0].slot_index) : null,
+        active_slot_indices: activeSlotSet.map((slot) => Number(slot.slot_index)),
+        parameter_driver: parameterDriver || null,
+        selected_technology_profile: String(activeConfig?.technology_profile || "").trim() || null,
+        slot_authoring_rows: rows,
+        simulation_parameters: executionIntentParameterKeys(rows).map((key) => ({ key, value: executionIntentParameterValue(activeConfig, key) })),
+        active_slot_set: activeSlotSet,
+        suppressed_slot_set: suppressedSlotSet,
+        warnings
+      };
+    }
+
+    function renderExecutionIntentPanel() {
+      if (!state.session) {
+        executionIntentBanner.textContent = "No active session. Load raw DXF and compute geometry before resolving execution intent.";
+        setDomainBannerTone(executionIntentBanner, "info");
+        if (executionIntentAuthoringArea) executionIntentAuthoringArea.innerHTML = "<div class=\"meta\">No execution intent authoring loaded yet.</div>";
+        executionIntentSummaryBox.innerHTML = "<div class=\"meta\">No active slot set resolved yet.</div>";
+        executionIntentSlotSetBox.innerHTML = "<div class=\"meta\">No suppressed slot set yet.</div>";
+        parameterContextOut.textContent = JSON.stringify({ ok: false, note: "No execution intent diagnostics loaded yet." }, null, 2);
+        saveExecutionIntentBtn.disabled = true;
+        reloadExecutionIntentBtn.disabled = true;
+        return;
+      }
+      let config = state.session.config_parameter_set || null;
+      let slotRows = executionIntentProjectionSource().slot_authoring_rows || [];
+      let projection = executionIntentProjectionSource();
+      try {
+        config = state.configDirty ? buildExecutionIntentDraftConfig() : readConfigInput();
+        slotRows = state.configDirty ? buildExecutionIntentAuthoringDraftFromDom() : (executionIntentProjectionSource().slot_authoring_rows || []);
+        projection = buildExecutionIntentProjectionFromConfig(config, slotRows);
+      } catch (error) {}
+      const discoveredSlots = Array.isArray(projection.discovered_slots) ? projection.discovered_slots : [];
+      const activeSlotSet = Array.isArray(projection.active_slot_set) ? projection.active_slot_set : [];
+      const suppressedSlotSet = Array.isArray(projection.suppressed_slot_set) ? projection.suppressed_slot_set : [];
+      executionIntentBanner.textContent = `${discoveredSlots.length} discovered slots. ${slotRows.length} slot intents loaded. Current simulation resolves ${activeSlotSet.length} active slot(s).${state.configDirty ? " Draft changes pending." : ""}`;
+      setDomainBannerTone(executionIntentBanner, activeSlotSet.length ? (state.configDirty ? "warn" : "ok") : "warn");
+      const technologyProfiles = executionIntentTechnologyProfiles();
+      const parameterKeys = executionIntentParameterKeys(slotRows);
+      const selectableParameterKeys = executionIntentSelectableParameterKeys(slotRows);
+      const roleOptions = ["base", "variant", "auxiliary"];
+      const evidenceOptions = ["manual", "xdata", "xdata_hint", "sem"];
+      const activationModeOptions = ["always", "parameter_rule"];
+      const operatorOptions = ["==", "!=", "IN"];
+      const discoveredHtml = discoveredSlots.length ? `
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr><th align="left">Slot</th><th align="left">BBox</th><th align="left">Objects</th><th align="left">Observed XDATA</th><th align="left">Observed XDATA hint</th><th align="left">Observed SEM</th><th align="left">Hygiene</th></tr></thead>
+          <tbody>
+            ${discoveredSlots.map((slot) => {
+              const bbox = slot?.bbox ? `${roundUiNumber(slot.bbox.width || 0, 1)} x ${roundUiNumber(slot.bbox.height || 0, 1)} | min ${roundUiNumber(slot.bbox.minX || 0, 1)},${roundUiNumber(slot.bbox.minY || 0, 1)}` : "-";
+              const xdata = Array.isArray(slot.observed_xdata) && slot.observed_xdata.length ? slot.observed_xdata.join(", ") : "-";
+              const xdataHints = Array.isArray(slot.observed_xdata_hints) && slot.observed_xdata_hints.length
+                ? slot.observed_xdata_hints.map((item) => `${item.hint} (${item.object_count}/${slot.object_count || 0})`).join(", ")
+                : "-";
+              const sem = Array.isArray(slot.observed_sem) && slot.observed_sem.length ? slot.observed_sem.join(", ") : "-";
+              const hygieneIssues = Array.isArray(slot?.hygiene?.issues) ? slot.hygiene.issues.length : 0;
+              const hygieneWarnings = Array.isArray(slot?.hygiene?.warnings) ? slot.hygiene.warnings.length : 0;
+              const hygiene = hygieneIssues ? `${hygieneIssues} issues` : hygieneWarnings ? `${hygieneWarnings} warnings` : "ok";
+              return `<tr><td>slot ${esc(String(slot.slot_index))}</td><td>${esc(bbox)}</td><td>${esc(String(slot.object_count || 0))}</td><td>${esc(xdata)}</td><td>${esc(xdataHints)}</td><td>${esc(sem)}</td><td>${esc(hygiene)}</td></tr>`;
+            }).join("")}
+          </tbody>
+        </table>` : `<div class="meta">No discovered slots. Compute geometry context first.</div>`;
+      const slotRowsHtml = slotRows.length ? `
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr><th align="left">Slot</th><th align="left">Observed hint</th><th align="left">Slot role</th><th align="left">Variant key</th><th align="left">Technology profile</th><th align="left">Evidence source</th><th align="left">Note</th></tr></thead>
+          <tbody>
+            ${slotRows.map((row) => `<tr data-exec-row="intent" data-slot-index="${esc(String(row.slot_index))}">
+              <td>slot ${esc(String(row.slot_index))}</td>
+              <td><input class="exec-observed-xdata-hint" type="text" value="${esc(row.observed_xdata_hint || "")}" readonly title="Upstream XDATA classification hint; authorize its local meaning through Variant key."></td>
+              <td><select class="exec-slot-role">${executionIntentSelectOptions(roleOptions, row.slot_role, "Select role")}</select></td>
+              <td><input class="exec-variant-key" type="text" value="${esc(row.variant_key || "")}"></td>
+              <td><select class="exec-tech-profile">${executionIntentSelectOptions(technologyProfiles, row.technology_profile, "Select profile")}</select></td>
+              <td><select class="exec-evidence-source">${executionIntentSelectOptions(evidenceOptions, row.evidence_source, "Select source")}</select></td>
+              <td><input class="exec-note" type="text" value="${esc(row.note || "")}"></td>
+            </tr>`).join("")}
+          </tbody>
+        </table>` : `<div class="meta">No slot intent rows yet.</div>`;
+      const activationHtml = slotRows.length ? `
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr><th align="left">Slot</th><th align="left">Activation mode</th><th align="left">Parameter key</th><th align="left">Operator</th><th align="left">Expected value</th><th align="left">Derived meaning</th></tr></thead>
+          <tbody>
+            ${slotRows.map((row) => {
+              const parameter = executionIntentParameterCatalogItem(row.parameter_key);
+              return `<tr data-exec-row="rule" data-slot-index="${esc(String(row.slot_index))}">
+                <td>slot ${esc(String(row.slot_index))}</td>
+                <td><select class="exec-activation-mode">${executionIntentSelectOptions(activationModeOptions, row.activation_mode, "Select mode")}</select></td>
+                <td><select class="exec-parameter-key">${executionIntentSelectOptions(selectableParameterKeys, row.parameter_key, "Select key")}</select></td>
+                <td><select class="exec-operator">${executionIntentSelectOptions(operatorOptions, row.operator, "Select op")}</select></td>
+                <td>${executionIntentInputControl(parameter, row.expected_value || "", 'class="exec-expected-value"')}</td>
+                <td><input class="exec-derived-meaning" type="text" value="${esc(row.derived_meaning || "")}"></td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>` : `<div class="meta">No activation rules yet.</div>`;
+      const simulationHtml = parameterKeys.length ? `
+        <div class="phase-summary" style="margin-top:10px">
+          <div class="phase-summary-title">Simulation Parameters</div>
+          <div class="grid-2" style="margin-top:10px">
+          ${parameterKeys.map((key) => {
+            const parameter = executionIntentParameterCatalogItem(key);
+            const currentValue = executionIntentParameterValue(config, key);
+            const meta = parameter ? `${esc(parameter.label || key)} | ${esc(parameter.type || "text")}` : esc(key);
+            return `<label>${esc(parameter?.label || key)}<div class="meta" style="margin:4px 0 6px">parameter_key=${esc(key)} | ${meta}</div>${executionIntentInputControl(parameter, currentValue, `data-exec-sim-key="${esc(key)}"`)}</label>`;
+          }).join("")}
+          </div>
+        </div>` : `<div class="meta" style="margin-top:10px">No activation or topology parameters referenced by the current authoring contracts.</div>`;
+      if (executionIntentAuthoringArea) {
+        executionIntentAuthoringArea.innerHTML = `
+          <div class="phase-summary"><div class="phase-summary-title">1. Discovered Slots (read-only)</div>${discoveredHtml}</div>
+          <div class="phase-summary" style="margin-top:10px"><div class="phase-summary-title">2. Slot Intent Authoring</div>${slotRowsHtml}</div>
+          <div class="phase-summary" style="margin-top:10px"><div class="phase-summary-title">3. Activation Rules</div>${activationHtml}${simulationHtml}</div>`;
+      }
+      executionIntentSummaryBox.innerHTML = activeSlotSet.length
+        ? activeSlotSet.map((slot) => `<div class="selection-item"><strong>slot ${esc(String(slot.slot_index))}</strong><br>${esc(slot.variant_key || "-")} | ${esc(slot.technology_profile || "-")} | ${esc(slot.derived_meaning || "-")}</div>`).join("")
+        : "<div class=\"meta\">No active slots for the current simulation.</div>";
+      executionIntentSlotSetBox.innerHTML = suppressedSlotSet.length
+        ? suppressedSlotSet.map((slot) => `<div class="selection-item"><strong>slot ${esc(String(slot.slot_index))}</strong><br>${esc(slot.variant_key || "-")} | ${esc(slot.technology_profile || "-")} | ${esc(slot.activation_mode || "-")}</div>`).join("")
+        : "<div class=\"meta\">No suppressed slots.</div>";
+      parameterContextOut.textContent = JSON.stringify({
+        version: 1,
+        execution_intent_v1: projection || null,
+        execution_intent_authoring_v1: { version: 1, slots: slotRows },
+        config_parameter_set: config || state.session.config_parameter_set || null,
+        parameter_catalog_id: state.session.session_context_v1?.parameter_catalog_id || state.session.config_parameter_set?.parameter_catalog_id || null,
+        parameter_count: Object.keys((config || state.session.config_parameter_set || {}).parameters || {}).length,
+        resolved_from: state.configDirty ? "execution_intent_draft" : "session_config_parameter_set"
+      }, null, 2);
+      saveExecutionIntentBtn.disabled = !sessionContextLocked() || !geometryIsProjected();
+      saveExecutionIntentBtn.title = !sessionContextLocked()
+        ? "Lock Session Context first."
+        : !geometryIsProjected()
+          ? "Compute a valid Geometry Context first."
+          : "Persist slot identity, activation rules, and simulation parameters.";
+      reloadExecutionIntentBtn.disabled = !state.session;
     }
 
     function canGenerateChildDxf() {
@@ -4203,7 +4825,10 @@
     }
 
     function selectedCatalogParameterByKey(key) {
-      return currentCatalogParameters().find((item) => item.key === key) || null;
+      const normalized = String(key || "").trim();
+      if (!normalized) return null;
+      const variants = [normalized, normalized.toUpperCase(), normalized.toLowerCase()];
+      return currentCatalogParameters().find((item) => variants.includes(String(item?.key || "").trim())) || null;
     }
 
     function isNumericCatalogParameter(parameter) {
@@ -4413,9 +5038,63 @@
       });
     }
 
+    function sessionParameterValue(...keys) {
+      const parameters = state.session?.config_parameter_set?.parameters || {};
+      for (const key of keys) {
+        const normalized = String(key || "").trim();
+        if (!normalized) continue;
+        for (const candidate of [normalized, normalized.toUpperCase(), normalized.toLowerCase()]) {
+          if (Object.prototype.hasOwnProperty.call(parameters, candidate) && parameters[candidate] != null && parameters[candidate] !== "") {
+            return parameters[candidate];
+          }
+        }
+      }
+      return null;
+    }
+
+    function catalogDocumentDimensionDefinitions() {
+      const catalog = state.session?.parameter_catalog || {};
+      const configured = Array.isArray(catalog?.metadata?.document_dimensions) ? catalog.metadata.document_dimensions : [];
+      return configured
+        .map((item, index) => {
+          const semantic = String(item?.semantic || "").trim().toLowerCase();
+          const parameterKey = String(item?.parameter_key || "").trim();
+          const parameter = parameterKey ? currentCatalogParameters().find((entry) => entry.key === parameterKey) : null;
+          return {
+            semantic,
+            parameter_key: parameterKey,
+            label: String(item?.label || parameter?.label || semantic).trim(),
+            unit: String(item?.unit || parameter?.unit || "").trim(),
+            order: Number(item?.order || index + 1),
+            min: parameter?.min,
+            max: parameter?.max,
+            step: parameter?.step
+          };
+        })
+        .filter((item) => item.semantic)
+        .sort((a, b) => a.order - b.order);
+    }
+
+    function documentSemDimensionValues(sem) {
+      const values = sem?.nominal_dimensions && typeof sem.nominal_dimensions === "object" ? { ...sem.nominal_dimensions } : {};
+      if (sem?.nominal_length != null && values.length == null) values.length = sem.nominal_length;
+      if (sem?.nominal_width != null && values.width == null) values.width = sem.nominal_width;
+      if (sem?.nominal_height != null && values.height == null) values.height = sem.nominal_height;
+      return values;
+    }
+
+    function documentSemDimensionSummary(sem) {
+      const values = documentSemDimensionValues(sem);
+      return catalogDocumentDimensionDefinitions()
+        .map((item) => item.label + "=" + (values[item.semantic] ?? "-") + (item.unit ? " " + item.unit : ""))
+        .join(" | ");
+    }
+
     function hasDocumentSemConfigured() {
-      const sem = state.session && state.session.document_sem ? state.session.document_sem : null;
-      return Boolean(sem && sem.nominal_width && sem.nominal_height && sem.family && sem.product && sem.part);
+      const sem = state.session?.document_sem || null;
+      const definitions = catalogDocumentDimensionDefinitions();
+      const values = documentSemDimensionValues(sem);
+      return Boolean(sem && definitions.length && definitions.every((item) => Number(values[item.semantic]) > 0) && sem.family && sem.product && sem.part);
     }
 
     function syncDocumentSemRuleOptions() {
@@ -4425,27 +5104,63 @@
         .join("");
     }
 
+    function documentSemIdentityDefaults() {
+      const context = state.session?.session_context_v1 || {};
+      const program = String(context.production_program_id || "").trim().toUpperCase();
+      return {
+        family: String(context.family_id || state.session?.config_parameter_set?.family || "").trim(),
+        product: String(context.product_id || state.session?.config_parameter_set?.product || "").trim(),
+        part: String(context.part_id || state.session?.config_parameter_set?.part || knownDocumentPart() || "").trim(),
+        source: program ? `locked ${program} context + parameter catalog` : "session context + parameter catalog"
+      };
+    }
+
+    function renderDocumentSemDimensionInputs(sem) {
+      const previous = {};
+      documentSemDimensions.querySelectorAll("[data-document-sem-dimension]").forEach((input) => {
+        previous[input.dataset.documentSemDimension] = input.value;
+      });
+      const definitions = catalogDocumentDimensionDefinitions();
+      const saved = documentSemDimensionValues(sem);
+      if (!definitions.length) {
+        documentSemDimensions.innerHTML = `<div class="meta">Active parameter catalog does not declare document nominal dimensions.</div>`;
+        return;
+      }
+      documentSemDimensions.innerHTML = definitions.map((item) => {
+        const value = state.documentSem.dirtyIdentity ? (previous[item.semantic] ?? "") : (saved[item.semantic] ?? "");
+        const range = [item.min != null ? "min " + item.min : "", item.max != null ? "max " + item.max : ""].filter(Boolean).join(" | ");
+        const step = Number(item.step) > 0 ? item.step : 1;
+        return `<label>${esc(item.label)}${item.unit ? " (" + esc(item.unit) + ")" : ""}<input data-document-sem-dimension="${esc(item.semantic)}" type="number" step="${esc(step)}" min="0" value="${esc(value)}" placeholder="Authorize raw geometry nominal" /><span class="meta">${esc(item.parameter_key)}${range ? " | " + esc(range) : ""}</span></label>`;
+      }).join("");
+      documentSemDimensions.querySelectorAll("[data-document-sem-dimension]").forEach((input) => input.addEventListener("input", markDocumentSemIdentityDirty));
+    }
+
     function syncDocumentSemFormFromSession() {
-      const sem = state.session && state.session.document_sem ? state.session.document_sem : null;
-      const documentPart = knownDocumentPart();
+      const sem = state.session?.document_sem || null;
+      const defaults = documentSemIdentityDefaults();
+      renderDocumentSemDimensionInputs(sem);
       if (!state.documentSem.dirtyIdentity) {
-        documentSemNominalWidth.value = sem && sem.nominal_width ? sem.nominal_width : "900";
-        documentSemNominalHeight.value = sem && sem.nominal_height ? sem.nominal_height : "2100";
-        documentSemFamily.value = sem && sem.family ? sem.family : "VRATA";
-        documentSemProduct.value = sem && sem.product ? sem.product : "PPV";
-        documentSemPart.value = sem && sem.part ? sem.part : documentPart;
+        documentSemFamily.value = sem?.family || defaults.family;
+        documentSemProduct.value = sem?.product || defaults.product;
+        documentSemPart.value = sem?.part || defaults.part;
       }
-      documentSemPart.readOnly = false;
-      if (!state.documentSem.dirtyRules) {
-        state.documentSem.ruleRefs = Array.isArray(sem?.rule_refs) ? [...sem.rule_refs] : [];
-      }
+      const identityLocked = sessionContextLocked();
+      documentSemFamily.readOnly = identityLocked;
+      documentSemProduct.readOnly = identityLocked;
+      documentSemPart.readOnly = identityLocked;
+      if (!state.documentSem.dirtyRules) state.documentSem.ruleRefs = Array.isArray(sem?.rule_refs) ? [...sem.rule_refs] : [];
       syncDocumentSemRuleOptions();
     }
 
     function readDocumentSemPayload() {
+      const nominalDimensions = {};
+      documentSemDimensions.querySelectorAll("[data-document-sem-dimension]").forEach((input) => {
+        const semantic = String(input.dataset.documentSemDimension || "").trim();
+        const value = Number(input.value);
+        if (semantic && Number.isFinite(value) && value > 0) nominalDimensions[semantic] = value;
+      });
       return {
-        nominal_width: Number(documentSemNominalWidth.value || 0),
-        nominal_height: Number(documentSemNominalHeight.value || 0),
+        nominal_dimensions: nominalDimensions,
         family: String(documentSemFamily.value || "").trim(),
         product: String(documentSemProduct.value || "").trim(),
         part: String(documentSemPart.value || "").trim(),
@@ -4455,13 +5170,14 @@
 
     function generatedDocumentSemPreviewLines() {
       const payload = readDocumentSemPayload();
+      const definitions = catalogDocumentDimensionDefinitions();
+      const dimensionsComplete = definitions.length && definitions.every((item) => Number(payload.nominal_dimensions[item.semantic]) > 0);
       const lines = [];
-      if (payload.nominal_width && payload.nominal_height && payload.family && payload.product && payload.part) {
-        lines.push(`SEM:document=true;nominal_width=${payload.nominal_width};nominal_height=${payload.nominal_height};family=${payload.family};product=${payload.product};part=${payload.part}`);
+      if (dimensionsComplete && payload.family && payload.product && payload.part) {
+        const dimensionPairs = definitions.map((item) => "nominal_" + item.semantic + "=" + payload.nominal_dimensions[item.semantic]);
+        lines.push(["SEM:document=true", ...dimensionPairs, "family=" + payload.family, "product=" + payload.product, "part=" + payload.part].join(";"));
       }
-      for (const ruleRef of payload.rule_refs || []) {
-        lines.push(`SEM:document=true;rule_ref=${ruleRef}`);
-      }
+      for (const ruleRef of payload.rule_refs || []) lines.push("SEM:document=true;rule_ref=" + ruleRef);
       return lines;
     }
 
@@ -4527,7 +5243,7 @@
         const dirtyBadge = documentSemDirty ? " | draft edits pending" : "";
         documentSemSummaryPanel.innerHTML = `
           <div class="phase-summary-title">Document SEM saved${esc(dirtyBadge)}</div>
-          <div class="phase-summary-row">${esc(sem.nominal_width)} x ${esc(sem.nominal_height)} | ${esc(sem.family)} | product ${esc(sem.product)} | part ${esc(sem.part)} | rules ${esc(ruleCount)}</div>
+          <div class="phase-summary-row">${esc(documentSemDimensionSummary(sem))} | ${esc(sem.family)} | product ${esc(sem.product)} | part ${esc(sem.part)} | rules ${esc(ruleCount)}</div>
           <div class="toolbar" style="margin-top:8px"><button type="button" class="secondary" data-edit-document-sem>EDIT Document SEM</button></div>
         `;
         const editButton = documentSemSummaryPanel.querySelector("[data-edit-document-sem]");
@@ -4542,8 +5258,8 @@
         documentSemSummaryPanel.innerHTML = "";
       }
       documentSemMeta.textContent = hasDocumentSemConfigured()
-        ? `Document SEM saved | ${sem.nominal_width} x ${sem.nominal_height} | ${sem.family} | product ${sem.product} | part ${sem.part} | rules ${Array.isArray(sem.rule_refs) ? sem.rule_refs.length : 0}`
-        : "Document SEM identity required before TOPO authoring.";
+        ? `Document SEM saved | ${documentSemDimensionSummary(sem)} | ${sem.family} | product ${sem.product} | part ${sem.part} | rules ${Array.isArray(sem.rule_refs) ? sem.rule_refs.length : 0}`
+        : `Document identity comes from ${documentSemIdentityDefaults().source}. Nominal geometry dimensions must be authorized before TOPO authoring.`;
       const activeRules = state.documentSem.ruleRefs || [];
       if (!activeRules.length) {
         documentSemRulesBox.innerHTML = `<div class="meta">No active document rules.</div>`;
@@ -4611,30 +5327,29 @@
       return out;
     }
 
-    function numberText(value, fallback) {
+    function numberText(value, fallback = "") {
+      if (value == null || String(value).trim() === "") return fallback == null ? "" : String(fallback);
       const numeric = Number(value);
       if (Number.isFinite(numeric)) return String(numeric);
-      return String(fallback);
+      return fallback == null ? "" : String(fallback);
     }
 
     function syncTopoParameterOptions(preferredLecParameter = null, preferredRecParameter = null) {
       const previousLecParameter = String(preferredLecParameter || topoLecParameter.value || "").trim();
       const previousRecParameter = String(preferredRecParameter || topoRecParameter.value || "").trim();
-      const parameters = currentCatalogParameters().filter((item) => String(item?.type || "").trim().toLowerCase() === "number");
+      const parameters = currentCatalogParameters().filter((item) => ["number", "number_or_custom", "enum_number"].includes(String(item?.type || "").trim().toLowerCase()));
       if (!parameters.length) {
         topoLecParameter.innerHTML = `<option value="">No numeric catalog parameters</option>`;
         topoRecParameter.innerHTML = `<option value="">No numeric catalog parameters</option>`;
         return;
       }
-      const buildOptions = () => parameters
+      const buildOptions = () => `<option value="">Select parameter</option>` + parameters
         .map((item) => `<option value="${esc(item.key)}">${esc(item.code || item.key)} | ${esc(item.label || "")}</option>`)
         .join("");
       topoLecParameter.innerHTML = buildOptions();
       topoRecParameter.innerHTML = buildOptions();
-      const defaultParameter = parameters.find((item) => String(item.key || "").toUpperCase() === "VISINA_VRATA") || parameters[0];
-      const defaultValue = defaultParameter ? defaultParameter.key : "";
-      const lecValue = parameters.some((item) => item.key === previousLecParameter) ? previousLecParameter : defaultValue;
-      const recValue = parameters.some((item) => item.key === previousRecParameter) ? previousRecParameter : defaultValue;
+      const lecValue = parameters.some((item) => item.key === previousLecParameter) ? previousLecParameter : "";
+      const recValue = parameters.some((item) => item.key === previousRecParameter) ? previousRecParameter : "";
       topoLecParameter.value = lecValue;
       topoRecParameter.value = recValue;
     }
@@ -4651,13 +5366,13 @@
     function buildGeneratedTopoComment() {
       const parts = [
         "TOPO:mode=fixed_envelope_slide",
-        `group=${String(topoGroup.value || "LBRA_X_SLIDE").trim()}`,
+        `group=${String(topoGroup.value || "").trim()}`,
         "axis=X",
         "delta_rule=config_minus_nominal",
         `lec_parameter=${String(topoLecParameter.value || "").trim()}`,
-        `lec_nominal=${numberText(topoLecNominal.value, state.session?.document_sem?.nominal_height || 2100)}`,
+        `lec_nominal=${numberText(topoLecNominal.value, "")}`,
         `rec_parameter=${String(topoRecParameter.value || "").trim()}`,
-        `rec_nominal=${numberText(topoRecNominal.value, state.session?.document_sem?.nominal_height || 2100)}`,
+        `rec_nominal=${numberText(topoRecNominal.value, "")}`,
         `lec_delta_factor=${numberText(topoLecDeltaFactor.value, -1.0)}`,
         `rec_delta_factor=${numberText(topoRecDeltaFactor.value, 1.0)}`
       ];
@@ -4668,11 +5383,16 @@
     function buildGeneratedTopoEntityComment() {
       const role = String(topoEntityRole.value || "none").trim();
       if (role === "none") return "";
-      return `TOPO:role=${role};group=${String(topoGroup.value || "LBRA_X_SLIDE").trim()};zone=${String(topoEntityZone.value || "LEC").trim()}`;
+      return `TOPO:role=${role};group=${String(topoGroup.value || "").trim()};zone=${String(topoEntityZone.value || "LEC").trim()}`;
+    }
+
+    function activeGeometryStrategy() {
+      return String(state.session?.geometry_strategy_v1?.mode || geometryStrategy?.value || "").trim();
     }
 
     function activeTopoFamily() {
-      return String(topoFamily?.value || "fixed_envelope_slide").trim() || "fixed_envelope_slide";
+      const strategy = activeGeometryStrategy();
+      return strategy === "static_geometry" ? "none" : strategy || "none";
     }
 
     function renderTopoFamilyPanels() {
@@ -4684,14 +5404,14 @@
       if (family === "four_band_parameter_resize") {
         topoFamilyMeta.textContent = "4-band authoring is active: map L/R/T/B bands to catalog parameters and use Preview Enriched Child for Core Shell shadow visualization.";
       } else if (family === "none") {
-        topoFamilyMeta.textContent = "TOPO authoring je preskočen u UI prikazu; možeš prijeći na SEM nakon spremanja ili Skip akcije.";
+        topoFamilyMeta.textContent = "Static geometry was confirmed in Geometry Context. Confirm Continue Without TOPO to proceed.";
       } else {
         topoFamilyMeta.textContent = "Fixed-envelope authoring is active: use LEC/REC parameter pairs and entity mover roles for the legacy TOPO child preview path.";
       }
     }
 
     function currentNumericCatalogParameters() {
-      return currentCatalogParameters().filter((item) => String(item?.type || "").trim().toLowerCase() === "number");
+      return currentCatalogParameters().filter((item) => ["number", "number_or_custom", "enum_number"].includes(String(item?.type || "").trim().toLowerCase()));
     }
 
     function buildTopoParameterOptionHtml(parameters) {
@@ -4723,16 +5443,16 @@
         });
         return;
       }
-      const options = buildTopoParameterOptionHtml(parameters);
+      const options = `<option value="">Select parameter</option>${buildTopoParameterOptionHtml(parameters)}`;
       selects.forEach((select) => {
         const previous = select.value;
         select.innerHTML = options;
         ensureSelectValue(select, previous, "");
       });
-      ensureSelectValue(topoFourBandParameterL, topoFourBandParameterL.value, "VISINA_VRATA");
-      ensureSelectValue(topoFourBandParameterR, topoFourBandParameterR.value, "SKRACENJE");
-      ensureSelectValue(topoFourBandParameterT, topoFourBandParameterT.value, "SIRINA_VRATA");
-      ensureSelectValue(topoFourBandParameterB, topoFourBandParameterB.value, "SIRINA_VRATA");
+      ensureSelectValue(topoFourBandParameterL, topoFourBandParameterL.value, "");
+      ensureSelectValue(topoFourBandParameterR, topoFourBandParameterR.value, "");
+      ensureSelectValue(topoFourBandParameterT, topoFourBandParameterT.value, "");
+      ensureSelectValue(topoFourBandParameterB, topoFourBandParameterB.value, "");
     }
 
     function buildGeneratedTopoFourBandComment() {
@@ -4740,7 +5460,7 @@
         "TOPO:mode=4_band_parameter_resize",
         "profile=standard_parametric_resize",
         `l_parameter=${String(topoFourBandParameterL.value || "").trim()}` ,
-        `l_nominal=${numberText(topoFourBandNominalL.value, state.session?.document_sem?.nominal_height || 2100)}` ,
+        `l_nominal=${numberText(topoFourBandNominalL.value, "")}` ,
         "l_axis=X",
         `l_delta_factor=${numberText(topoFourBandFactorL.value, -1.0)}` ,
         `r_parameter=${String(topoFourBandParameterR.value || "").trim()}` ,
@@ -4748,11 +5468,11 @@
         "r_axis=X",
         `r_delta_factor=${numberText(topoFourBandFactorR.value, 1.0)}` ,
         `t_parameter=${String(topoFourBandParameterT.value || "").trim()}` ,
-        `t_nominal=${numberText(topoFourBandNominalT.value, state.session?.document_sem?.nominal_width || 900)}` ,
+        `t_nominal=${numberText(topoFourBandNominalT.value, "")}` ,
         "t_axis=Y",
         `t_delta_factor=${numberText(topoFourBandFactorT.value, 0.5)}` ,
         `b_parameter=${String(topoFourBandParameterB.value || "").trim()}` ,
-        `b_nominal=${numberText(topoFourBandNominalB.value, state.session?.document_sem?.nominal_width || 900)}` ,
+        `b_nominal=${numberText(topoFourBandNominalB.value, "")}` ,
         "b_axis=Y",
         `b_delta_factor=${numberText(topoFourBandFactorB.value, 0.5)}` ,
         "corner_behavior=derived_from_adjacent_bands"
@@ -4761,10 +5481,10 @@
 
     function syncTopoFourBandDefaults() {
       syncTopoFourBandParameterOptions();
-      if (!String(topoFourBandNominalL.value || "").trim()) topoFourBandNominalL.value = state.session?.document_sem?.nominal_height || 2100;
-      if (!String(topoFourBandNominalR.value || "").trim()) topoFourBandNominalR.value = 0;
-      if (!String(topoFourBandNominalT.value || "").trim()) topoFourBandNominalT.value = state.session?.document_sem?.nominal_width || 900;
-      if (!String(topoFourBandNominalB.value || "").trim()) topoFourBandNominalB.value = state.session?.document_sem?.nominal_width || 900;
+      if (!String(topoFourBandNominalL.value || "").trim()) topoFourBandNominalL.value = sessionParameterValue(topoFourBandParameterL.value) ?? "";
+      if (!String(topoFourBandNominalR.value || "").trim()) topoFourBandNominalR.value = sessionParameterValue(topoFourBandParameterR.value) ?? "";
+      if (!String(topoFourBandNominalT.value || "").trim()) topoFourBandNominalT.value = sessionParameterValue(topoFourBandParameterT.value) ?? "";
+      if (!String(topoFourBandNominalB.value || "").trim()) topoFourBandNominalB.value = sessionParameterValue(topoFourBandParameterB.value) ?? "";
       if (!String(topoFourBandFactorL.value || "").trim()) topoFourBandFactorL.value = "-1.0";
       if (!String(topoFourBandFactorR.value || "").trim()) topoFourBandFactorR.value = "1.0";
       if (!String(topoFourBandFactorT.value || "").trim()) topoFourBandFactorT.value = "0.5";
@@ -4790,15 +5510,9 @@
         : "";
       const parsed = parseMetadataPairs(raw, "TOPO");
       syncTopoParameterOptions(parsed.lec_parameter, parsed.rec_parameter);
-      if (raw && parsed.mode === "4_band_parameter_resize") {
-        topoFamily.value = "four_band_parameter_resize";
-      } else if (raw) {
-        topoFamily.value = "fixed_envelope_slide";
-      } else if (!["fixed_envelope_slide", "four_band_parameter_resize", "none"].includes(activeTopoFamily())) {
-        topoFamily.value = "fixed_envelope_slide";
-      }
+      topoFamily.value = activeGeometryStrategy() || "not confirmed";
       topoMode.value = "fixed_envelope_slide";
-      topoGroup.value = parsed.group || "LBRA_X_SLIDE";
+      topoGroup.value = parsed.group || "";
       topoAxis.value = "X";
       if (parsed.lec_parameter && Array.from(topoLecParameter.options).some((option) => option.value === parsed.lec_parameter)) {
         topoLecParameter.value = parsed.lec_parameter;
@@ -4806,30 +5520,30 @@
       if (parsed.rec_parameter && Array.from(topoRecParameter.options).some((option) => option.value === parsed.rec_parameter)) {
         topoRecParameter.value = parsed.rec_parameter;
       }
-      topoLecNominal.value = parsed.lec_nominal || state.session?.document_sem?.nominal_height || 2100;
-      topoRecNominal.value = parsed.rec_nominal || state.session?.document_sem?.nominal_height || 2100;
+      topoLecNominal.value = parsed.lec_nominal || sessionParameterValue(parsed.lec_parameter) || "";
+      topoRecNominal.value = parsed.rec_nominal || sessionParameterValue(parsed.rec_parameter) || "";
       topoDeltaRule.value = "config_minus_nominal";
       topoTrimPolicy.value = "rejoin";
       topoLecDeltaFactor.value = parsed.lec_delta_factor || "-1.0";
       topoRecDeltaFactor.value = parsed.rec_delta_factor || "1.0";
       if (parsed.mode === "4_band_parameter_resize") {
         syncTopoFourBandParameterOptions();
-        ensureSelectValue(topoFourBandParameterL, parsed.l_parameter, "VISINA_VRATA");
-        ensureSelectValue(topoFourBandParameterR, parsed.r_parameter, "SKRACENJE");
-        ensureSelectValue(topoFourBandParameterT, parsed.t_parameter, "SIRINA_VRATA");
-        ensureSelectValue(topoFourBandParameterB, parsed.b_parameter, "SIRINA_VRATA");
-        topoFourBandNominalL.value = parsed.l_nominal || state.session?.document_sem?.nominal_height || 2100;
-        topoFourBandNominalR.value = parsed.r_nominal || 0;
-        topoFourBandNominalT.value = parsed.t_nominal || state.session?.document_sem?.nominal_width || 900;
-        topoFourBandNominalB.value = parsed.b_nominal || state.session?.document_sem?.nominal_width || 900;
+        ensureSelectValue(topoFourBandParameterL, parsed.l_parameter, "");
+        ensureSelectValue(topoFourBandParameterR, parsed.r_parameter, "");
+        ensureSelectValue(topoFourBandParameterT, parsed.t_parameter, "");
+        ensureSelectValue(topoFourBandParameterB, parsed.b_parameter, "");
+        topoFourBandNominalL.value = parsed.l_nominal || sessionParameterValue(parsed.l_parameter) || "";
+        topoFourBandNominalR.value = parsed.r_nominal || sessionParameterValue(parsed.r_parameter) || "";
+        topoFourBandNominalT.value = parsed.t_nominal || sessionParameterValue(parsed.t_parameter) || "";
+        topoFourBandNominalB.value = parsed.b_nominal || sessionParameterValue(parsed.b_parameter) || "";
         topoFourBandFactorL.value = parsed.l_delta_factor || "-1.0";
         topoFourBandFactorR.value = parsed.r_delta_factor || "1.0";
         topoFourBandFactorT.value = parsed.t_delta_factor || "0.5";
         topoFourBandFactorB.value = parsed.b_delta_factor || "0.5";
       }
       syncTopoZoneOptions();
-      topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
-      topoInput.value = buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
+      topoEntityGroup.value = topoGroup.value || "";
+      topoInput.value = activeTopoFamily() === "fixed_envelope_slide" ? `999\n${buildGeneratedTopoComment()}` : "";
       syncTopoFourBandDefaults();
       renderTopoFamilyPanels();
       syncTopoEntityInput();
@@ -4837,8 +5551,8 @@
 
     function syncTopoInputFromSession() {
       syncTopoZoneOptions();
-      topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
-      topoInput.value = buildGeneratedTopoComment() ? `999\n${buildGeneratedTopoComment()}` : "";
+      topoEntityGroup.value = topoGroup.value || "";
+      topoInput.value = activeTopoFamily() === "fixed_envelope_slide" ? `999\n${buildGeneratedTopoComment()}` : "";
       syncTopoFourBandDefaults();
       renderTopoFamilyPanels();
       syncTopoEntityInput();
@@ -4846,7 +5560,7 @@
     }
 
     function syncTopoEntityInput() {
-      topoEntityGroup.value = topoGroup.value || "LBRA_X_SLIDE";
+      topoEntityGroup.value = topoGroup.value || "";
       const object = selectedObject();
       topoEntityMeta.textContent = object
         ? `Selected entity: ${object.display_label || object.id}`
@@ -4901,11 +5615,13 @@
       authoringStageTopoBtn.textContent = hasTopoConfigured() ? "Edit TOPO Setup" : "TOPO Setup";
       authoringStageSemBtn.textContent = "SEM Filters";
       authoringStageSemBtn.disabled = !semEnabled;
-      document.getElementById("skipTopoBtn").disabled = !state.session || !hasDocumentSemConfigured();
+      document.getElementById("skipTopoBtn").disabled = !state.session || !hasDocumentSemConfigured() || activeGeometryStrategy() !== "static_geometry";
       renderTopoFamilyPanels();
       if (state.authoring.activeStage === "topo") {
         authoringStageMeta.textContent = hasDocumentSemConfigured()
-          ? "TOPO setup definira topology contract. Execution preview resolves SEM presence/variant filters into effective geometry before the 4-band TOPO resolver."
+          ? activeTopoFamily() === "none"
+            ? "Static geometry was confirmed earlier. Use Continue Without TOPO to proceed to SEM authoring."
+            : "TOPO setup defines the topology contract over the resolved execution geometry."
           : "Prvo spremi Document SEM identity; TOPO authoring je zaključan dok document-level SEM ne postoji.";
       } else {
         authoringStageMeta.textContent = hasTopoConfigured()
@@ -4995,6 +5711,15 @@
         });
         return;
       }
+      if (family === "none") {
+        topoInspectorFixedEnvelopeGrid.style.display = "none";
+        topoInspectorFourBandGrid.style.display = "none";
+        focusAllLecBtn.style.display = "none";
+        focusAllRecBtn.style.display = "none";
+        focusSelectedBtn.style.display = "none";
+        topoInspectorMeta.textContent = "No topology family selected.";
+        return;
+      }
       if (family === "four_band_parameter_resize") {
         topoInspectorFixedEnvelopeGrid.style.display = "none";
         topoInspectorFourBandGrid.style.display = "grid";
@@ -5045,21 +5770,28 @@
         setTopoControlsDisabled(true);
         return;
       }
-      const topoLocked = !hasDocumentSemConfigured();
+      const strategy = activeGeometryStrategy();
+      const authoringLocked = !["four_band_parameter_resize", "fixed_envelope_slide", "static_geometry"].includes(strategy);
+      const saveLocked = authoringLocked;
       const topo = state.session.topo_metadata;
-      topoMeta.textContent = topoLocked
-        ? "TOPO locked until Document SEM identity is saved."
-        : `TOPO records ${Array.isArray(topo.raw_comments) ? topo.raw_comments.length : 0} | valid=${topo.validation && topo.validation.ok ? "true" : "false"}`;
+      topoMeta.textContent = authoringLocked
+        ? "Confirm geometry strategy in Geometry Context before TOPO authoring."
+        : saveLocked
+          ? "TOPO mapping is editable and can be saved independently from Document Identity."
+          : "TOPO records " + (Array.isArray(topo.raw_comments) ? topo.raw_comments.length : 0) + " | valid=" + (topo.validation && topo.validation.ok ? "true" : "false");
       syncTopoFormFromSession();
-      setTopoControlsDisabled(topoLocked);
-      document.getElementById("clearSelectedTopoBtn").disabled = topoLocked || !state.selectedIds.size;
+      setTopoControlsDisabled(authoringLocked);
+      document.getElementById("saveTopoBtn").disabled = saveLocked || strategy === "static_geometry";
+      document.getElementById("clearSelectedTopoBtn").disabled = saveLocked || !state.selectedIds.size;
+      document.getElementById("clearFileTopoBtn").disabled = authoringLocked;
+      document.getElementById("skipTopoBtn").disabled = strategy !== "static_geometry" || !hasDocumentSemConfigured();
       topoOut.textContent = JSON.stringify({
         raw_comments: topo.raw_comments || [],
-        generated_file_level_999: topoInput.value || null,
+        generated_file_level_999: activeTopoFamily() === "four_band_parameter_resize" ? (topoFourBandPreview.value || null) : activeTopoFamily() === "fixed_envelope_slide" ? (topoInput.value || null) : null,
         generated_entity_level_999: topoEntityInput.value || null,
         runtime_model: topo.runtime_model || null,
         validation: topo.validation || { ok: false, errors: [] },
-        locked: topoLocked
+        locked: saveLocked
       }, null, 2);
       renderTopoInspector();
     }
@@ -5551,6 +6283,7 @@
     function renderSessionOptions(sessions) {
       const items = Array.isArray(sessions) ? sessions : [];
       state.sessionSummaries = items;
+      renderSessionNameHint();
       if (!items.length) {
         sessionSelect.innerHTML = `<option value="">No saved sessions found</option>`;
         return;
@@ -5591,6 +6324,7 @@
     function render() {
       syncCanvasSize();
       ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      refreshExecutionIntentLiveProjection();
       renderXdataContextPanel();
       renderSelectionBox();
       renderSelectionTower();
@@ -5722,31 +6456,40 @@
         return;
       }
       const sourceName = fileNameFromInput();
-      if (!sourceName) {
+      const sessionName = normalizeSessionName(sessionSourceOverride?.value || sourceName);
+      if (!sourceName || !sessionName) {
         document.getElementById("inputSupportDetails").open = true;
         statusValidationDetails.open = true;
         setStatus("Load a DXF file or enter Working name / source override before creating a working session.", "error");
         return;
       }
-      const matchingSummary = matchingSessionSummaryForSource(sourceName);
-      const activeSameSource = state.session && String(state.session.source_name || "").trim() === sourceName;
-      const hasExistingAuthoring = Boolean(matchingSummary?.has_authoring_state) || (activeSameSource && sessionHasUiAuthoringState(state.session));
-      let forceRefresh = false;
-      if (hasExistingAuthoring) {
-        const answer = window.prompt(`Postojeći Mother DXF session za ${sourceName} ima SEM/TOPO/RULE assignmente.\n\nSigurna akcija: ostavi prazno ili Cancel za učitavanje postojećeg enrichanog sessiona.\nDestruktivna akcija: upiši ERASE ako stvarno želiš obrisati authoring i refreshati iz RAW DXF-a.`, "");
-        forceRefresh = String(answer || "").trim().toUpperCase() === "ERASE";
-        if (answer && !forceRefresh) {
-          setStatus("Raw refresh nije pokrenut: za brisanje authoringa treba ručno upisati ERASE. Učitavam postojeći enrichani session.", "warn");
+      const existingNamedSession = (state.sessionSummaries || []).find((session) =>
+        normalizeSessionName(session?.title || session?.source_name || "").toLowerCase() === sessionName.toLowerCase()
+      );
+      if (existingNamedSession) {
+        const confirmed = window.confirm("Session name " + sessionName + " already exists.\n\nOK: load the existing session.\nCancel: return and edit the proposed name.");
+        if (!confirmed) {
+          sessionSourceOverride.focus();
+          setStatus("Session creation cancelled. Edit the proposed session name.", "warn");
+          return;
         }
+        sessionSelect.value = existingNamedSession.session_id;
+        await loadSelectedSession();
+        return;
       }
-      setStatus(forceRefresh ? "Refreshing working session from raw DXF after explicit ERASE confirmation..." : "Loading existing enriched session when available...");
+      const contextSessionId = ["context_draft", "context_locked"].includes(String(state.session?.artifact_state || ""))
+        ? state.session.session_id
+        : null;
+      setStatus("Creating a new working session from the selected raw DXF...");
       const payload = {
-        session_id: state.session?.session_id || null,
+        session_id: contextSessionId,
         session_context_v1: currentSessionContext(),
         dxf_text: dxfText,
         source_name: sourceName,
+        raw_source_name: document.getElementById("fileInput").files[0]?.name || state.session?.raw_source_name || sourceName,
+        title: sessionName,
         bands: bandsPayload(),
-        force_refresh: forceRefresh
+        force_refresh: false
       };
       const data = await fetchJson("/api/mother-dxf/v1/sessions", {
         method: "POST",
@@ -5787,7 +6530,7 @@
         setStatus("Working session ready. Auto-suggestion applied.", "ok");
       }
       await refreshSessionList();
-      openWorkflowStep("sanitize");
+      openWorkflowStep("geometry");
       render();
       refitViewerAfterLayout();
     }
@@ -5891,17 +6634,43 @@
     }
 
     async function saveConfigParameterSet() {
-      setStatus("Free-form config editing is disabled in Mother DXF v2. Use locked session_context_v1 and parameter catalog resolution.", "error");
+      if (!state.session) return;
+      if (!sessionContextLocked()) {
+        setStatus("Lock session context before applying execution intent.", "error");
+        return;
+      }
+      if (!geometryIsProjected()) {
+        setStatus("Compute geometry context before applying execution intent.", "error");
+        return;
+      }
+      const nextConfig = buildExecutionIntentDraftConfig();
+      const slotIntentAuthoring = { version: 1, slots: buildExecutionIntentAuthoringDraftFromDom() };
+      setStatus("Saving slot intent...");
+      const data = await fetchJson("/api/mother-dxf/v1/sessions/" + state.session.session_id + "/config", {
+        method: "POST",
+        body: JSON.stringify({
+          config_parameter_set: nextConfig,
+          execution_intent_authoring_v1: slotIntentAuthoring
+        })
+      });
+      state.session = data.session;
+      syncSessionContextDraftFromSession();
+      syncConfigInputFromSession(true);
+      render();
+      openWorkflowStep("domain");
+      setStatus("Execution intent saved. Continue with Domain Validation.", "ok");
     }
 
     function reloadConfigParameterSetFromSession() {
       syncConfigInputFromSession(true);
-      setStatus("Parameter context refreshed from locked session context.", "ok");
+      renderExecutionIntentPanel();
+      setStatus("Execution intent reloaded from session.", "ok");
     }
 
     function documentSemContextForConfigDefaults() {
-      const family = String(documentSemFamily.value || state.session?.document_sem?.family || "VRATA").trim();
-      const product = String(documentSemProduct.value || state.session?.document_sem?.product || "PPV").trim();
+      const defaults = documentSemIdentityDefaults();
+      const family = String(documentSemFamily.value || state.session?.document_sem?.family || defaults.family || "").trim();
+      const product = String(documentSemProduct.value || state.session?.document_sem?.product || defaults.product || "").trim();
       const part = String(documentSemPart.value || state.session?.document_sem?.part || state.session?.config_parameter_set?.part || inferPartFromSourceName(state.session?.source_name || "")).trim();
       return { family, product, part };
     }
@@ -5917,8 +6686,10 @@
         state.documentSem.ruleRefs = [...(state.documentSem.ruleRefs || []), pendingRuleRef];
       }
       const payload = readDocumentSemPayload();
-      if (!payload.nominal_width || !payload.nominal_height || !payload.family || !payload.product || !payload.part) {
-        setStatus("Document SEM identity traži nominal width, nominal height, family, product i part.", "error");
+      const dimensionDefinitions = catalogDocumentDimensionDefinitions();
+      const dimensionsComplete = dimensionDefinitions.length && dimensionDefinitions.every((item) => Number(payload.nominal_dimensions[item.semantic]) > 0);
+      if (!dimensionsComplete || !payload.family || !payload.product || !payload.part) {
+        setStatus("Document SEM requires every catalog-declared nominal geometry dimension plus family, product, and part.", "error");
         return;
       }
       const data = await fetchJson(`/api/mother-dxf/v1/sessions/${state.session.session_id}/document-sem`, {
@@ -5976,10 +6747,6 @@
 
     async function saveTopoMetadata() {
       if (!state.session) return;
-      if (!hasDocumentSemConfigured()) {
-        setStatus("Prvo spremi Document SEM.", "error");
-        return;
-      }
       const family = activeTopoFamily();
       if (!ensureConcreteBranchForAuthoring("TOPO metadata authoring")) return;
       const topoConfigOk = Boolean(
@@ -6098,6 +6865,10 @@
         setStatus("Prvo spremi Document SEM.", "error");
         return;
       }
+      if (activeGeometryStrategy() !== "static_geometry") {
+        setStatus("Continue Without TOPO is available only when Geometry Context confirms static geometry.", "error");
+        return;
+      }
       state.authoring.topoSkipped = true;
       state.authoring.activeStage = "sem";
       openWorkflowStep("metadata");
@@ -6161,7 +6932,7 @@
       document.getElementById("saveSessionMetaBtn").disabled = false;
       fitViewToDocument();
       syncTopoInputFromSession();
-      openWorkflowStep("sanitize");
+      openWorkflowStep(geometryIsProjected() ? "intent" : "geometry");
       render();
       refitViewerAfterLayout();
       setStatus("Working session loaded.", "ok");
@@ -6501,13 +7272,19 @@
       if (!file) return;
       const text = await file.text();
       document.getElementById("dxfInput").value = text;
-      if (sessionSourceOverride && !String(sessionSourceOverride.value || "").trim()) {
-        sessionSourceOverride.value = stripDxfExtension(file.name);
+      if (sessionSourceOverride) {
+        sessionSourceOverride.value = suggestAvailableSessionName(file.name);
       }
+      renderSessionNameHint();
       renderLineNumbers();
-      setStatus(`Loaded ${file.name}.`, "ok");
+      setStatus(`Loaded ${file.name}. Confirm or edit session name before Create.`, "ok");
     });
 
+    sessionSourceOverride.addEventListener("input", renderSessionNameHint);
+    sessionSourceOverride.addEventListener("change", () => {
+      sessionSourceOverride.value = normalizeSessionName(sessionSourceOverride.value);
+      renderSessionNameHint();
+    });
     dxfInput.addEventListener("input", renderLineNumbers);
     dxfInput.addEventListener("scroll", () => {
       lineGutter.scrollTop = dxfInput.scrollTop;
@@ -6527,8 +7304,17 @@
       ]);
     });
     documentSemProduct.addEventListener("input", render);
+    openDocumentIdentityBtn.addEventListener("click", () => {
+      metadataAuthoringDetails.open = true;
+      state.documentSem.editing = true;
+      render();
+      documentSemPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
     addDocumentSemRuleBtn.addEventListener("click", addDocumentSemRule);
-    topoFamily.addEventListener("change", render);
+    geometryStrategy.addEventListener("change", () => {
+      render();
+      geometryContextDetails.open = true;
+    });
     topoGroup.addEventListener("input", syncTopoInputFromSession);
     [topoFourBandParameterL, topoFourBandParameterR, topoFourBandParameterT, topoFourBandParameterB, topoFourBandNominalL, topoFourBandNominalR, topoFourBandNominalT, topoFourBandNominalB, topoFourBandFactorL, topoFourBandFactorR, topoFourBandFactorT, topoFourBandFactorB].forEach((input) => {
       input.addEventListener("input", syncTopoInputFromSession);
@@ -6663,6 +7449,31 @@
     validateDomainBtn.addEventListener("click", () => {
       validateDomainContext().catch((error) => setStatus(error.message, "error"));
     });
+    saveExecutionIntentBtn.addEventListener("click", () => {
+      saveConfigParameterSet().catch((error) => setStatus(error.message, "error"));
+    });
+    reloadExecutionIntentBtn.addEventListener("click", reloadConfigParameterSetFromSession);
+    function handleExecutionIntentDraftInput() {
+      if (!state.session) return;
+      try {
+        configInput.value = JSON.stringify(buildExecutionIntentDraftConfig(), null, 2);
+        state.configDirty = true;
+      } catch (error) {}
+      refreshExecutionIntentLiveProjection();
+      fitViewToCurrentGeometry();
+      renderExecutionIntentPanel();
+      render();
+    }
+
+    executionIntentAuthoringArea.addEventListener("change", handleExecutionIntentDraftInput);
+    executionIntentAuthoringArea.addEventListener("input", (event) => {
+      const target = event && event.target ? event.target : null;
+      if (!target) return;
+      if (target.matches('input[data-exec-sim-key]')) return;
+      if (target.matches('select[data-exec-sim-key], .exec-parameter-key, .exec-activation-mode, .exec-operator, .exec-slot-role, .exec-tech-profile, .exec-evidence-source, .exec-expected-value')) {
+        handleExecutionIntentDraftInput();
+      }
+    });
     generateResolverPreviewBtn.addEventListener("click", () => {
       generateResolverPreview().catch((error) => setStatus(error.message, "error"));
     });
@@ -6729,7 +7540,7 @@
       state.authoring.activeStage = "sem";
       render();
     });
-    [documentSemNominalWidth, documentSemNominalHeight, documentSemFamily, documentSemProduct, documentSemPart].forEach((input) => {
+    [documentSemFamily, documentSemProduct, documentSemPart].forEach((input) => {
       input.addEventListener("input", markDocumentSemIdentityDirty);
     });
     document.getElementById("saveSessionMetaBtn").addEventListener("click", () => {
@@ -6785,6 +7596,7 @@
     window.addEventListener("resize", render);
     configInput.addEventListener("input", () => {
       state.configDirty = true;
+      renderExecutionIntentPanel();
     });
 
     initAssignToolbar();
@@ -6807,19 +7619,7 @@
     renderGeometryHygiene({ ok: true, note: "No geometry hygiene report yet." });
     renderSimulation({ ok: false, note: "Simulation not run yet." });
     configInput.value = JSON.stringify({
-      technology_profile: "OPS_S4P4",
-      family: "VRATA",
-      product: "PPV",
-      part: "",
-      product_code: "PPV",
-      parameters: {
-        SIRINA_VRATA: 900,
-        VISINA_VRATA: 2100,
-        MODEL_VRATA: "Europa",
-        TIP_VRATA: "Europa",
-        KONF_ID: "SMOKE-0001",
-        VISINA_EFF: 2100
-      }
+      note: "Execution intent is resolved from the locked session context and selected artifacts."
     }, null, 2);
     refreshSessionList().catch(() => {});
     renderLineNumbers();

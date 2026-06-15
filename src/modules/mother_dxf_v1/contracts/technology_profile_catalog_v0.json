@@ -1,0 +1,21 @@
+{
+  "catalog_id": "technology_profile_catalog_v0",
+  "schema_version": "technology_profile_catalog.v0",
+  "profiles": {
+    "OPS_S4P4": {
+      "program": "MXD",
+      "label": "OPS S4P4",
+      "kind": "door_sheet_metal"
+    },
+    "Laser": {
+      "program": "INOX",
+      "label": "Laser",
+      "kind": "sheet_cutting"
+    },
+    "Router": {
+      "program": "INOX",
+      "label": "Router",
+      "kind": "support_routing"
+    }
+  }
+}

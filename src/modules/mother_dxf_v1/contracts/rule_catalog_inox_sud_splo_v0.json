@@ -1,0 +1,303 @@
+{
+  "catalog_id": "rule_catalog_inox_sud_splo_v0",
+  "schema_version": "rule_catalog.v0",
+  "profile_id": "INOX_SUD_SPLO_V0",
+  "source": "mother_dxf_domain_poc",
+  "metadata": {
+    "program": "INOX",
+    "family": "SUDOPERI",
+    "product": "SUD",
+    "part": "SPLO",
+    "authority_model": "local_part_execution_rules",
+    "purpose": "child_geometry_and_authoring_validation",
+    "notes": [
+      "This catalog is not a full product feasibility engine.",
+      "KV6 remains authoritative for upstream product configuration feasibility.",
+      "This catalog validates only local part-scope conditions relevant to Mother DXF authoring, preview, child generation, resolver consistency, slot mapping, and technology-profile-aware execution intent."
+    ]
+  },
+  "rule_groups": [
+    "context_rules",
+    "geometry_rules",
+    "slot_variant_rules",
+    "semantic_variant_rules",
+    "parameter_usage_rules",
+    "authoring_rules",
+    "preview_rules",
+    "child_rules"
+  ],
+  "rules": {
+    "SPLO_CONTEXT_PROGRAM_MUST_BE_INOX": {
+      "rule_id": "SPLO_CONTEXT_PROGRAM_MUST_BE_INOX",
+      "label": "SPLO context program must be INOX",
+      "profile_scope": "INOX",
+      "group": "context_rules",
+      "description": "Preview and child generation for SPLO are valid only when the locked session context is inside the INOX program.",
+      "target_scope": {
+        "family": "SUDOPERI",
+        "products": ["SUD"],
+        "parts": ["SPLO"]
+      },
+      "condition": {
+        "field": "session_context_v1.production_program_id",
+        "operator": "==",
+        "value": "INOX"
+      },
+      "action": {
+        "operation": "require_context_match"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_PARAMETER_CATALOG_MUST_BE_INOX_V0": {
+      "rule_id": "SPLO_PARAMETER_CATALOG_MUST_BE_INOX_V0",
+      "label": "SPLO parameter catalog must be parameter_catalog_inox_v0",
+      "profile_scope": "INOX",
+      "group": "context_rules",
+      "description": "SPLO authoring and preview must resolve parameters from the INOX legality catalog artifact.",
+      "target_scope": {
+        "family": "SUDOPERI",
+        "products": ["SUD"],
+        "parts": ["SPLO"]
+      },
+      "condition": {
+        "field": "session_context_v1.parameter_catalog_id",
+        "operator": "==",
+        "value": "parameter_catalog_inox_v0"
+      },
+      "action": {
+        "operation": "require_parameter_catalog"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_NOMINAL_SET_MUST_BE_SUDOPERI_SCOPE": {
+      "rule_id": "SPLO_NOMINAL_SET_MUST_BE_SUDOPERI_SCOPE",
+      "label": "SPLO nominal set must be SUDOPERI scoped",
+      "profile_scope": "INOX",
+      "group": "context_rules",
+      "description": "SPLO should consume a family-scoped SUDOPERI nominal value set rather than a part-private nominal artifact.",
+      "target_scope": {
+        "family": "SUDOPERI",
+        "products": ["SUD"],
+        "parts": ["SPLO"]
+      },
+      "condition": {
+        "field": "session_context_v1.nominal_value_set_id",
+        "operator": "IN",
+        "values": [
+          "nominal_value_set_inox_sudoperi_dummy_v0",
+          "nominal_value_set_inox_sud_splo_dummy_v0"
+        ]
+      },
+      "action": {
+        "operation": "require_nominal_value_set"
+      },
+      "severity": "warning",
+      "blocking": false,
+      "status": "draft"
+    },
+    "SPLO_GEOMETRY_CONTEXT_REQUIRED": {
+      "rule_id": "SPLO_GEOMETRY_CONTEXT_REQUIRED",
+      "label": "SPLO geometry context required",
+      "profile_scope": "INOX",
+      "group": "geometry_rules",
+      "description": "SPLO authoring, preview, and child flow require a computed geometry_context_v1.",
+      "condition": {
+        "field": "geometry_context_v1.version",
+        "operator": "required"
+      },
+      "action": {
+        "operation": "require_geometry_context"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_SLOT_MODEL_REQUIRED": {
+      "rule_id": "SPLO_SLOT_MODEL_REQUIRED",
+      "label": "SPLO slot model required",
+      "profile_scope": "INOX",
+      "group": "geometry_rules",
+      "description": "SPLO uses slot-aware authoring and therefore requires an observed slot model before execution intent is considered valid.",
+      "condition": {
+        "field": "geometry_context_v1.slots",
+        "operator": "non_empty"
+      },
+      "action": {
+        "operation": "require_slot_model"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_REQUIRED_VARIANT_MUST_BE_MAPPED": {
+      "rule_id": "SPLO_REQUIRED_VARIANT_MUST_BE_MAPPED",
+      "label": "Required variant must be mapped to a slot",
+      "profile_scope": "INOX",
+      "group": "slot_variant_rules",
+      "description": "When expected variant policy is required, the required slot-context variant must be present in execution intent mapping.",
+      "condition": {
+        "field": "execution_intent_v1.active_variant_key",
+        "operator": "required"
+      },
+      "action": {
+        "operation": "require_active_slot_variant"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_PJOVER_FLAG_MUST_MATCH_VARIANT_KEY": {
+      "rule_id": "SPLO_PJOVER_FLAG_MUST_MATCH_VARIANT_KEY",
+      "label": "PJOVER flag must match slot-context variant",
+      "profile_scope": "INOX",
+      "group": "slot_variant_rules",
+      "description": "For SPLO slot-context variants, pjover=Da maps to PJOVER and pjover=Ne maps to BASE.",
+      "condition": {
+        "field": "execution_intent_v1.execution_flags.pjover",
+        "operator": "derived_matches_variant_key",
+        "mapping": {
+          "Da": "PJOVER",
+          "Ne": "BASE"
+        }
+      },
+      "action": {
+        "operation": "require_variant_flag_consistency"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_SEMANTIC_VARIANT_ALZATINA_IS_NOT_SLOT_AUTHORITY": {
+      "rule_id": "SPLO_SEMANTIC_VARIANT_ALZATINA_IS_NOT_SLOT_AUTHORITY",
+      "label": "Alzatina variants are semantic in-slot variants",
+      "profile_scope": "INOX",
+      "group": "semantic_variant_rules",
+      "description": "Ploča alzatina variants are activated inside the selected slot through SEM or block authoring and must not be treated as slot-authoritative variants.",
+      "condition": {
+        "field": "parameter_context.resolved_parameters.ploca_alzatina",
+        "operator": "optional_enum",
+        "values": ["Bez A", "Tanka 40", "Debela 100"]
+      },
+      "action": {
+        "operation": "treat_as_semantic_block_variant"
+      },
+      "severity": "warning",
+      "blocking": false,
+      "status": "draft"
+    },
+    "SPLO_OFFSET_K_RANGE_VALID": {
+      "rule_id": "SPLO_OFFSET_K_RANGE_VALID",
+      "label": "K sink offset must be in allowed range",
+      "profile_scope": "INOX",
+      "group": "parameter_usage_rules",
+      "description": "Sink offsets used by SPLO child geometry must remain inside the legality range accepted by the INOX catalog.",
+      "condition": {
+        "field": "parameter_context.resolved_parameters.offset_k1",
+        "operator": "range",
+        "min": -50,
+        "max": 50
+      },
+      "action": {
+        "operation": "validate_local_parameter_usage"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_K2_FIELDS_REQUIRED_WHEN_K2_USED": {
+      "rule_id": "SPLO_K2_FIELDS_REQUIRED_WHEN_K2_USED",
+      "label": "K2 companion fields required when second sink is used",
+      "profile_scope": "INOX",
+      "group": "parameter_usage_rules",
+      "description": "A narrower parameter set is legal, but when SPLO child rules use Korito 2, the companion orientation, faucet, and offset fields must also be available.",
+      "condition": {
+        "field": "parameter_context.resolved_parameters.korito_2",
+        "operator": "if_present_require_fields",
+        "required_fields": [
+          "orijentacija_k2",
+          "slavina_k2",
+          "offset_k2"
+        ]
+      },
+      "action": {
+        "operation": "require_local_companion_fields"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_FORCE_ASSIGN_IS_AUTHORITATIVE": {
+      "rule_id": "SPLO_FORCE_ASSIGN_IS_AUTHORITATIVE",
+      "label": "Force assignment is authoritative for SPLO authoring",
+      "profile_scope": "INOX",
+      "group": "authoring_rules",
+      "description": "Manual force layer assignment overrides draft slot-aware auto-assignment and must be preserved until explicitly changed.",
+      "target_scope": {
+        "parts": ["SPLO"]
+      },
+      "action": {
+        "operation": "preserve_manual_assignment_authority"
+      },
+      "severity": "info",
+      "blocking": false,
+      "status": "draft"
+    },
+    "SPLO_PREVIEW_REQUIRES_EXECUTION_INTENT": {
+      "rule_id": "SPLO_PREVIEW_REQUIRES_EXECUTION_INTENT",
+      "label": "Preview requires execution intent",
+      "profile_scope": "INOX",
+      "group": "preview_rules",
+      "description": "SPLO preview must not implicitly default to slot 0 or BASE when an execution-intent decision is required.",
+      "condition": {
+        "field": "execution_intent_v1.active_slot_index",
+        "operator": "required"
+      },
+      "action": {
+        "operation": "block_preview_without_execution_intent"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_WYSIWYG_MISMATCH_BLOCKS_CHILD": {
+      "rule_id": "SPLO_WYSIWYG_MISMATCH_BLOCKS_CHILD",
+      "label": "WYSIWYG mismatch blocks child",
+      "profile_scope": "INOX",
+      "group": "child_rules",
+      "description": "SPLO child generation must stop when current UI projection and resolver input/output hashes no longer describe the same execution state.",
+      "condition": {
+        "field": "wysiwyg_gate.status",
+        "operator": "!=",
+        "value": "ok"
+      },
+      "action": {
+        "operation": "block_child_generation"
+      },
+      "severity": "error",
+      "blocking": true,
+      "status": "draft"
+    },
+    "SPLO_ROUTER_SLOT_IS_TECHNOLOGY_PROFILE_AWARE": {
+      "rule_id": "SPLO_ROUTER_SLOT_IS_TECHNOLOGY_PROFILE_AWARE",
+      "label": "Router slot is a technology-profile branch",
+      "profile_scope": "INOX",
+      "group": "slot_variant_rules",
+      "description": "A future Router slot may carry the same or similar product geometry as a Laser slot while representing a different manufacturing path. Technology profile must therefore be tracked independently from slot variant semantics.",
+      "condition": {
+        "field": "execution_intent_v1.technology_profile",
+        "operator": "optional_enum",
+        "values": ["Laser", "Router"]
+      },
+      "action": {
+        "operation": "treat_slot_as_variant_plus_technology_profile"
+      },
+      "severity": "warning",
+      "blocking": false,
+      "status": "draft"
+    }
+  }
+}

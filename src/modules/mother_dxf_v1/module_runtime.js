@@ -64,6 +64,7 @@ const {
   listSessionEnvelopes,
   saveMotherJson
 } = require("../../core_shell/io/mother_dxf/session/session_store");
+const { buildSessionStorageKey } = require("../../core_shell/io/mother_dxf/session/session_locator");
 const {
   registerArtifact,
   loadArtifactRegistry,
@@ -87,7 +88,28 @@ async function listSessions({ rootDir }) {
 }
 
 const DEFAULT_PARAMETER_CATALOG = require("./contracts/parameter_catalog_legacy_door_v0.json");
+const PARAMETER_CATALOG_INOX_V0 = require("./contracts/parameter_catalog_inox_v0.json");
 const DEFAULT_RULE_CATALOG = require("./contracts/rule_catalog_mxd_door_v0.json");
+const RULE_CATALOG_INOX_SUD_SPLO_V0 = require("./contracts/rule_catalog_inox_sud_splo_v0.json");
+const NOMINAL_VALUE_SET_MXD_V0 = require("./contracts/nominal_value_set_mxd_v0.json");
+const NOMINAL_VALUE_SET_INOX_SUDOPERI_DUMMY_V0 = require("./contracts/nominal_value_set_inox_sudoperi_dummy_v0.json");
+const NOMINAL_VALUE_SET_INOX_SUD_SPLO_DUMMY_V0 = require("./contracts/nominal_value_set_inox_sud_splo_dummy_v0.json");
+const PARAMETER_CATALOG_REGISTRY = {
+  [String(DEFAULT_PARAMETER_CATALOG.catalog_id || "").trim()]: DEFAULT_PARAMETER_CATALOG,
+  [String(PARAMETER_CATALOG_INOX_V0.catalog_id || "").trim()]: PARAMETER_CATALOG_INOX_V0
+};
+const RULE_CATALOG_REGISTRY = {
+  [String(DEFAULT_RULE_CATALOG.catalog_id || "").trim()]: DEFAULT_RULE_CATALOG,
+  [String(RULE_CATALOG_INOX_SUD_SPLO_V0.catalog_id || "").trim()]: RULE_CATALOG_INOX_SUD_SPLO_V0
+};
+const NOMINAL_VALUE_SET_REGISTRY = {
+  [String(NOMINAL_VALUE_SET_MXD_V0.nominal_value_set_id || "").trim()]: NOMINAL_VALUE_SET_MXD_V0,
+  [String(NOMINAL_VALUE_SET_INOX_SUDOPERI_DUMMY_V0.nominal_value_set_id || "").trim()]: NOMINAL_VALUE_SET_INOX_SUDOPERI_DUMMY_V0,
+  [String(NOMINAL_VALUE_SET_INOX_SUD_SPLO_DUMMY_V0.nominal_value_set_id || "").trim()]: NOMINAL_VALUE_SET_INOX_SUD_SPLO_DUMMY_V0
+};
+const CHILD_DXF_999_SET_MXD = require("./contracts/child_dxf_999_set_mxd_v1.json");
+const CHILD_DXF_999_SET_INOX = require("./contracts/child_dxf_999_set_inox_v1.json");
+const DOMAIN_AWARE_REGISTRY = require("./contracts/motherfile_domain_aware_registry_v1.json");
 
 const DEFAULT_BANDS = {
   left: 80,
@@ -202,7 +224,130 @@ function buildDefaultConfigFromParameterCatalog(catalogInput, context = {}) {
   };
 }
 
-const DEFAULT_CONFIG_PARAMETER_SET = buildDefaultConfigFromParameterCatalog(DEFAULT_PARAMETER_CATALOG, DEFAULT_CONFIG_CONTEXT);
+function requireRegisteredDomainArtifact(registry, artifactId, field, artifactType) {
+  const normalizedId = String(artifactId || "").trim();
+  const artifact = normalizedId ? registry[normalizedId] : null;
+  if (artifact) return cloneJson(artifact);
+  const error = new Error(`Unknown or missing ${artifactType}: ${normalizedId || "-"}. Select a valid artifact before continuing.`);
+  error.code = "SESSION_CONTEXT_ARTIFACT_INVALID";
+  error.validation = {
+    ok: false,
+    errors: [{
+      code: "SESSION_CONTEXT_ARTIFACT_INVALID",
+      field,
+      artifact_type: artifactType,
+      artifact_id: normalizedId || null,
+      message: error.message
+    }]
+  };
+  throw error;
+}
+
+function resolveRuleCatalogSnapshotById(catalogId, fallback = null) {
+  const normalizedId = String(catalogId || "").trim();
+  if (normalizedId && RULE_CATALOG_REGISTRY[normalizedId]) {
+    return cloneJson(RULE_CATALOG_REGISTRY[normalizedId]);
+  }
+  return fallback ? normalizeRuleCatalogSnapshot(fallback) : cloneJson(DEFAULT_RULE_CATALOG);
+}
+
+function resolveNominalValueSetById(valueSetId) {
+  const normalizedId = String(valueSetId || "").trim();
+  return normalizedId && NOMINAL_VALUE_SET_REGISTRY[normalizedId]
+    ? cloneJson(NOMINAL_VALUE_SET_REGISTRY[normalizedId])
+    : null;
+}
+
+function configContextFromSessionContext(sessionContext = {}, nominalValueSet = null, sourceName = "") {
+  const defaults = nominalValueSet?.defaults && typeof nominalValueSet.defaults === "object"
+    ? nominalValueSet.defaults
+    : {};
+  return defaultConfigContextForSource(sourceName, {
+    family: String(sessionContext.family_id || "").trim(),
+    product: String(sessionContext.product_id || "").trim(),
+    part: String(sessionContext.part_id || "").trim(),
+    product_code: String(defaults?.parameters?.model_code || sessionContext.product_id || "").trim(),
+    technology_profile: String(defaults.technology_profile || "").trim()
+  });
+}
+
+function buildDomainArtifactsForContext(sessionContext = {}, sourceName = "") {
+  const parameterCatalog = requireRegisteredDomainArtifact(PARAMETER_CATALOG_REGISTRY, sessionContext.parameter_catalog_id, "parameter_catalog_id", "parameter catalog");
+  const ruleCatalog = requireRegisteredDomainArtifact(RULE_CATALOG_REGISTRY, sessionContext.rule_set_id, "rule_set_id", "rule set");
+  const nominalValueSet = requireRegisteredDomainArtifact(NOMINAL_VALUE_SET_REGISTRY, sessionContext.nominal_value_set_id, "nominal_value_set_id", "nominal value set");
+  const configContext = configContextFromSessionContext(sessionContext, nominalValueSet, sourceName);
+  const catalogConfig = buildDefaultConfigFromParameterCatalog(parameterCatalog, configContext);
+  const nominalParameters = nominalValueSet?.defaults?.parameters && typeof nominalValueSet.defaults.parameters === "object"
+    ? nominalValueSet.defaults.parameters
+    : {};
+  return {
+    parameter_catalog: parameterCatalog,
+    rule_catalog: ruleCatalog,
+    nominal_value_set: nominalValueSet,
+    config_parameter_set: {
+      ...catalogConfig,
+      technology_profile: String(nominalValueSet?.defaults?.technology_profile || catalogConfig.technology_profile || ""),
+      family: String(sessionContext.family_id || catalogConfig.family || ""),
+      product: String(sessionContext.product_id || catalogConfig.product || ""),
+      part: String(sessionContext.part_id || catalogConfig.part || ""),
+      product_code: String(nominalParameters.model_code || catalogConfig.product_code || sessionContext.product_id || ""),
+      parameter_catalog_id: parameterCatalog.catalog_id || sessionContext.parameter_catalog_id || null,
+      parameter_scope: {
+        family: String(sessionContext.family_id || ""),
+        product: String(sessionContext.product_id || ""),
+        part: String(sessionContext.part_id || "")
+      },
+      parameters: {
+        ...(catalogConfig.parameters || {}),
+        ...cloneJson(nominalParameters)
+      }
+    }
+  };
+}
+
+function reconcileSessionDomainArtifacts(session) {
+  if (!sessionContextIsLocked(session?.session_context_v1)) return false;
+  const artifacts = buildDomainArtifactsForContext(session.session_context_v1, session.raw_source_name || session.source_name);
+  const allowedParameterKeys = new Set(Object.keys(artifacts.parameter_catalog?.parameters || {}));
+  const existingParameters = session.config_parameter_set?.parameters && typeof session.config_parameter_set.parameters === "object"
+    ? session.config_parameter_set.parameters
+    : {};
+  const preservedParameters = {};
+  for (const [key, value] of Object.entries(existingParameters)) {
+    if (allowedParameterKeys.has(key)) preservedParameters[key] = cloneJson(value);
+  }
+  const nextConfig = {
+    ...artifacts.config_parameter_set,
+    technology_profile: String(session.config_parameter_set?.technology_profile || artifacts.config_parameter_set.technology_profile || ""),
+    parameters: {
+      ...(artifacts.config_parameter_set.parameters || {}),
+      ...preservedParameters
+    }
+  };
+  const reconciledVariantKey = readConfigVariantKey(nextConfig);
+  if (reconciledVariantKey) nextConfig.parameters.variant_key = reconciledVariantKey;
+  const before = JSON.stringify({
+    config_parameter_set: session.config_parameter_set || null,
+    parameter_catalog_id: session.parameter_catalog?.catalog_id || null,
+    rule_catalog_id: session.rule_catalog?.catalog_id || null
+  });
+  session.config_parameter_set = nextConfig;
+  session.parameter_catalog = artifacts.parameter_catalog;
+  session.rule_catalog = artifacts.rule_catalog;
+  const after = JSON.stringify({
+    config_parameter_set: session.config_parameter_set,
+    parameter_catalog_id: session.parameter_catalog?.catalog_id || null,
+    rule_catalog_id: session.rule_catalog?.catalog_id || null
+  });
+  return before !== after;
+}
+
+const DEFAULT_CONFIG_PARAMETER_SET = (() => {
+  const config = buildDefaultConfigFromParameterCatalog(DEFAULT_PARAMETER_CATALOG, DEFAULT_CONFIG_CONTEXT);
+  const nonNullParameters = Object.fromEntries(Object.entries(config.parameters || {}).filter(([key, value]) => key !== "MODEL_VRATA" && value != null));
+  config.parameters = { MODEL_VRATA: 1, ...nonNullParameters };
+  return config;
+})();
 
 const DEFAULT_KSKR_EXECUTION_CHECK_PARAMETER_SET = {
   technology_profile: "OPS_S4P4",
@@ -265,6 +410,23 @@ function validateSessionContextV1(context) {
         code: "SESSION_CONTEXT_FIELD_REQUIRED",
         field,
         message: "Session context field is required: " + field
+      });
+    }
+  }
+  const artifactChecks = [
+    ["parameter_catalog_id", PARAMETER_CATALOG_REGISTRY, "parameter catalog"],
+    ["rule_set_id", RULE_CATALOG_REGISTRY, "rule set"],
+    ["nominal_value_set_id", NOMINAL_VALUE_SET_REGISTRY, "nominal value set"]
+  ];
+  for (const [field, registry, label] of artifactChecks) {
+    const artifactId = String(source[field] || "").trim();
+    if (artifactId && !registry[artifactId]) {
+      errors.push({
+        code: "SESSION_CONTEXT_ARTIFACT_UNKNOWN",
+        field,
+        artifact_type: label,
+        artifact_id: artifactId,
+        message: `Selected ${label} is not registered for Mother DXF: ${artifactId}`
       });
     }
   }
@@ -739,6 +901,27 @@ function buildGeometryContextV1Projection(geometrySlotModel) {
   const slots = (Array.isArray(source.slots) ? source.slots : []).map((slot) => {
     const objects = Array.isArray(slot.objects) ? slot.objects : [];
     const xdataVariantKeys = Array.from(new Set(objects.map((object) => String(object?.xdata_metadata?.geometry_variant || "").trim()).filter(Boolean))).sort();
+    const observedXdataHintMap = new Map();
+    for (const object of objects) {
+      const metadata = object?.xdata_metadata;
+      const hint = String(metadata?.observed_xdata_hint || "").trim();
+      if (!hint) continue;
+      const current = observedXdataHintMap.get(hint) || {
+        hint,
+        app: String(metadata?.app || MOTHER_XDATA_APP_NAME),
+        attributes: metadata?.attributes && typeof metadata.attributes === "object" ? cloneJson(metadata.attributes) : {},
+        object_count: 0,
+        coverage: 0
+      };
+      current.object_count += 1;
+      observedXdataHintMap.set(hint, current);
+    }
+    const observedXdataHints = Array.from(observedXdataHintMap.values())
+      .map((entry) => ({
+        ...entry,
+        coverage: objects.length ? roundNumber(entry.object_count / objects.length, 4) : 0
+      }))
+      .sort((a, b) => a.hint.localeCompare(b.hint));
     const semVariantKeys = Array.from(new Set(objects.flatMap((object) => objectSemVariantKeys(object)))).sort();
     const hasXdata = xdataVariantKeys.length > 0;
     const hasSem = semVariantKeys.length > 0;
@@ -748,6 +931,7 @@ function buildGeometryContextV1Projection(geometrySlotModel) {
       role: slot.slot_index === 0 ? "base" : "variant",
       variant_key: xdataVariantKeys[0] || semVariantKeys[0] || null,
       xdata_variant_keys: xdataVariantKeys,
+      observed_xdata_hints: observedXdataHints,
       sem_variant_keys: semVariantKeys,
       has_xdata_variant: hasXdata,
       has_sem_variant: hasSem,
@@ -846,13 +1030,311 @@ function buildResolverInputV2ExtendedSkeleton(session, geometryContext, domainCo
   };
 }
 
-function readConfigVariantKey(config) {
+function registryPartDefinitionForSession(session, config) {
+  const programId = activeProgramIdForSession(session, config);
+  const registryProgram = DOMAIN_AWARE_REGISTRY.programs && DOMAIN_AWARE_REGISTRY.programs[programId]
+    ? DOMAIN_AWARE_REGISTRY.programs[programId]
+    : null;
+  if (!registryProgram) return null;
+  const familyId = String(session?.session_context_v1?.family_id || config?.family || "").trim();
+  const productId = String(session?.session_context_v1?.product_id || config?.product || "").trim();
+  const partId = String(session?.session_context_v1?.part_id || config?.part || config?.product_code || "").trim();
+  return registryProgram?.families?.[familyId]?.products?.[productId]?.parts?.[partId] || null;
+}
+
+function readConfigParameterValue(parameters, key) {
+  const source = parameters && typeof parameters === "object" ? parameters : {};
+  const rawKey = String(key || "").trim();
+  if (!rawKey) return undefined;
+  const variants = [rawKey, rawKey.toUpperCase(), rawKey.toLowerCase()];
+  for (const candidate of variants) {
+    if (Object.prototype.hasOwnProperty.call(source, candidate)) return source[candidate];
+  }
+  return undefined;
+}
+
+function readExecutionVariantDriver(config) {
   const parameters = config && config.parameters && typeof config.parameters === "object" ? config.parameters : {};
+  for (const key of ["pjover", "PJOVER"]) {
+    const value = String(parameters[key] || "").trim();
+    if (value) {
+      const upper = value.toUpperCase();
+      if (["DA", "YES", "TRUE", "1"].includes(upper)) return { key, value, derived_variant_key: "PJOVER", source: "config.parameters.derived" };
+      if (["NE", "NO", "FALSE", "0"].includes(upper)) return { key, value, derived_variant_key: "BASE", source: "config.parameters.derived" };
+      return { key, value, source: "config.parameters.derived_unknown" };
+    }
+  }
   for (const key of ["variant_key", "VARIANT_KEY", "GEOMETRY_VARIANT", "geometry_variant"]) {
     const value = String(parameters[key] || "").trim();
-    if (value) return value;
+    if (value) return { key, value, source: "config.parameters.explicit" };
   }
   return null;
+}
+
+function readConfigVariantKey(config) {
+  const driver = readExecutionVariantDriver(config);
+  if (!driver) return null;
+  return String(driver.derived_variant_key || driver.value || "").trim() || null;
+}
+
+function inferExecutionIntentRuleDefaults(variantKey) {
+  const normalized = String(variantKey || "").trim().toUpperCase();
+  if (!normalized) {
+    return {
+      activation_mode: "always",
+      parameter_key: "",
+      operator: "==",
+      expected_value: "",
+      derived_meaning: "always include"
+    };
+  }
+  if (normalized === "BASE" || normalized.endsWith("_BASE")) {
+    return {
+      activation_mode: "parameter_rule",
+      parameter_key: "pjover",
+      operator: "==",
+      expected_value: "Ne",
+      derived_meaning: "include when BASE branch is selected"
+    };
+  }
+  if (normalized.includes("PJOVER")) {
+    return {
+      activation_mode: "parameter_rule",
+      parameter_key: "pjover",
+      operator: "==",
+      expected_value: "Da",
+      derived_meaning: "include when PJOVER branch is selected"
+    };
+  }
+  return {
+    activation_mode: "always",
+    parameter_key: "",
+    operator: "==",
+    expected_value: "",
+    derived_meaning: "always include"
+  };
+}
+
+function defaultExecutionIntentAuthoringRows(session, geometryContext, partDefinition, config) {
+  const geometrySlots = Array.isArray(geometryContext?.slots) ? geometryContext.slots : [];
+  const registryProfiles = Array.isArray(partDefinition?.slot_profiles) ? partDefinition.slot_profiles : [];
+  const fallbackTechnology = String(config?.technology_profile || "").trim() || null;
+  return geometrySlots.map((slot) => {
+    const registryProfile = registryProfiles[Number(slot.slot_index)] || null;
+    const observedXdataHint = String(slot?.observed_xdata_hints?.[0]?.hint || "").trim() || null;
+    const variantKey = String(
+      registryProfile?.variant_key
+      || slot?.variant_key
+      || (Array.isArray(slot?.xdata_variant_keys) && slot.xdata_variant_keys[0])
+      || (Array.isArray(slot?.sem_variant_keys) && slot.sem_variant_keys[0])
+      || (Number(slot?.slot_index) === 0 ? "BASE" : ("SLOT_" + Number(slot?.slot_index)))
+    ).trim();
+    const ruleDefaults = inferExecutionIntentRuleDefaults(variantKey);
+    const note = registryProfile?.note
+      || (observedXdataHint
+        ? ("Observed XDATA hint: " + observedXdataHint)
+        : (variantKey ? ("Observed variant " + variantKey) : ("Observed slot " + Number(slot?.slot_index))));
+    return {
+      slot_index: Number(slot?.slot_index),
+      slot_role: String(registryProfile?.slot_role || slot?.role || (Number(slot?.slot_index) === 0 ? "base" : "variant")).trim() || "variant",
+      variant_key: variantKey || null,
+      technology_profile: String(registryProfile?.technology_profile || fallbackTechnology || "").trim() || null,
+      evidence_source: String(
+        registryProfile?.evidence_source
+        || (Array.isArray(slot?.xdata_variant_keys) && slot.xdata_variant_keys.length ? "xdata" : "")
+        || (observedXdataHint ? "xdata_hint" : "")
+        || (Array.isArray(slot?.sem_variant_keys) && slot.sem_variant_keys.length ? "sem" : "manual")
+      ).trim() || "manual",
+      observed_xdata_hint: observedXdataHint,
+      note,
+      activation_mode: ruleDefaults.activation_mode,
+      parameter_key: ruleDefaults.parameter_key,
+      operator: ruleDefaults.operator,
+      expected_value: ruleDefaults.expected_value,
+      derived_meaning: ruleDefaults.derived_meaning
+    };
+  });
+}
+
+function normalizeExecutionIntentAuthoringV1(session, geometryContext, partDefinition, config) {
+  const defaults = defaultExecutionIntentAuthoringRows(session, geometryContext, partDefinition, config);
+  const savedRows = Array.isArray(session?.execution_intent_authoring_v1?.slots)
+    ? session.execution_intent_authoring_v1.slots
+    : [];
+  const savedBySlot = new Map(savedRows.map((row) => [Number(row?.slot_index), row]));
+  return defaults.map((row) => {
+    const saved = savedBySlot.get(Number(row.slot_index)) || {};
+    return {
+      slot_index: Number(row.slot_index),
+      slot_role: String(saved.slot_role || row.slot_role || "variant").trim() || "variant",
+      variant_key: String(saved.variant_key || row.variant_key || "").trim() || null,
+      technology_profile: String(saved.technology_profile || row.technology_profile || "").trim() || null,
+      evidence_source: String(saved.evidence_source || row.evidence_source || "manual").trim() || "manual",
+      observed_xdata_hint: String(saved.observed_xdata_hint || row.observed_xdata_hint || "").trim() || null,
+      note: String(saved.note || row.note || "").trim(),
+      activation_mode: String(saved.activation_mode || row.activation_mode || "always").trim() || "always",
+      parameter_key: String(saved.parameter_key || row.parameter_key || "").trim(),
+      operator: String(saved.operator || row.operator || "==").trim() || "==",
+      expected_value: String(saved.expected_value || row.expected_value || "").trim(),
+      derived_meaning: String(saved.derived_meaning || row.derived_meaning || "").trim()
+    };
+  });
+}
+
+function compareExecutionIntentValue(actual, operator, expected) {
+  const actualText = String(actual == null ? "" : actual).trim();
+  const expectedText = String(expected == null ? "" : expected).trim();
+  switch (String(operator || "==").trim()) {
+    case "!=":
+      return actualText !== expectedText;
+    case "IN": {
+      const expectedValues = expectedText.split(",").map((item) => item.trim()).filter(Boolean);
+      return expectedValues.includes(actualText);
+    }
+    case "==":
+    default:
+      return actualText === expectedText;
+  }
+}
+
+function evaluateExecutionIntentRule(row, configParameters) {
+  const activationMode = String(row?.activation_mode || "always").trim() || "always";
+  if (activationMode === "always") {
+    return {
+      active: true,
+      actual_value: null,
+      warning: null
+    };
+  }
+  const parameterKey = String(row?.parameter_key || "").trim();
+  if (!parameterKey) {
+    return {
+      active: false,
+      actual_value: null,
+      warning: {
+        code: "EXECUTION_INTENT_PARAMETER_KEY_MISSING",
+        severity: "warning",
+        message: "Activation rule has no parameter key."
+      }
+    };
+  }
+  const actualValue = readConfigParameterValue(configParameters, parameterKey);
+  if (actualValue === undefined) {
+    return {
+      active: false,
+      actual_value: null,
+      warning: {
+        code: "EXECUTION_INTENT_PARAMETER_MISSING",
+        severity: "warning",
+        slot_index: Number(row?.slot_index),
+        parameter_key: parameterKey,
+        message: "Activation parameter " + parameterKey + " is missing from config parameter set."
+      }
+    };
+  }
+  return {
+    active: compareExecutionIntentValue(actualValue, row?.operator, row?.expected_value),
+    actual_value: actualValue,
+    warning: null
+  };
+}
+
+function buildExecutionIntentProjectionV1(session, geometryContext, variantToSlotMap) {
+  const config = normalizeConfigParameterSet(session.config_parameter_set);
+  const partDefinition = registryPartDefinitionForSession(session, config);
+  const slotAuthoringRows = normalizeExecutionIntentAuthoringV1(session, geometryContext, partDefinition, config);
+  const geometrySlots = Array.isArray(geometryContext?.slots) ? geometryContext.slots : [];
+  const geometrySlotByIndex = new Map(geometrySlots.map((slot) => [Number(slot.slot_index), slot]));
+  const warnings = [];
+  const activeSlotSet = [];
+  const suppressedSlotSet = [];
+  const simulationParameterKeys = Array.from(new Set(slotAuthoringRows
+    .map((row) => String(row?.parameter_key || "").trim())
+    .filter(Boolean)));
+  for (const row of slotAuthoringRows) {
+    const geometrySlot = geometrySlotByIndex.get(Number(row.slot_index)) || null;
+    const evaluation = evaluateExecutionIntentRule(row, config?.parameters || {});
+    if (evaluation.warning) warnings.push(evaluation.warning);
+    const slotRecord = {
+      slot_index: Number(row.slot_index),
+      slot_role: row.slot_role || geometrySlot?.role || null,
+      variant_key: row.variant_key || geometrySlot?.variant_key || null,
+      technology_profile: row.technology_profile || null,
+      evidence_source: row.evidence_source || null,
+      observed_xdata_hint: row.observed_xdata_hint || geometrySlot?.observed_xdata_hints?.[0]?.hint || null,
+      note: row.note || "",
+      activation_mode: row.activation_mode || "always",
+      parameter_key: row.parameter_key || "",
+      operator: row.operator || "==",
+      expected_value: row.expected_value || "",
+      derived_meaning: row.derived_meaning || "",
+      activation_actual_value: evaluation.actual_value,
+      bbox: geometrySlot?.bbox || null,
+      object_count: Array.isArray(geometrySlot?.object_ids) ? geometrySlot.object_ids.length : 0,
+      source: "execution_intent_authoring"
+    };
+    if (evaluation.active) {
+      activeSlotSet.push(slotRecord);
+    } else {
+      suppressedSlotSet.push(slotRecord);
+    }
+  }
+  const driver = readExecutionVariantDriver(config);
+  const technologyProfilesAvailable = Array.from(new Set(slotAuthoringRows.map((row) => String(row.technology_profile || "").trim()).filter(Boolean)));
+  const activeVariantKey = String(driver?.derived_variant_key || driver?.value || "").trim()
+    || (activeSlotSet.length === 1 ? String(activeSlotSet[0].variant_key || "").trim() : "")
+    || null;
+  const discoveredSlots = geometrySlots.map((slot) => ({
+    slot_index: Number(slot.slot_index),
+    bbox: cloneJson(slot.bbox || null),
+    object_count: Array.isArray(slot.object_ids) ? slot.object_ids.length : 0,
+    observed_xdata: Array.isArray(slot.xdata_variant_keys) ? slot.xdata_variant_keys.slice() : [],
+    observed_xdata_hints: Array.isArray(slot.observed_xdata_hints) ? cloneJson(slot.observed_xdata_hints) : [],
+    observed_sem: Array.isArray(slot.sem_variant_keys) ? slot.sem_variant_keys.slice() : [],
+    hygiene: cloneJson(slot.hygiene || null),
+    slot_completeness: cloneJson(slot.slot_completeness || null),
+    validation: cloneJson(slot.validation || null)
+  }));
+  if (slotAuthoringRows.length && geometrySlots.length && slotAuthoringRows.length !== geometrySlots.length) {
+    warnings.push({
+      code: "EXECUTION_INTENT_SLOT_COUNT_MISMATCH",
+      severity: "warning",
+      message: "Execution intent authoring rows (" + String(slotAuthoringRows.length) + ") differ from observed slot count (" + String(geometrySlots.length) + ")."
+    });
+  }
+  if (!activeSlotSet.length) {
+    warnings.push({
+      code: "EXECUTION_INTENT_EMPTY_ACTIVE_SET",
+      severity: "warning",
+      message: "Current parameter simulation resolves zero active slots."
+    });
+  }
+  return {
+    version: 1,
+    mode: "slot_first_authoring",
+    active_variant_key: activeVariantKey,
+    active_slot_index: activeSlotSet.length === 1 ? Number(activeSlotSet[0].slot_index) : null,
+    active_slot_indices: activeSlotSet.map((slot) => Number(slot.slot_index)),
+    parameter_driver: driver ? cloneJson(driver) : null,
+    selected_technology_profile: String(config?.technology_profile || "").trim() || null,
+    technology_profiles_available: technologyProfilesAvailable,
+    slot_profiles: slotAuthoringRows.map((row) => ({
+      slot_index: Number(row.slot_index),
+      slot_role: row.slot_role || null,
+      variant_key: row.variant_key || null,
+      technology_profile: row.technology_profile || null
+    })),
+    discovered_slots: discoveredSlots,
+    slot_authoring_rows: slotAuthoringRows,
+    simulation_parameters: simulationParameterKeys.map((key) => ({
+      key,
+      value: readConfigParameterValue(config?.parameters || {}, key) ?? null
+    })),
+    active_slot_set: activeSlotSet,
+    suppressed_slot_set: suppressedSlotSet,
+    warnings,
+    variant_to_slot_map: cloneJson(variantToSlotMap || null)
+  };
 }
 
 function buildDomainContextV1Projection(documentSem, configParameterSet, xdataContext, sessionContext = null) {
@@ -868,7 +1350,7 @@ function buildDomainContextV1Projection(documentSem, configParameterSet, xdataCo
     warnings.push({
       code: "MISSING_SEM_DATA",
       severity: "warning",
-      message: "Document SEM data is missing; domain context falls back to config parameter set."
+      message: "Document SEM data is missing; domain identity is resolved from the locked session context and parameter set."
     });
   }
   if (!variantKey && xdataVariantKeys.length === 0) {
@@ -1037,7 +1519,9 @@ function buildDomainValidationV1(session, view) {
     });
   }
   const lifecycleState = String(session?.session_lifecycle_v1?.state || "");
-  if (!["geometry_projected", "domain_validated"].includes(lifecycleState)) {
+  const geometryValidationOk = session?.geometry_validation_v1?.ok === true;
+  const postGeometryLifecycle = ["geometry_projected", "domain_validated", "authoring_ready", "preview_ready", "child_ready", "export_ready"].includes(lifecycleState);
+  if (!geometryValidationOk && !postGeometryLifecycle) {
     addError({
       code: "GEOMETRY_CONTEXT_INVALID",
       lifecycle_state: lifecycleState || null,
@@ -1060,26 +1544,35 @@ function buildDomainValidationV1(session, view) {
         });
       }
     }
-  } else {
-    addWarning({
-      code: "MISSING_SEM_DATA",
-      message: "Document SEM evidence is missing."
-    });
   }
 
   const policy = normalizeExpectedVariantPolicy(sessionContext.expected_variant_policy);
   const xdataVariantKeys = Array.isArray(xdataEvidence?.geometry_variants) ? xdataEvidence.geometry_variants : [];
   const normalizedXdataKeys = new Set(xdataVariantKeys.map(normalizeDomainToken).filter(Boolean));
+  const semVariantKeys = extractSemVariantKeys(semEvidence);
+  const normalizedSemVariantKeys = new Set(semVariantKeys.map(normalizeDomainToken).filter(Boolean));
+  const geometrySlotIndexes = new Set((Array.isArray(geometryContext?.slots) ? geometryContext.slots : []).map((slot) => Number(slot?.slot_index)));
+  const intentRows = Array.isArray(session?.execution_intent_authoring_v1?.slots) ? session.execution_intent_authoring_v1.slots : [];
+  const authorizedIntentRows = intentRows.filter((row) =>
+    geometrySlotIndexes.has(Number(row?.slot_index))
+    && String(row?.variant_key || "").trim()
+    && ["manual", "xdata", "xdata_hint", "sem"].includes(String(row?.evidence_source || "manual").trim().toLowerCase())
+  );
+  const intentVariantKeys = Array.from(new Set(authorizedIntentRows.map((row) => String(row.variant_key).trim()).filter(Boolean)));
+  const normalizedIntentKeys = new Set(intentVariantKeys.map(normalizeDomainToken).filter(Boolean));
+  const authorizedVariantKeys = new Set([...normalizedIntentKeys, ...normalizedXdataKeys, ...normalizedSemVariantKeys]);
   const expectedKeys = policy.expected_variant_keys || [];
   const normalizedExpectedKeys = new Set(expectedKeys.map(normalizeDomainToken).filter(Boolean));
   if (policy.mode === "required" && expectedKeys.length > 0) {
     for (const expectedKey of expectedKeys) {
-      if (!normalizedXdataKeys.has(normalizeDomainToken(expectedKey))) {
+      if (!authorizedVariantKeys.has(normalizeDomainToken(expectedKey))) {
         addError({
-          code: "XDATA_VARIANT_UNMAPPED",
+          code: "EXPECTED_VARIANT_UNMAPPED",
           expected_variant_key: expectedKey,
+          slot_intent_variant_keys: intentVariantKeys,
           xdata_variant_keys: xdataVariantKeys,
-          message: "Expected variant key is not present in XDATA evidence."
+          sem_variant_keys: semVariantKeys,
+          message: "Expected variant key is not mapped by Slot Intent, XDATA, or SEM evidence."
         });
       }
     }
@@ -1097,8 +1590,6 @@ function buildDomainValidationV1(session, view) {
     }
   }
 
-  const semVariantKeys = extractSemVariantKeys(semEvidence);
-  const normalizedSemVariantKeys = new Set(semVariantKeys.map(normalizeDomainToken).filter(Boolean));
   if (normalizedSemVariantKeys.size > 0 && normalizedXdataKeys.size > 0) {
     const overlap = Array.from(normalizedSemVariantKeys).some((key) => normalizedXdataKeys.has(key));
     if (!overlap) {
@@ -1261,23 +1752,315 @@ function sessionHasAuthoringState(session) {
 
 function normalizeConfigParameterSet(input) {
   const source = input && typeof input === "object" ? input : {};
+  const parameterCatalog = resolveParameterCatalogSnapshotById(source.parameter_catalog_id, DEFAULT_PARAMETER_CATALOG);
+  const configContext = {
+    family: String(source.family || DEFAULT_CONFIG_CONTEXT.family),
+    product: String(source.product || DEFAULT_CONFIG_CONTEXT.product),
+    part: String(source.part || source.product_code || ""),
+    product_code: String(source.product_code || source.part || source.product || ""),
+    technology_profile: String(source.technology_profile || DEFAULT_CONFIG_CONTEXT.technology_profile)
+  };
+  const catalogDefaults = buildDefaultConfigFromParameterCatalog(parameterCatalog, configContext);
+  const baseDefaults = !source.parameter_catalog_id || source.parameter_catalog_id === DEFAULT_PARAMETER_CATALOG.catalog_id
+    ? DEFAULT_CONFIG_PARAMETER_SET
+    : catalogDefaults;
   const parameters = source.parameters && typeof source.parameters === "object"
     ? source.parameters
     : source.configuratorData && typeof source.configuratorData === "object"
       ? source.configuratorData
       : {};
   return {
-    technology_profile: String(source.technology_profile || DEFAULT_CONFIG_PARAMETER_SET.technology_profile),
-    family: String(source.family || DEFAULT_CONFIG_PARAMETER_SET.family || DEFAULT_CONFIG_CONTEXT.family),
-    product: String(source.product || DEFAULT_CONFIG_PARAMETER_SET.product || DEFAULT_CONFIG_CONTEXT.product),
-    part: String(source.part || DEFAULT_CONFIG_PARAMETER_SET.part || source.product_code || DEFAULT_CONFIG_CONTEXT.part),
-    product_code: String(source.product_code || source.part || DEFAULT_CONFIG_PARAMETER_SET.product_code),
-    parameter_catalog_id: source.parameter_catalog_id || DEFAULT_CONFIG_PARAMETER_SET.parameter_catalog_id || null,
-    parameter_scope: cloneJson(source.parameter_scope || DEFAULT_CONFIG_PARAMETER_SET.parameter_scope || {}),
+    technology_profile: String(source.technology_profile || baseDefaults.technology_profile),
+    family: String(source.family || baseDefaults.family),
+    product: String(source.product || baseDefaults.product),
+    part: String(source.part || baseDefaults.part || source.product_code || ""),
+    product_code: String(source.product_code || source.part || baseDefaults.product_code),
+    parameter_catalog_id: source.parameter_catalog_id || baseDefaults.parameter_catalog_id || null,
+    parameter_scope: cloneJson(source.parameter_scope || baseDefaults.parameter_scope || {}),
     parameters: cloneJson({
-      ...DEFAULT_CONFIG_PARAMETER_SET.parameters,
+      ...(baseDefaults.parameters || {}),
       ...parameters
     })
+  };
+}
+
+function activeProgramIdForSession(session, config) {
+  const explicitProgram = String(session?.session_context_v1?.production_program_id || "").trim().toUpperCase();
+  if (explicitProgram) return explicitProgram;
+  const family = String(config?.family || "").trim().toUpperCase();
+  if (family === "VRATA") return "MXD";
+  if (family === "SUDOPERI") return "INOX";
+  return "";
+}
+
+function selectChildDxf999MetadataSet(session, config) {
+  const programId = activeProgramIdForSession(session, config);
+  if (programId === "INOX") return cloneJson(CHILD_DXF_999_SET_INOX);
+  return cloneJson(CHILD_DXF_999_SET_MXD);
+}
+
+function has999Value(value) {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim() !== "";
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function normalize999Value(value) {
+  if (!has999Value(value)) return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return String(roundNumber(value, 3));
+  }
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value).trim();
+}
+
+function readPathLike(source, ref) {
+  if (!source || typeof source !== "object") return undefined;
+  const rawRef = String(ref || "").trim();
+  if (!rawRef) return undefined;
+  const directVariants = [rawRef, rawRef.toUpperCase(), rawRef.toLowerCase()];
+  for (const key of directVariants) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) return source[key];
+  }
+  const segments = rawRef.split(".").filter(Boolean);
+  let current = source;
+  for (const segment of segments) {
+    if (!current || typeof current !== "object") return undefined;
+    const variants = [segment, segment.toUpperCase(), segment.toLowerCase()];
+    let nextValue;
+    let found = false;
+    for (const key of variants) {
+      if (Object.prototype.hasOwnProperty.call(current, key)) {
+        nextValue = current[key];
+        found = true;
+        break;
+      }
+    }
+    if (!found) return undefined;
+    current = nextValue;
+  }
+  return current;
+}
+
+function computeChildDxfBbox(dxfText) {
+  const objects = listRelevantObjects(String(dxfText || ""));
+  const boxes = objects.map((object) => object?.bbox).filter(Boolean);
+  if (!boxes.length) return null;
+  const bbox = boxes.reduce((acc, current) => (acc ? bboxUnion(acc, current) : current), null);
+  if (!bbox) return null;
+  return {
+    minX: roundNumber(bbox.minX),
+    minY: roundNumber(bbox.minY),
+    maxX: roundNumber(bbox.maxX),
+    maxY: roundNumber(bbox.maxY),
+    width: roundNumber(bbox.width),
+    height: roundNumber(bbox.height)
+  };
+}
+
+function buildChildDxf999SourceScope(session, config, dxfText) {
+  const params = config?.parameters && typeof config.parameters === "object" ? config.parameters : {};
+  const view = projectViewModel(session);
+  const bbox = computeChildDxfBbox(dxfText);
+  const selectedVariantKey = String(
+    session?.execution_intent_v1?.active_variant_key
+    || session?.resolver_input_v2_extended?.candidate_variant_key
+    || view?.domain_context_v1?.variant_key
+    || readConfigVariantKey(config)
+    || ""
+  ).trim() || null;
+  const selectedSlotIndex = session?.execution_intent_v1?.active_slot_index
+    ?? session?.resolver_input_v2_extended?.candidate_authoritative_slot_index
+    ?? view?.geometry_context_v1?.authoritative_slot_index
+    ?? ((Array.isArray(view?.geometry_context_v1?.slots) && view.geometry_context_v1.slots.length === 1) ? Number(view.geometry_context_v1.base_slot_index ?? 0) : null);
+  const technologyProfile = String(config?.technology_profile || session?.session_context_v1?.technology_profile || "").trim() || null;
+  const batchContext = {
+    batch_id: readPathLike(params, "SOURCE_BATCH_ID") ?? readPathLike(params, "batch_id") ?? session?.batch_id ?? null,
+    row_index: readPathLike(params, "SOURCE_ROW_INDEX") ?? readPathLike(params, "row_index") ?? session?.row_index ?? null,
+    row_id: readPathLike(params, "SOURCE_ROW_ID") ?? readPathLike(params, "row_id") ?? session?.row_id ?? null,
+    gosoft_document_id: readPathLike(params, "SOURCE_GOSOFT_DOCUMENT_ID") ?? readPathLike(params, "gosoft_document_id") ?? session?.gosoft_document_id ?? null,
+    source_reference: readPathLike(params, "SOURCE_REFERENCE") ?? readPathLike(params, "source_reference") ?? session?.source_reference ?? null
+  };
+  return {
+    resolver_output: {
+      selected_variant_key: selectedVariantKey,
+      selected_slot_index: selectedSlotIndex,
+      selected_technology_profile: technologyProfile
+    },
+    dbr_row: cloneJson(params),
+    batch_context: batchContext,
+    session_context: {
+      program_id: session?.session_context_v1?.production_program_id || null,
+      family_id: session?.session_context_v1?.family_id || null,
+      product_id: session?.session_context_v1?.product_id || null,
+      part_id: session?.session_context_v1?.part_id || config?.part || null
+    },
+    geometry_context: {
+      active_child_bbox: bbox
+    }
+  };
+}
+
+function parseSimpleFormulaArguments(text) {
+  const args = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === ",") {
+      args.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim() || text.endsWith(",")) args.push(current.trim());
+  return args;
+}
+
+function resolveFormulaToken(token, resolvedMap, sourceScope) {
+  const raw = String(token || "").trim();
+  if (!raw) return "";
+  if (Object.prototype.hasOwnProperty.call(resolvedMap, raw)) return resolvedMap[raw];
+  if (/^-?\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
+  for (const key of ["resolver_output", "dbr_row", "batch_context", "session_context", "geometry_context"]) {
+    const value = readPathLike(sourceScope[key], raw);
+    if (value !== undefined) return value;
+  }
+  return raw;
+}
+
+function evaluateChildDxf999Formula(formula, resolvedMap, sourceScope) {
+  const raw = String(formula || "").trim();
+  const match = raw.match(/^([A-Za-z_][A-Za-z0-9_]*)\((.*)\)$/);
+  if (!match) return { ok: false, error: "Unsupported formula syntax." };
+  const op = match[1];
+  const args = parseSimpleFormulaArguments(match[2]).map((token) => resolveFormulaToken(token, resolvedMap, sourceScope));
+  switch (op) {
+    case "concat":
+      return { ok: true, value: args.map((value) => normalize999Value(value) || "").join("") };
+    case "add": {
+      const numbers = args.map((value) => Number(value));
+      if (!numbers.every(Number.isFinite)) return { ok: false, error: "add expects numeric operands." };
+      return { ok: true, value: numbers.reduce((sum, value) => sum + value, 0) };
+    }
+    case "sub": {
+      const numbers = args.map((value) => Number(value));
+      if (!numbers.every(Number.isFinite) || numbers.length < 2) return { ok: false, error: "sub expects at least two numeric operands." };
+      return { ok: true, value: numbers.slice(1).reduce((result, value) => result - value, numbers[0]) };
+    }
+    case "coalesce": {
+      const picked = args.find((value) => has999Value(value));
+      return { ok: true, value: picked == null ? null : picked };
+    }
+    case "format_dim":
+      return { ok: true, value: `${normalize999Value(args[0]) || ""}x${normalize999Value(args[1]) || ""}`.replace(/^x|x$/g, "") };
+    default:
+      return { ok: false, error: `Unsupported formula op: ${op}` };
+  }
+}
+
+function resolveChildDxf999Field(field, sourceScope, resolvedMap) {
+  if (String(field?.source_kind || "") === "derived") {
+    return evaluateChildDxf999Formula(field?.formula, resolvedMap, sourceScope);
+  }
+  const explicitValue = readPathLike(sourceScope[String(field?.source_kind || "")], field?.source_ref);
+  if (explicitValue !== undefined) return { ok: true, value: explicitValue, source_kind: field.source_kind, source_ref: field.source_ref };
+  for (const key of ["resolver_output", "dbr_row", "batch_context", "session_context", "geometry_context"]) {
+    if (key === String(field?.source_kind || "")) continue;
+    const value = readPathLike(sourceScope[key], field?.source_ref || field?.key);
+    if (value !== undefined) return { ok: true, value, source_kind: key, source_ref: field?.source_ref || field?.key, fallback: true };
+  }
+  return { ok: true, value: null, source_kind: field?.source_kind || null, source_ref: field?.source_ref || null };
+}
+
+function buildChildDxf999SerializedLines(resolvedFields) {
+  const lines = [];
+  for (const field of resolvedFields) {
+    lines.push("999", `${field.key}:${field.value}`);
+  }
+  return lines;
+}
+
+function insert999LinesIntoDxfText(dxfText, serializedLines) {
+  const normalized = String(dxfText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = normalized.endsWith("\n") ? normalized.slice(0, -1).split("\n") : normalized.split("\n");
+  const insertionIndex = lines.findIndex((line, index) => line === "0" && lines[index + 1] === "ENDSEC");
+  if (insertionIndex >= 0) {
+    const next = lines.slice(0, insertionIndex + 2).concat(serializedLines, lines.slice(insertionIndex + 2));
+    return { dxf_text: next.join("\n").concat("\n"), inserted_after_first_endsec: true };
+  }
+  return { dxf_text: serializedLines.concat(lines).join("\n").concat("\n"), inserted_after_first_endsec: false };
+}
+
+function buildChildDxf999Enrichment(session, config, dxfText) {
+  const metadataSet = selectChildDxf999MetadataSet(session, config);
+  const sourceScope = buildChildDxf999SourceScope(session, config, dxfText);
+  const resolvedMap = {};
+  const resolvedFields = [];
+  const errors = [];
+  const warnings = [];
+  for (const field of Array.isArray(metadataSet?.fields) ? metadataSet.fields : []) {
+    const result = resolveChildDxf999Field(field, sourceScope, resolvedMap);
+    if (!result.ok) {
+      errors.push({ code: "CHILD_DXF_999_DERIVED_EVAL_FAILED", key: field.key, message: result.error || "Derived field evaluation failed." });
+      continue;
+    }
+    const normalizedValue = normalize999Value(result.value);
+    if (!has999Value(normalizedValue)) {
+      if (field.required) {
+        errors.push({ code: "CHILD_DXF_999_REQUIRED_MISSING", key: field.key, source_ref: field.source_ref || null, message: `Required 999 field ${field.key} is missing.` });
+      }
+      continue;
+    }
+    resolvedMap[field.key] = normalizedValue;
+    resolvedFields.push({
+      key: field.key,
+      value: normalizedValue,
+      source_kind: result.source_kind || field.source_kind || null,
+      source_ref: result.source_ref || field.source_ref || null,
+      derived: String(field?.source_kind || "") === "derived",
+      fallback: result.fallback === true
+    });
+  }
+  const serializedLines = buildChildDxf999SerializedLines(resolvedFields);
+  const insertion = insert999LinesIntoDxfText(dxfText, serializedLines);
+  if (!insertion.inserted_after_first_endsec) {
+    warnings.push({ code: "CHILD_DXF_999_INSERTION_FALLBACK", message: "First ENDSEC not found; 999 block was prepended." });
+  }
+  if (errors.length > 0) {
+    warnings.push({ code: "CHILD_DXF_999_INCOMPLETE", message: "One or more required 999 fields were missing; partial enrichment was still emitted." });
+  }
+  return {
+    version: 1,
+    metadata_set_id: metadataSet?.metadata_set_id || null,
+    program_scope: metadataSet?.metadata?.program_scope || activeProgramIdForSession(session, config) || null,
+    validation: {
+      ok: errors.length === 0,
+      errors,
+      warnings
+    },
+    resolved_fields: resolvedFields,
+    serialized_lines: serializedLines,
+    enriched_dxf_text: insertion.dxf_text,
+    insertion: {
+      inserted_after_first_endsec: insertion.inserted_after_first_endsec,
+      inserted_line_count: serializedLines.length
+    }
   };
 }
 
@@ -1286,12 +2069,30 @@ function isModuleOwnedParameterCatalog(source) {
   return !catalogId || catalogId === String(DEFAULT_PARAMETER_CATALOG.catalog_id || "").trim();
 }
 
+function resolveParameterCatalogSnapshotById(catalogId, fallback = null) {
+  const normalizedId = String(catalogId || "").trim();
+  if (normalizedId && PARAMETER_CATALOG_REGISTRY[normalizedId]) {
+    return cloneJson(PARAMETER_CATALOG_REGISTRY[normalizedId]);
+  }
+  return fallback ? normalizeParameterCatalogSnapshot(fallback) : cloneJson(DEFAULT_PARAMETER_CATALOG);
+}
+
+function resolveActiveParameterCatalog(session = null, config = null, fallback = null) {
+  const sessionCatalogId = String(session?.session_context_v1?.parameter_catalog_id || "").trim();
+  if (sessionContextIsLocked(session?.session_context_v1)) {
+    return requireRegisteredDomainArtifact(PARAMETER_CATALOG_REGISTRY, sessionCatalogId, "parameter_catalog_id", "parameter catalog");
+  }
+  const configCatalogId = String(config?.parameter_catalog_id || session?.config_parameter_set?.parameter_catalog_id || "").trim();
+  const persistedCatalogId = String(session?.parameter_catalog?.catalog_id || "").trim();
+  return resolveParameterCatalogSnapshotById(sessionCatalogId || configCatalogId || persistedCatalogId, fallback || session?.parameter_catalog || null);
+}
+
 function normalizeParameterCatalogSnapshot(input) {
   const source = input && typeof input === "object" ? input : null;
   const parameters = source && source.parameters && typeof source.parameters === "object"
     ? source.parameters
     : null;
-  if (!source || !parameters || !Object.keys(parameters).length || isModuleOwnedParameterCatalog(source)) {
+  if (!source || !parameters || !Object.keys(parameters).length) {
     return cloneJson(DEFAULT_PARAMETER_CATALOG);
   }
   return cloneJson(source);
@@ -1361,6 +2162,19 @@ function parseMotherXdataAttributes(value) {
     attributes[key] = attributeValue;
   }
   return attributes;
+}
+
+function buildObservedXdataHint(attributes) {
+  const source = attributes && typeof attributes === "object" ? attributes : {};
+  const levelEntries = Object.entries(source)
+    .filter(([key, value]) => /^RAZINA\d+$/i.test(String(key || "")) && String(value || "").trim())
+    .sort(([left], [right]) => {
+      const leftLevel = Number(String(left).replace(/\D+/g, ""));
+      const rightLevel = Number(String(right).replace(/\D+/g, ""));
+      return leftLevel - rightLevel;
+    });
+  if (!levelEntries.length) return null;
+  return levelEntries.map(([, value]) => String(value).trim()).join("/");
 }
 
 function extractMotherXdataValue(entity) {
@@ -1455,10 +2269,11 @@ function collectEntityXdataMetadata(session, entityId) {
   const attributes = parseMotherXdataAttributes(value);
   const keys = Object.keys(attributes);
   const rawGeometryVariant = String(attributes.GEOMETRY_VARIANT || "").trim() || null;
+  const observedXdataHint = buildObservedXdataHint(attributes);
   let branchIssue = null;
-  if (!rawGeometryVariant) {
+  if (!rawGeometryVariant && !observedXdataHint) {
     branchIssue = "missing_geometry_variant";
-  } else if (keys.length !== 1) {
+  } else if (keys.length !== 1 && rawGeometryVariant) {
     branchIssue = "unexpected_branch_attributes";
   }
   return {
@@ -1467,7 +2282,11 @@ function collectEntityXdataMetadata(session, entityId) {
     attributes,
     geometry_variant: branchIssue ? null : rawGeometryVariant,
     raw_geometry_variant: rawGeometryVariant,
-    branch_valid: !branchIssue,
+    observed_xdata_hint: observedXdataHint,
+    xdata_classification: rawGeometryVariant
+      ? (branchIssue ? "invalid_branch_variant" : "branch_variant")
+      : (observedXdataHint ? "classification_hint" : "unrecognized"),
+    branch_valid: rawGeometryVariant ? !branchIssue : (observedXdataHint ? null : false),
     branch_issue: branchIssue
   };
 }
@@ -1790,23 +2609,35 @@ function coerceDocumentSemNumber(value, fieldName) {
 
 function normalizeDocumentSemPayload(payload) {
   const source = payload && typeof payload === "object" ? payload : {};
-  const nominalWidth = coerceDocumentSemNumber(source.nominal_width, "nominal_width");
-  const nominalHeight = coerceDocumentSemNumber(source.nominal_height, "nominal_height");
+  const suppliedDimensions = source.nominal_dimensions && typeof source.nominal_dimensions === "object"
+    ? source.nominal_dimensions
+    : {};
+  const legacyDimensions = {
+    ...(source.nominal_length != null ? { length: source.nominal_length } : {}),
+    ...(source.nominal_width != null ? { width: source.nominal_width } : {}),
+    ...(source.nominal_height != null ? { height: source.nominal_height } : {})
+  };
+  const dimensionSource = Object.keys(suppliedDimensions).length ? suppliedDimensions : legacyDimensions;
+  const nominalDimensions = {};
+  for (const [rawSemantic, rawValue] of Object.entries(dimensionSource)) {
+    const semantic = String(rawSemantic || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_");
+    if (!semantic) continue;
+    nominalDimensions[semantic] = coerceDocumentSemNumber(rawValue, "nominal_dimensions." + semantic);
+  }
+  if (!Object.keys(nominalDimensions).length) {
+    throw new Error("Missing document SEM nominal_dimensions.");
+  }
   const family = String(source.family || "").trim();
   const product = String(source.product || "").trim();
   const part = String(source.part || source.product_code || "").trim();
-  if (!family) {
-    throw new Error("Missing document SEM family.");
-  }
-  if (!product) {
-    throw new Error("Missing document SEM product.");
-  }
-  if (!part) {
-    throw new Error("Missing document SEM part.");
-  }
+  if (!family) throw new Error("Missing document SEM family.");
+  if (!product) throw new Error("Missing document SEM product.");
+  if (!part) throw new Error("Missing document SEM part.");
   return {
-    nominal_width: nominalWidth,
-    nominal_height: nominalHeight,
+    nominal_dimensions: nominalDimensions,
+    nominal_length: nominalDimensions.length ?? null,
+    nominal_width: nominalDimensions.width ?? null,
+    nominal_height: nominalDimensions.height ?? null,
     family,
     product,
     part
@@ -1826,13 +2657,19 @@ function formatDocumentSemNumber(value) {
 
 function buildDocumentSemIdentityComment(payload) {
   const sem = normalizeDocumentSemPayload(payload);
+  const preferredOrder = ["length", "width", "height"];
+  const dimensionKeys = Object.keys(sem.nominal_dimensions || {}).sort((a, b) => {
+    const ai = preferredOrder.indexOf(a);
+    const bi = preferredOrder.indexOf(b);
+    if (ai >= 0 || bi >= 0) return (ai >= 0 ? ai : preferredOrder.length) - (bi >= 0 ? bi : preferredOrder.length);
+    return a.localeCompare(b);
+  });
   return [
     "SEM:document=true",
-    `nominal_width=${formatDocumentSemNumber(sem.nominal_width)}`,
-    `nominal_height=${formatDocumentSemNumber(sem.nominal_height)}`,
-    `family=${sem.family}`,
-    `product=${sem.product}`,
-    `part=${sem.part}`
+    ...dimensionKeys.map((key) => "nominal_" + key + "=" + formatDocumentSemNumber(sem.nominal_dimensions[key])),
+    "family=" + sem.family,
+    "product=" + sem.product,
+    "part=" + sem.part
   ].join(";");
 }
 
@@ -1875,17 +2712,24 @@ function collectDocumentSemMetadata(parsedDocument) {
   if (!parsedComments.length) return null;
   const identity = parsedComments.find((parsed) => {
     const keys = parsed.keys || {};
-    return keys.nominal_width || keys.nominal_height || keys.family || keys.product || keys.part;
+    return Object.keys(keys).some((key) => key.startsWith("nominal_")) || keys.family || keys.product || keys.part;
   }) || null;
   const ruleComments = parsedComments.filter((parsed) => String(parsed.keys?.rule_ref || "").trim());
   const keys = identity?.keys || {};
-  const nominalWidth = Number(keys.nominal_width);
-  const nominalHeight = Number(keys.nominal_height);
+  const nominalDimensions = {};
+  for (const [key, value] of Object.entries(keys)) {
+    if (!key.startsWith("nominal_")) continue;
+    const semantic = key.slice("nominal_".length);
+    const numeric = Number(value);
+    if (semantic && Number.isFinite(numeric)) nominalDimensions[semantic] = numeric;
+  }
   return {
+    nominal_dimensions: nominalDimensions,
+    nominal_length: nominalDimensions.length ?? null,
     identity_raw_comment: identity?.raw_comment || null,
     raw_comments: parsedComments.map((parsed) => parsed.raw_comment),
-    nominal_width: Number.isFinite(nominalWidth) ? nominalWidth : null,
-    nominal_height: Number.isFinite(nominalHeight) ? nominalHeight : null,
+    nominal_width: nominalDimensions.width ?? null,
+    nominal_height: nominalDimensions.height ?? null,
     family: keys.family || null,
     product: keys.product || null,
     part: keys.part || null,
@@ -3488,22 +4332,6 @@ function suggestSlotLayerForBBox(objectBBox, slotBBox, bands) {
 
 function suggestSlotLayerForObject(object, slotBBox, bands) {
   if (!object?.bbox || !slotBBox) return null;
-  if (String(object?.type || "").toUpperCase() === "INSERT") {
-    const touchesLeft = Number(object.bbox.minX) <= Number(slotBBox.minX) + Number(bands.left || 0);
-    const touchesRight = Number(object.bbox.maxX) >= Number(slotBBox.maxX) - Number(bands.right || 0);
-    const touchesTop = Number(object.bbox.maxY) >= Number(slotBBox.maxY) - Number(bands.top || 0);
-    const touchesBottom = Number(object.bbox.minY) <= Number(slotBBox.minY) + Number(bands.bottom || 0);
-
-    if (touchesLeft && touchesTop) return "TL";
-    if (touchesRight && touchesTop) return "TR";
-    if (touchesLeft && touchesBottom) return "BL";
-    if (touchesRight && touchesBottom) return "BR";
-    if (touchesTop) return "T";
-    if (touchesBottom) return "B";
-    if (touchesLeft) return "L";
-    if (touchesRight) return "R";
-    return "A";
-  }
   return suggestSlotLayerForBBox(object.bbox, slotBBox, bands);
 }
 
@@ -3511,11 +4339,22 @@ function buildRelevantState(document, bands, priorAssignments) {
   const slotProjection = projectSlotIndexOnRelevantObjects(listRelevantObjects(document));
   const relevantObjects = slotProjection.relevant_objects;
   const documentBBox = computeDocumentBBox(relevantObjects);
+  const slotObjects = new Map();
+  for (const object of relevantObjects) {
+    const slotIndex = Number(object?.slot_index);
+    if (!Number.isInteger(slotIndex)) continue;
+    if (!slotObjects.has(slotIndex)) slotObjects.set(slotIndex, []);
+    slotObjects.get(slotIndex).push(object);
+  }
+  const slotBBoxes = new Map(Array.from(slotObjects.entries()).map(([slotIndex, objects]) => [slotIndex, computeSlotBBox(objects)]));
   const assignments = {};
 
   for (const item of relevantObjects) {
     const previous = priorAssignments && priorAssignments[item.id] ? priorAssignments[item.id] : null;
-    const suggested = suggestLayerForBBox(item.bbox, documentBBox, bands);
+    const slotBBox = slotBBoxes.get(Number(item?.slot_index)) || null;
+    const suggested = slotBBox
+      ? suggestSlotLayerForBBox(item.bbox, slotBBox, bands)
+      : suggestLayerForBBox(item.bbox, documentBBox, bands);
     if (previous && previous.origin === "manual" && previous.layer) {
       assignments[item.id] = {
         state: "classified",
@@ -4046,12 +4885,34 @@ function analyzeGeometryHygiene(session, document, objects) {
 
 function collectXdataContext(objects, extraObjects = []) {
   const topLevelObjects = Array.isArray(objects) ? objects : [];
-  const sourceObjects = [...topLevelObjects, ...(Array.isArray(extraObjects) ? extraObjects : [])];
+  const extraSourceObjects = Array.isArray(extraObjects) ? extraObjects : [];
+  const sourceObjects = [...topLevelObjects, ...extraSourceObjects];
   const geometryVariants = new Set();
   const blockInternalGeometryVariants = new Set();
+  const observedXdataHints = new Map();
+  const blockInternalXdataHints = new Map();
   let taggedObjectCount = 0;
   let baseObjectCount = 0;
   let invalidBranchXdataCount = 0;
+  for (const object of sourceObjects) {
+    const metadata = object?.xdata_metadata;
+    const observedHint = String(metadata?.observed_xdata_hint || "").trim();
+    const isBlockChild = String(object?.hygiene_context || "") === "block_child";
+    if (observedHint) {
+      const target = isBlockChild ? blockInternalXdataHints : observedXdataHints;
+      const current = target.get(observedHint) || {
+        hint: observedHint,
+        app: String(metadata?.app || MOTHER_XDATA_APP_NAME),
+        attributes: metadata?.attributes && typeof metadata.attributes === "object" ? cloneJson(metadata.attributes) : {},
+        object_count: 0
+      };
+      current.object_count += 1;
+      target.set(observedHint, current);
+    }
+    const geometryVariant = String(metadata?.geometry_variant || "").trim();
+    if (geometryVariant && isBlockChild) blockInternalGeometryVariants.add(geometryVariant);
+    if (metadata?.branch_valid === false) invalidBranchXdataCount += 1;
+  }
   for (const object of topLevelObjects) {
     const metadata = object?.xdata_metadata;
     const geometryVariant = String(metadata?.geometry_variant || "").trim();
@@ -4060,25 +4921,14 @@ function collectXdataContext(objects, extraObjects = []) {
       taggedObjectCount += 1;
       continue;
     }
-    if (metadata?.branch_valid === false) {
-      invalidBranchXdataCount += 1;
-      continue;
-    }
+    if (metadata?.branch_valid === false) continue;
     baseObjectCount += 1;
-  }
-  for (const object of sourceObjects) {
-    const metadata = object?.xdata_metadata;
-    const geometryVariant = String(metadata?.geometry_variant || "").trim();
-    if (geometryVariant && String(object?.hygiene_context || "") === "block_child") {
-      blockInternalGeometryVariants.add(geometryVariant);
-    }
-    if (metadata?.branch_valid === false) {
-      invalidBranchXdataCount += 1;
-    }
   }
   return {
     geometry_variants: Array.from(geometryVariants.values()).sort(),
     block_internal_geometry_variants: Array.from(blockInternalGeometryVariants.values()).sort(),
+    observed_xdata_hints: Array.from(observedXdataHints.values()).sort((a, b) => a.hint.localeCompare(b.hint)),
+    block_internal_xdata_hints: Array.from(blockInternalXdataHints.values()).sort((a, b) => a.hint.localeCompare(b.hint)),
     tagged_object_count: taggedObjectCount,
     base_object_count: baseObjectCount,
     invalid_branch_xdata_count: invalidBranchXdataCount,
@@ -4227,6 +5077,7 @@ function projectViewModel(session) {
   const domain_context_v1 = buildDomainContextV1Projection(document_sem, session.config_parameter_set, xdata_context, session.session_context_v1);
   const slot_context = buildSlotContextProjectionV1(geometry_context_v1);
   const variant_to_slot_map = buildVariantToSlotMapProjectionV1(geometry_context_v1);
+  const execution_intent_v1 = buildExecutionIntentProjectionV1(session, geometry_context_v1, variant_to_slot_map);
   const resolver_input_v2_extended = buildResolverInputV2ExtendedSkeleton(session, geometry_context_v1, domain_context_v1);
   session.activity_log = normalizeSessionActivityLog(session.activity_log);
   const arrangement_snapshot = buildSessionArrangementSnapshot(session, {
@@ -4243,9 +5094,11 @@ function projectViewModel(session) {
     session_context_v1: session.session_context_v1,
     session_lifecycle_v1: session.session_lifecycle_v1,
     source_name: session.source_name,
+    raw_source_name: session.raw_source_name || session.source_name,
+    storage_key: session.storage_key || null,
     bands: session.bands,
     document_bbox: session.document_bbox,
-    config_parameter_set: session.config_parameter_set || cloneJson(DEFAULT_CONFIG_PARAMETER_SET),
+    config_parameter_set: session.config_parameter_set || null,
     parameter_catalog: normalizeParameterCatalogSnapshot(session.parameter_catalog),
     rule_catalog: normalizeRuleCatalogSnapshot(session.rule_catalog),
     document_sem,
@@ -4258,10 +5111,13 @@ function projectViewModel(session) {
     geometry_context_v1,
     slot_context,
     variant_to_slot_map,
+    execution_intent_authoring_v1: cloneJson(session.execution_intent_authoring_v1 || null),
+    execution_intent_v1,
     resolver_input_v2_extended,
     domain_context_v1,
     domain_validation_v1: session.domain_validation_v1 || null,
     geometry_validation_v1: session.geometry_validation_v1 || null,
+    geometry_strategy_v1: cloneJson(session.geometry_strategy_v1 || null),
     resolver_input_v1_minimal: session.resolver_input_v1_minimal || null,
     resolver_preview_v1: session.resolver_preview_v1 || null,
     resolver_child_v1: session.resolver_child_v1 || null,
@@ -4284,6 +5140,8 @@ function buildSessionSummary(session) {
     status: session.status || "draft",
     artifact_state: session.artifact_state || null,
     source_name: session.source_name || null,
+    raw_source_name: session.raw_source_name || session.source_name || null,
+    storage_key: session.storage_key || null,
     created_at: session.created_at || null,
     updated_at: session.updated_at || null,
     has_authoring_state: sessionHasAuthoringState(session)
@@ -7135,6 +7993,8 @@ async function saveSessionArtifactSnapshots(session, eventType, details, storeRo
 
 async function createContextDraftSession({ context = {}, storeRoot }) {
   const nowIso = new Date().toISOString();
+  const normalizedContext = normalizeSessionContextV1(context, { locked: false });
+  const domainArtifacts = buildDomainArtifactsForContext(normalizedContext);
   const session = {
     session_id: crypto.randomUUID(),
     use_case: "mother_dxf_v1",
@@ -7145,16 +8005,17 @@ async function createContextDraftSession({ context = {}, storeRoot }) {
     artifact_state: "context_draft",
     source_name: "context_pending.dxf",
     bands: normalizeBands({}),
-    config_parameter_set: buildDefaultConfigFromParameterCatalog(DEFAULT_PARAMETER_CATALOG, DEFAULT_CONFIG_CONTEXT),
-    parameter_catalog: cloneJson(DEFAULT_PARAMETER_CATALOG),
-    rule_catalog: cloneJson(DEFAULT_RULE_CATALOG),
+    config_parameter_set: domainArtifacts.config_parameter_set,
+    parameter_catalog: domainArtifacts.parameter_catalog,
+    rule_catalog: domainArtifacts.rule_catalog,
     topo_comments: [],
     assignments: {},
     xdata_assignments: {},
     document: sanitizeDocument(""),
-    session_context_v1: normalizeSessionContextV1(context, { locked: false }),
+    session_context_v1: normalizedContext,
     domain_validation_v1: null,
     geometry_validation_v1: null,
+    geometry_strategy_v1: null,
     activity_log: []
   };
   ensureSessionContextShape(session);
@@ -7178,7 +8039,11 @@ async function lockSessionContext({ sessionId, context, storeRoot }) {
     err.validation = nextContext.validation;
     throw err;
   }
+  const domainArtifacts = buildDomainArtifactsForContext(nextContext, session.raw_source_name || session.source_name);
   session.session_context_v1 = nextContext;
+  session.config_parameter_set = domainArtifacts.config_parameter_set;
+  session.parameter_catalog = domainArtifacts.parameter_catalog;
+  session.rule_catalog = domainArtifacts.rule_catalog;
   session.domain_validation_v1 = null;
   session.geometry_validation_v1 = null;
   ensureSessionContextShape(session);
@@ -7228,8 +8093,10 @@ function makeDomainContextRequiredError() {
   return err;
 }
 
-async function createSession({ dxfText, sourceName, bands, forceRefresh = false, storeRoot, sessionId, sessionContext }) {
+async function createSession({ dxfText, sourceName, rawSourceName = "", title = null, bands, forceRefresh = false, storeRoot, sessionId, sessionContext }) {
   const normalizedSourceName = String(sourceName || "mother_dxf_input.dxf");
+  const normalizedRawSourceName = String(rawSourceName || normalizedSourceName).trim() || normalizedSourceName;
+  const requestedTitle = normalizeSessionTitle(title, defaultSessionTitleForSource(normalizedSourceName));
   const nowIso = new Date().toISOString();
   let contextSession = null;
   if (sessionId) {
@@ -7250,16 +8117,16 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
   }
   const document = sanitizeDocument(dxfText);
   const importedXdataAssignments = hoistMotherXdataFromDocument(document);
-  const existingSessions = await listSessions({ rootDir: storeRoot || defaultRoot() });
-  const matchingSessions = existingSessions
-    .filter((item) => String(item?.source_name || "").trim() === normalizedSourceName)
-    .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
-  const currentSession = contextSession || matchingSessions[0] || null;
-  const preserveCustomTitle = currentSession && !titleLooksLikeDefault(currentSession.title, currentSession.source_name);
+  const currentSession = contextSession || null;
+  const preserveCustomTitle = currentSession
+    && !["context_draft", "context_locked"].includes(String(currentSession.artifact_state || ""))
+    && !titleLooksLikeDefault(currentSession.title, currentSession.source_name);
+  const targetSessionId = currentSession?.session_id || crypto.randomUUID();
+  const domainArtifacts = buildDomainArtifactsForContext(lockedContext, normalizedSourceName);
   if (currentSession && sessionHasAuthoringState(currentSession) && !forceRefresh) {
-    currentSession.parameter_catalog = normalizeParameterCatalogSnapshot(currentSession.parameter_catalog || DEFAULT_PARAMETER_CATALOG);
-    currentSession.rule_catalog = normalizeRuleCatalogSnapshot(currentSession.rule_catalog || DEFAULT_RULE_CATALOG);
-    currentSession.config_parameter_set = normalizeConfigParameterSet(currentSession.config_parameter_set || buildDefaultConfigFromParameterCatalog(currentSession.parameter_catalog, defaultConfigContextForSource(normalizedSourceName)));
+    currentSession.parameter_catalog = domainArtifacts.parameter_catalog;
+    currentSession.rule_catalog = domainArtifacts.rule_catalog;
+    currentSession.config_parameter_set = normalizeConfigParameterSet(currentSession.config_parameter_set || domainArtifacts.config_parameter_set);
     currentSession.session_context_v1 = lockedContext;
     ensureSessionContextShape(currentSession);
     appendSessionActivity(currentSession, {
@@ -7282,15 +8149,16 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
     currentSession.updated_at = nowIso;
     currentSession.title = preserveCustomTitle
       ? normalizeSessionTitle(currentSession.title, defaultSessionTitleForSource(normalizedSourceName))
-      : defaultSessionTitleForSource(normalizedSourceName);
+      : requestedTitle;
     currentSession.source_name = normalizedSourceName;
+    currentSession.raw_source_name = normalizedRawSourceName;
     currentSession.status = "draft";
     currentSession.artifact_state = "sanitized";
     currentSession.topo_comments = extractTopoCommentsFromDxfText(dxfText);
     currentSession.assignments = {};
-    currentSession.parameter_catalog = normalizeParameterCatalogSnapshot(DEFAULT_PARAMETER_CATALOG);
-    currentSession.rule_catalog = normalizeRuleCatalogSnapshot(currentSession.rule_catalog || DEFAULT_RULE_CATALOG);
-    currentSession.config_parameter_set = normalizeConfigParameterSet(currentSession.config_parameter_set || buildDefaultConfigFromParameterCatalog(currentSession.parameter_catalog, defaultConfigContextForSource(normalizedSourceName)));
+    currentSession.parameter_catalog = domainArtifacts.parameter_catalog;
+    currentSession.rule_catalog = domainArtifacts.rule_catalog;
+    currentSession.config_parameter_set = domainArtifacts.config_parameter_set;
     currentSession.xdata_assignments = mergeImportedXdataAssignments(currentSession.document, importedXdataAssignments);
     currentSession.session_context_v1 = lockedContext;
     currentSession.domain_validation_v1 = null;
@@ -7308,30 +8176,29 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
     const rawInfo = await saveRawDxf(currentSession.session_id, dxfText, storeRoot || defaultRoot());
     await registerArtifact(currentSession.session_id, "raw_dxf", currentSession.session_id + "_raw", rawInfo.filePath, storeRoot || defaultRoot());
     await saveSessionArtifactSnapshots(currentSession, "raw_refresh_forced_artifacts_saved", { source_name: normalizedSourceName }, storeRoot);
-    for (const duplicate of matchingSessions.slice(1)) {
-      await deleteSession({ rootDir: storeRoot || defaultRoot(), sessionId: duplicate.session_id });
-    }
     return {
       session: currentSession,
-      action: "refreshed_existing_from_source"
+      action: "refreshed_existing"
     };
   }
   const session = {
-    session_id: currentSession?.session_id || crypto.randomUUID(),
+    session_id: targetSessionId,
     use_case: "mother_dxf_v1",
     created_at: currentSession?.created_at || nowIso,
     updated_at: nowIso,
     title: preserveCustomTitle
       ? normalizeSessionTitle(currentSession.title, defaultSessionTitleForSource(normalizedSourceName))
-      : defaultSessionTitleForSource(normalizedSourceName),
+      : requestedTitle,
     status: "draft",
     revision: currentSession?.__mother_dxf_session_revision || currentSession?.revision || 0,
     artifact_state: "sanitized",
     source_name: normalizedSourceName,
+    raw_source_name: normalizedRawSourceName,
+    storage_key: buildSessionStorageKey(requestedTitle, targetSessionId),
     bands: normalizeBands(bands),
-    config_parameter_set: buildDefaultConfigFromParameterCatalog(DEFAULT_PARAMETER_CATALOG, defaultConfigContextForSource(normalizedSourceName)),
-    parameter_catalog: cloneJson(DEFAULT_PARAMETER_CATALOG),
-    rule_catalog: cloneJson(DEFAULT_RULE_CATALOG),
+    config_parameter_set: domainArtifacts.config_parameter_set,
+    parameter_catalog: domainArtifacts.parameter_catalog,
+    rule_catalog: domainArtifacts.rule_catalog,
     topo_comments: extractTopoCommentsFromDxfText(dxfText),
     assignments: {},
     xdata_assignments: normalizeXdataAssignments(document, importedXdataAssignments),
@@ -7339,6 +8206,7 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
     session_context_v1: lockedContext,
     domain_validation_v1: null,
     geometry_validation_v1: null,
+    geometry_strategy_v1: null,
     session_lifecycle_v1: { version: 1, state: "raw_loaded", allowed_transitions: lifecycleTransitionsForState("raw_loaded") },
     activity_log: []
   };
@@ -7354,9 +8222,6 @@ async function createSession({ dxfText, sourceName, bands, forceRefresh = false,
   const rawInfo = await saveRawDxf(session.session_id, dxfText, storeRoot || defaultRoot());
   await registerArtifact(session.session_id, "raw_dxf", session.session_id + "_raw", rawInfo.filePath, storeRoot || defaultRoot());
   await saveSessionArtifactSnapshots(session, currentSession ? "session_refreshed_artifacts_saved" : "session_created_artifacts_saved", { source_name: normalizedSourceName }, storeRoot);
-  for (const duplicate of matchingSessions.slice(1)) {
-    await deleteSession({ rootDir: storeRoot || defaultRoot(), sessionId: duplicate.session_id });
-  }
   return {
     session,
     action: currentSession ? "refreshed_existing" : "created_new"
@@ -7373,12 +8238,21 @@ async function getSession({ sessionId, storeRoot }) {
   const normalizedTopoComments = normalizeTopoCommentsInput(session.topo_comments).filter((value) => isFileLevelTopoComment(value));
   const topoCommentsChanged = JSON.stringify(session.topo_comments || []) !== JSON.stringify(normalizedTopoComments);
   session.topo_comments = normalizedTopoComments;
-  session.parameter_catalog = normalizeParameterCatalogSnapshot(session.parameter_catalog);
-  session.rule_catalog = normalizeRuleCatalogSnapshot(session.rule_catalog);
+  const domainArtifactsChanged = reconcileSessionDomainArtifacts(session);
+  if (!domainArtifactsChanged) {
+    session.parameter_catalog = resolveActiveParameterCatalog(session, session.config_parameter_set, session.parameter_catalog);
+    session.rule_catalog = normalizeRuleCatalogSnapshot(session.rule_catalog);
+  }
   session.xdata_assignments = mergeImportedXdataAssignments(session.document, session.xdata_assignments || importedXdataAssignments);
   projectViewModel(session);
-  if (topoCommentsChanged) {
+  if (topoCommentsChanged || domainArtifactsChanged) {
     await saveSession({ rootDir: storeRoot || defaultRoot(), session });
+    if (domainArtifactsChanged) {
+      await saveSessionArtifactSnapshots(session, "domain_artifacts_reconciled", {
+        parameter_catalog_id: session.parameter_catalog?.catalog_id || null,
+        rule_catalog_id: session.rule_catalog?.catalog_id || null
+      }, storeRoot);
+    }
   }
   return session;
 }
@@ -7411,11 +8285,49 @@ async function assignPrimaryLayer({ sessionId, ids, layer, storeRoot }) {
   return session;
 }
 
-async function computeGeometryContext({ sessionId, storeRoot, bands = null }) {
+function normalizeGeometryStrategyV1(value) {
+  const mode = String(value?.mode || value || "").trim();
+  const allowed = new Set(["four_band_parameter_resize", "fixed_envelope_slide", "static_geometry"]);
+  if (!allowed.has(mode)) {
+    const err = new Error("Select a supported geometry parametrization strategy before geometry projection.");
+    err.code = "GEOMETRY_STRATEGY_REQUIRED";
+    throw err;
+  }
+  return {
+    version: 1,
+    mode,
+    status: "confirmed",
+    source: "manual",
+    confirmed_at: new Date().toISOString()
+  };
+}
+
+async function computeGeometryContext({ sessionId, storeRoot, bands = null, geometryStrategy = null }) {
   const session = await loadSession({ rootDir: storeRoot || defaultRoot(), sessionId });
   ensureSessionContextShape(session);
+  if (!sessionContextIsLocked(session)) {
+    const err = new Error("Session context must be locked before geometry projection.");
+    err.code = "SESSION_CONTEXT_REQUIRED";
+    throw err;
+  }
+  if (!session.document || !Array.isArray(session.document.entities) || session.document.entities.length === 0) {
+    const err = new Error("Raw DXF must be loaded before geometry projection.");
+    err.code = "RAW_DXF_REQUIRED";
+    throw err;
+  }
   if (bands && typeof bands === "object") {
     session.bands = normalizeBands(bands);
+  }
+  const previousStrategy = String(session.geometry_strategy_v1?.mode || "").trim();
+  const nextStrategy = normalizeGeometryStrategyV1(geometryStrategy || session.geometry_strategy_v1);
+  const strategyChanged = Boolean(previousStrategy && previousStrategy !== nextStrategy.mode);
+  session.geometry_strategy_v1 = nextStrategy;
+  if (strategyChanged) {
+    clearFileLevelTopoComment(session);
+    session.resolver_preview_v1 = null;
+    session.resolver_child_v1 = null;
+    session.resolver_export_v1 = null;
+    session.wysiwyg_gate_v1 = null;
   }
   const view = projectViewModel(session);
   const validation = buildGeometryValidationV1(session, view);
@@ -7436,7 +8348,9 @@ async function computeGeometryContext({ sessionId, storeRoot, bands = null }) {
       blocking_error_count: validation.blocking_error_count,
       warning_count: validation.warning_count,
       slot_count: validation.slot_count,
-      lifecycle_state: nextState
+      lifecycle_state: nextState,
+      geometry_strategy: nextStrategy.mode,
+      strategy_changed: strategyChanged
     }
   });
   projectViewModel(session);
@@ -7566,15 +8480,100 @@ async function clearLabelDefinition({ sessionId, ruleId, storeRoot }) {
   return session;
 }
 
-async function updateConfigParameterSet({ sessionId, configParameterSet, storeRoot }) {
+function validateExecutionIntentEvidence(session, executionIntentAuthoringV1) {
+  const rows = Array.isArray(executionIntentAuthoringV1?.slots) ? executionIntentAuthoringV1.slots : [];
+  const geometryContext = session?.geometry_validation_v1?.geometry_context_v1 || null;
+  const slots = Array.isArray(geometryContext?.slots) ? geometryContext.slots : [];
+  const slotByIndex = new Map(slots.map((slot) => [Number(slot.slot_index), slot]));
+  const errors = [];
+  for (const row of rows) {
+    const evidenceSource = String(row?.evidence_source || "manual").trim().toLowerCase();
+    if (!["xdata", "xdata_hint", "sem"].includes(evidenceSource)) continue;
+    const slotIndex = Number(row?.slot_index);
+    const slot = slotByIndex.get(slotIndex);
+    if (evidenceSource === "xdata_hint") {
+      const observedHints = Array.isArray(slot?.observed_xdata_hints) ? slot.observed_xdata_hints : [];
+      const observedHintValues = observedHints.map((item) => String(item?.hint || "").trim()).filter(Boolean);
+      const authoredHint = String(row?.observed_xdata_hint || "").trim();
+      if (!slot || !observedHintValues.length || (authoredHint && !observedHintValues.includes(authoredHint))) {
+        errors.push({
+          slot_index: slotIndex,
+          evidence_source: evidenceSource,
+          observed_xdata_hint: authoredHint || null,
+          discovered_xdata_hints: observedHintValues,
+          message: `Slot ${slotIndex} declares XDATA hint evidence, but geometry discovery did not observe the referenced hint.`
+        });
+      }
+      continue;
+    }
+    const observed = evidenceSource === "xdata"
+      ? (Array.isArray(slot?.xdata_variant_keys) ? slot.xdata_variant_keys : [])
+      : (Array.isArray(slot?.sem_variant_keys) ? slot.sem_variant_keys : []);
+    const variantKey = String(row?.variant_key || "").trim();
+    if (!slot || !observed.length || (variantKey && !observed.includes(variantKey))) {
+      errors.push({
+        slot_index: slotIndex,
+        evidence_source: evidenceSource,
+        variant_key: variantKey || null,
+        observed_variant_keys: observed.slice(),
+        message: `Slot ${slotIndex} declares ${evidenceSource} evidence for ${variantKey || "its variant"}, but geometry discovery did not observe that evidence.`
+      });
+    }
+  }
+  return errors;
+}
+
+async function updateConfigParameterSet({ sessionId, configParameterSet, executionIntentAuthoringV1 = undefined, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
-  session.config_parameter_set = normalizeConfigParameterSet(configParameterSet);
+  let configInput = configParameterSet && typeof configParameterSet === "object" ? cloneJson(configParameterSet) : {};
+  if (sessionContextIsLocked(session?.session_context_v1)) {
+    const context = session.session_context_v1;
+    const suppliedCatalogId = String(configInput.parameter_catalog_id || "").trim();
+    if (!suppliedCatalogId || suppliedCatalogId !== context.parameter_catalog_id) {
+      const error = new Error(`Config parameter_catalog_id must explicitly match locked session context: ${context.parameter_catalog_id}`);
+      error.code = "CONFIG_PARAMETER_CATALOG_MISMATCH";
+      error.validation = { ok: false, errors: [{
+        code: error.code,
+        field: "parameter_catalog_id",
+        expected: context.parameter_catalog_id,
+        actual: suppliedCatalogId || null,
+        message: error.message
+      }] };
+      throw error;
+    }
+    configInput = {
+      ...configInput,
+      family: context.family_id,
+      product: context.product_id,
+      part: context.part_id,
+      parameter_scope: { family: context.family_id, product: context.product_id, part: context.part_id }
+    };
+  }
+  session.config_parameter_set = normalizeConfigParameterSet(configInput);
+  const derivedVariantKey = readConfigVariantKey(session.config_parameter_set);
+  if (derivedVariantKey) session.config_parameter_set.parameters.variant_key = derivedVariantKey;
+  session.parameter_catalog = resolveActiveParameterCatalog(session, session.config_parameter_set, session.parameter_catalog);
+  if (executionIntentAuthoringV1 !== undefined) {
+    const source = executionIntentAuthoringV1 && typeof executionIntentAuthoringV1 === "object" ? executionIntentAuthoringV1 : {};
+    const evidenceErrors = validateExecutionIntentEvidence(session, source);
+    if (evidenceErrors.length) {
+      const error = new Error(evidenceErrors.map((item) => item.message).join(" "));
+      error.code = "EXECUTION_INTENT_EVIDENCE_INVALID";
+      error.validation = { ok: false, errors: evidenceErrors };
+      throw error;
+    }
+    session.execution_intent_authoring_v1 = {
+      version: 1,
+      slots: Array.isArray(source.slots) ? cloneJson(source.slots) : []
+    };
+  }
   appendSessionActivity(session, {
     type: "config_saved",
     severity: "ok",
     summary: "Config parameter set saved.",
     details: {
-      parameter_count: Object.keys(session.config_parameter_set.parameters || {}).length
+      parameter_count: Object.keys(session.config_parameter_set.parameters || {}).length,
+      slot_intent_count: Array.isArray(session.execution_intent_authoring_v1?.slots) ? session.execution_intent_authoring_v1.slots.length : 0
     }
   });
   session.updated_at = new Date().toISOString();
@@ -7607,8 +8606,7 @@ async function updateDocumentSemMetadata({ sessionId, payload, storeRoot }) {
     severity: "ok",
     summary: "Document SEM identity and rules saved.",
     details: {
-      nominal_width: Number(payload?.nominal_width),
-      nominal_height: Number(payload?.nominal_height),
+      nominal_dimensions: normalizeDocumentSemPayload(payload).nominal_dimensions,
       family: payload?.family || null,
       product: payload?.product || null,
       part: payload?.part || null,
@@ -7635,6 +8633,19 @@ async function updateDocumentSemMetadata({ sessionId, payload, storeRoot }) {
 
 async function updateTopoMetadata({ sessionId, topoText, storeRoot }) {
   const session = await getSession({ sessionId, storeRoot });
+  const strategy = String(session.geometry_strategy_v1?.mode || "").trim();
+  if (!["four_band_parameter_resize", "fixed_envelope_slide"].includes(strategy)) {
+    throw new Error("Confirmed geometry strategy does not allow TOPO metadata authoring.");
+  }
+  const proposedComment = normalizeTopoCommentsInput(topoText).find((value) => isFileLevelTopoComment(value)) || "";
+  const parsedProposedTopo = parseTopoComment(proposedComment);
+  const proposedMode = String(parsedProposedTopo?.mode || parsedProposedTopo?.keys?.mode || "").trim();
+  const expectedTopoMode = strategy === "four_band_parameter_resize"
+    ? "4_band_parameter_resize"
+    : strategy;
+  if (proposedMode !== expectedTopoMode) {
+    throw new Error("TOPO mode must match the confirmed geometry strategy.");
+  }
   const rawComment = upsertFileLevelTopoComment(session, topoText);
   session.topo_comments = [rawComment];
   appendSessionActivity(session, {
@@ -8050,7 +9061,8 @@ async function generateResolverPreview({ sessionId, storeRoot }) {
   return {
     session,
     resolver_input_v1_minimal: resolverInput,
-    resolver_output_v1: resolverOutput
+    resolver_output_v1: resolverOutput,
+    simulation
   };
 }
 
@@ -8147,14 +9159,15 @@ async function generateResolverChild({ sessionId, storeRoot }) {
   const gate = assertWysiwygGate(session, "child");
   const config = normalizeConfigParameterSet(session.config_parameter_set);
   const result = generateChildDxfNoTopo(session, config);
+  const enrichment999 = buildChildDxf999Enrichment(session, config, result.dxf_text);
   const childArtifactId = "resolver_child_v1";
   const childInfo = await saveChildExport({
     rootDir,
     sessionId,
-    dxfText: result.dxf_text,
+    dxfText: enrichment999.enriched_dxf_text,
     suffix: childArtifactId
   });
-  const childDxfInfo = await saveChildDxf(sessionId, childArtifactId, result.dxf_text, rootDir);
+  const childDxfInfo = await saveChildDxf(sessionId, childArtifactId, enrichment999.enriched_dxf_text, rootDir);
   await registerArtifact(sessionId, "child_dxf", childArtifactId, childDxfInfo.filePath, rootDir);
   const childMetadata = {
     version: 1,
@@ -8165,7 +9178,8 @@ async function generateResolverChild({ sessionId, storeRoot }) {
     resolver_input_hash: session.resolver_preview_v1?.resolver_input_hash || null,
     resolver_output_hash: session.resolver_preview_v1?.resolver_output_hash || null,
     preview_id: session.resolver_preview_v1?.preview_artifact?.preview_id || null,
-    generation_summary: cloneJson(result.generation_summary || {})
+    generation_summary: cloneJson(result.generation_summary || {}),
+    child_dxf_999_enrichment_v1: cloneJson(enrichment999)
   };
   await writeChildMetadata(sessionId, childArtifactId, childMetadata, rootDir);
   await appendEvent(sessionId, {
@@ -8178,7 +9192,8 @@ async function generateResolverChild({ sessionId, storeRoot }) {
     child_file: childInfo.filePath,
     child_dxf_path: childDxfInfo.filePath,
     child_metadata: childMetadata,
-    generation_summary: cloneJson(result.generation_summary || {})
+    generation_summary: cloneJson(result.generation_summary || {}),
+    child_dxf_999_enrichment_v1: cloneJson(enrichment999)
   };
   session.artifact_lineage_v1 = buildArtifactLineageV1(session);
   session.wysiwyg_gate_v1 = buildWysiwygGateV1(session, "child");
@@ -8191,7 +9206,7 @@ async function generateResolverChild({ sessionId, storeRoot }) {
     details: { child_artifact_id: childArtifactId, child_file: childInfo.filePath }
   });
   await saveSession({ rootDir, session });
-  return { session, dxf_text: result.dxf_text, child_artifact: session.resolver_child_v1, wysiwyg_gate_v1: gate, artifact_lineage_v1: session.artifact_lineage_v1 };
+  return { session, dxf_text: enrichment999.enriched_dxf_text, child_artifact: session.resolver_child_v1, wysiwyg_gate_v1: gate, artifact_lineage_v1: session.artifact_lineage_v1 };
 }
 
 async function generateResolverExport({ sessionId, storeRoot }) {
@@ -8310,15 +9325,19 @@ module.exports = {
   generateResolverPreview,
   generateResolverChild,
   generateResolverExport,
+  buildChildDxf999Enrichment,
   runKskrExecutionCheck,
   generateCoreShellFourBandShadowChildDxf,
   generateChildDxfNoTopo,
   generateChildDxfTopoPoc,
   validateMotherDraft,
+  buildDomainValidationV1,
   projectViewModel,
   serializeCurrentMotherDraft,
   serializeDocument,
   parseDocumentSem,
+  normalizeDocumentSemPayload,
+  buildDocumentSemIdentityComment,
   collectDocumentSemMetadata,
   collectDocumentRuleMetadata,
   upsertFileLevelTopoComment,
@@ -8327,5 +9346,6 @@ module.exports = {
   parseRuleComment,
   collectTopoMetadata,
   validateTopoBlock,
-  normalizeTopoRuntimeModel
+  normalizeTopoRuntimeModel,
+  normalizeGeometryStrategyV1
 };

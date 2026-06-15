@@ -5,6 +5,7 @@ const path = require("path");
 const {
   saveArtifactRegistryToDb
 } = require("../db/db_adapter");
+const { resolveSessionStorageKey } = require("./session_locator");
 
 const ARTIFACT_REGISTRY_VERSION = 1;
 
@@ -12,13 +13,9 @@ function defaultRoot() {
   return path.join("out", "mother_dxf_v1");
 }
 
-function registryFilePath(rootDir, sessionId) {
-  return path.join(
-    rootDir || defaultRoot(),
-    "sessions",
-    String(sessionId),
-    "artifact_registry.json"
-  );
+async function registryFilePath(rootDir, sessionId) {
+  const storageKey = await resolveSessionStorageKey(sessionId, rootDir);
+  return path.join(rootDir || defaultRoot(), "sessions", storageKey, "artifact_registry.json");
 }
 
 function buildEmptyRegistry(sessionId) {
@@ -94,7 +91,7 @@ async function atomicWriteJson(filePath, jsonObj) {
  * out/mother_dxf_v1/sessions/<session_id>/artifact_registry.json
  */
 async function registerArtifact(sessionId, artifactType, artifactId, artifactPath, rootDir) {
-  const registryPath = registryFilePath(rootDir, sessionId);
+  const registryPath = await registryFilePath(rootDir, sessionId);
 
   await fs.mkdir(path.dirname(registryPath), { recursive: true });
 
@@ -137,7 +134,7 @@ async function registerArtifact(sessionId, artifactType, artifactId, artifactPat
  * Loads the artifact registry for a session.
  */
 async function loadArtifactRegistry(sessionId, rootDir) {
-  const registryPath = registryFilePath(rootDir, sessionId);
+  const registryPath = await registryFilePath(rootDir, sessionId);
   const content = await fs.readFile(registryPath, "utf8");
   return normalizeRegistryShape(sessionId, JSON.parse(content));
 }

@@ -27,10 +27,10 @@ async function main() {
       status: "context_locked",
       production_program_id: "MDX",
       family_id: "VRATA",
-      product_id: "KSKR",
-      part_id: "SPLO",
-      nominal_value_set_id: "KSKR_DEFAULT",
-      rule_set_id: "legacy_door_rule_catalog_v0",
+      product_id: "PPV",
+      part_id: "LBRA",
+      nominal_value_set_id: "nominal_value_set_mxd_v0",
+      rule_set_id: "rule_catalog_mxd_door_v0",
       parameter_catalog_id: "legacy_door_configurator_catalog_v0",
       branch_mode: "ALL",
       expected_variant_policy: { mode: "optional", expected_variant_keys: [] },
@@ -40,14 +40,14 @@ async function main() {
     fixture.config_parameter_set = {
       ...fixture.config_parameter_set,
       family: "VRATA",
-      product: "KSKR",
-      part: "SPLO",
+      product: "PPV",
+      part: "LBRA",
       parameter_catalog_id: "legacy_door_configurator_catalog_v0"
     };
     await fsp.mkdir(sessionsDir, { recursive: true });
     await fsp.writeFile(sessionPath, JSON.stringify(fixture, null, 2), "utf8");
 
-    await runtime.computeGeometryContext({ sessionId: fixture.session_id, storeRoot });
+    await runtime.computeGeometryContext({ sessionId: fixture.session_id, storeRoot, geometryStrategy: "four_band_parameter_resize" });
     await runtime.validateDomainContext({ sessionId: fixture.session_id, storeRoot });
     await runtime.generateResolverPreview({ sessionId: fixture.session_id, storeRoot });
 

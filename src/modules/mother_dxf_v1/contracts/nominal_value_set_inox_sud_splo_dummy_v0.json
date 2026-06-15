@@ -1,0 +1,69 @@
+{
+  "nominal_value_set_id": "nominal_value_set_inox_sud_splo_dummy_v0",
+  "schema_version": "nominal_value_set.v0",
+  "lifecycle_status": "draft",
+  "source": "mother_dxf_best_guess_kv6_preset",
+  "metadata": {
+    "program": "INOX",
+    "family": "SUDOPERI",
+    "product": "SUD",
+    "part": "SPLO",
+    "model": "Sudoperi",
+    "model_code": "SDP",
+    "authority_model": "provisional_kv6_like_preset",
+    "purpose": "authoring_and_preview_intent",
+    "notes": [
+      "This artifact is not a parameter catalog replacement.",
+      "It is a best-guess, KV6-like production preset used to author, simulate, and validate Mother DXF behavior before upstream KV6 delivery is wired in.",
+      "Only parameters relevant to sink-top plate authoring, slot-to-variant mapping, and child preview flow are intentionally included.",
+      "Furniture and hardware options not justified for this use case are intentionally omitted."
+    ]
+  },
+  "base_parameters": {
+    "model": "Sudoperi",
+    "model_code": "SDP",
+    "duzina": 400,
+    "sirina": 300,
+    "visina": 600,
+    "noga_visina": 100,
+    "noga_broj": 4,
+    "debljina_ploce": 40,
+    "ploca_alzatina": "Bez A",
+    "korito_1": "250x250x200",
+    "orijentacija_k1": "Lijevo",
+    "slavina_k1": "Bez S",
+    "offset_k1": 0,
+    "korito_2": "250x250x200",
+    "orijentacija_k2": "Lijevo",
+    "slavina_k2": "Bez S",
+    "offset_k2": 0,
+    "skaca_prednja": 69,
+    "skaca_lijeva": 69,
+    "skaca_desna": 69,
+    "dno": 30
+  },
+  "variant_presets": [
+    {
+      "variant_key": "BASE",
+      "pjover": "Ne",
+      "candidate_slot_role": "base",
+      "candidate_slot_index": 0,
+      "parameters": {
+        "debljina_ploce": 40,
+        "pjover": "Ne",
+        "variant_key": "BASE"
+      }
+    },
+    {
+      "variant_key": "PJOVER",
+      "pjover": "Da",
+      "candidate_slot_role": "variant",
+      "candidate_slot_index": 1,
+      "parameters": {
+        "debljina_ploce": 40,
+        "pjover": "Da",
+        "variant_key": "PJOVER"
+      }
+    }
+  ]
+}

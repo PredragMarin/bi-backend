@@ -1,0 +1,32 @@
+{
+  "artifact_id": "slot_intent_rule_template_v0",
+  "artifact_type": "slot_intent_rule_template",
+  "schema_version": "slot_intent_rule_template.v0",
+  "program": "SHARED",
+  "families": ["*"],
+  "products": ["*"],
+  "parts": ["*"],
+  "status": "draft",
+  "version_no": 0,
+  "template_id": "slot_intent_rule_template_v0",
+  "slot_identity_fields": [
+    "slot_index",
+    "slot_role",
+    "variant_key",
+    "technology_profile",
+    "evidence_source",
+    "observed_xdata_hint",
+    "note"
+  ],
+  "allowed_slot_roles": [
+    "base",
+    "variant",
+    "auxiliary"
+  ],
+  "allowed_evidence_sources": [
+    "xdata",
+    "xdata_hint",
+    "sem",
+    "manual"
+  ]
+}

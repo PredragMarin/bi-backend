@@ -1,0 +1,884 @@
+{
+  "artifact_id": "parameter_catalog_inox_v0",
+  "artifact_type": "parameter_catalog",
+  "schema_version": "parameter_catalog.v0",
+  "program": "INOX",
+  "families": ["SUDOPERI"],
+  "products": ["*"],
+  "parts": ["*"],
+  "status": "draft",
+  "version_no": 0,
+  "catalog_id": "parameter_catalog_inox_v0",
+  "source": "inox_domain_table_user_supplied",
+  "lifecycle_status": "draft",
+  "metadata": {
+    "program": "INOX",
+    "document_dimensions": [
+      {
+        "semantic": "length",
+        "parameter_key": "duzina",
+        "label": "Nominal length",
+        "unit": "mm",
+        "order": 1
+      },
+      {
+        "semantic": "width",
+        "parameter_key": "sirina",
+        "label": "Nominal width",
+        "unit": "mm",
+        "order": 2
+      },
+      {
+        "semantic": "height",
+        "parameter_key": "visina",
+        "label": "Nominal height",
+        "unit": "mm",
+        "order": 3
+      }
+    ],
+    "authority_model": "upstream_kv6",
+    "purpose": "reference_field_legality_only",
+    "validation_mode": "sparse_parameter_set_allowed",
+    "notes": [
+      "This catalog defines the cumulative legal keyspace for the INOX program.",
+      "It is not a full product feasibility engine.",
+      "Upstream KV6 remains authoritative for deep feasibility decisions and product completeness.",
+      "Mother DXF may accept narrower parameter sets when unused keys are absent for the selected product, part, or child geometry path.",
+      "Child-geometry rules may still reject locally incompatible values even when field type and span are globally legal."
+    ]
+  },
+  "parameters": {
+    "model": {
+      "key": "model",
+      "code": "M1",
+      "label": "Model",
+      "type": "enum",
+      "values": [
+        "Sudoperi",
+        "Sudoperi specijalni",
+        "Stolovi zatvoreni",
+        "Stolovi otvoreni",
+        "Stolovi specijalni",
+        "Stolovi hladeni",
+        "Stolovi grijani",
+        "Stolovi s ladicama",
+        "Ormari samostojeci",
+        "Ormari viseci",
+        "Sifon podni",
+        "Police skladisne",
+        "Police zidne",
+        "Police stolne",
+        "Nape",
+        "Elementi samoposluzni",
+        "Elementi barski",
+        "Kolica",
+        "Komore",
+        "Mostovi",
+        "Ostali proizvodni elementi",
+        "Elementi poluproizvodi"
+      ],
+      "nullable": false,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Must be compatible with model_code."
+      ]
+    },
+    "model_code": {
+      "key": "model_code",
+      "code": "M2",
+      "label": "Model Code",
+      "type": "enum",
+      "values": [
+        "SDP",
+        "SDPS",
+        "STOLZ",
+        "STOLO",
+        "STOLS",
+        "STOLH",
+        "STOLG",
+        "STLAD",
+        "ORM",
+        "ORMV",
+        "SIF",
+        "PS",
+        "PZ",
+        "NAP",
+        "SELFS",
+        "BAR",
+        "KOL",
+        "KOM",
+        "MOST",
+        "OST",
+        "PPR"
+      ],
+      "nullable": false,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Must map to the selected model."
+      ]
+    },
+    "duzina": {
+      "key": "duzina",
+      "code": "D1",
+      "label": "Duljina",
+      "type": "number_or_custom",
+      "unit": "mm",
+      "min": 400,
+      "max": 3000,
+      "step": 100,
+      "nullable": false,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Legal span only; exact feasibility is decided upstream in KV6.",
+        "Custom values are allowed when upstream configurator emits them."
+      ]
+    },
+    "sirina": {
+      "key": "sirina",
+      "code": "D2",
+      "label": "Sirina",
+      "type": "number_or_custom",
+      "unit": "mm",
+      "min": 300,
+      "max": 1600,
+      "step": null,
+      "nullable": false,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Legal span only; exact feasibility is decided upstream in KV6.",
+        "Custom values are allowed when upstream configurator emits them."
+      ]
+    },
+    "visina": {
+      "key": "visina",
+      "code": "D3",
+      "label": "Visina",
+      "type": "number",
+      "unit": "mm",
+      "min": 600,
+      "max": 2000,
+      "step": 100,
+      "nullable": false,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Legal span only; exact feasibility is decided upstream in KV6."
+      ]
+    },
+    "noga_visina": {
+      "key": "noga_visina",
+      "code": "D4",
+      "label": "Noga Visina",
+      "type": "number",
+      "unit": "mm",
+      "min": 100,
+      "max": 150,
+      "step": 50,
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Relevant only for models with legs."
+      ]
+    },
+    "noga_broj": {
+      "key": "noga_broj",
+      "code": "D5",
+      "label": "Noga Broj",
+      "type": "enum_number",
+      "values": [
+        4,
+        6
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Relevant only for models with legs."
+      ]
+    },
+    "debljina_ploce": {
+      "key": "debljina_ploce",
+      "code": "P1",
+      "label": "Debljina Ploce",
+      "type": "enum_number",
+      "unit": "mm",
+      "values": [
+        40,
+        50
+      ],
+      "nullable": false,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Plate thickness is independent from variant selector.",
+        "Variant selection is carried by pjover and derived variant_key."
+      ]
+    },
+    "pjover": {
+      "key": "pjover",
+      "code": "P2",
+      "label": "Pjover",
+      "type": "enum",
+      "values": [
+        "Da",
+        "Ne"
+      ],
+      "nullable": false,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": "Ne",
+      "compatibility": [
+        "Derived execution meaning: Da -> variant_key=PJOVER, Ne -> variant_key=BASE."
+      ]
+    },
+    "variant_key": {
+      "key": "variant_key",
+      "code": "P3",
+      "label": "Variant Key",
+      "type": "derived_enum",
+      "values": [
+        "BASE",
+        "PJOVER"
+      ],
+      "nullable": false,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": "BASE",
+      "derived_from": "pjover",
+      "compatibility": [
+        "Execution-oriented projection of pjover.",
+        "Should be treated as authoritative variant selector for slot-aware preview/child/export intent once resolver input is prepared."
+      ]
+    },
+    "ploca_alzatina": {
+      "key": "ploca_alzatina",
+      "code": "P4",
+      "label": "Ploca Alzatina",
+      "type": "enum",
+      "values": [
+        "Bez A",
+        "Tanka 40",
+        "Debela 100"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Optional accessory/plate edge selection.",
+        "Exact compatibility is decided upstream in KV6."
+      ]
+    },
+    "korito_1": {
+      "key": "korito_1",
+      "code": "K1",
+      "label": "Korito 1",
+      "type": "enum",
+      "values": [
+        "250x250x200",
+        "340x340x200",
+        "400x400x250",
+        "400x500x250",
+        "500x500x250",
+        "500x500x300",
+        "600x500x300",
+        "800x500x375"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "May be absent for products/parts that do not use K1.",
+        "If absent, related K1 keys may also be absent."
+      ]
+    },
+    "orijentacija_k1": {
+      "key": "orijentacija_k1",
+      "code": "K2",
+      "label": "Orijentacija K1",
+      "type": "enum",
+      "values": [
+        "Lijevo",
+        "Desno"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Meaningful only when korito_1 exists."
+      ]
+    },
+    "slavina_k1": {
+      "key": "slavina_k1",
+      "code": "K3",
+      "label": "Slavina K1",
+      "type": "enum",
+      "values": [
+        "Bez S",
+        "Lijevo",
+        "Centar",
+        "Desno"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Meaningful only when korito_1 exists."
+      ]
+    },
+    "offset_k1": {
+      "key": "offset_k1",
+      "code": "K4",
+      "label": "Offset K1",
+      "type": "number",
+      "unit": "mm",
+      "min": -50,
+      "max": 50,
+      "step": 1,
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": 0,
+      "compatibility": [
+        "Meaningful only when korito_1 exists.",
+        "Range legality only; exact placement feasibility is decided upstream in KV6."
+      ]
+    },
+    "korito_2": {
+      "key": "korito_2",
+      "code": "K5",
+      "label": "Korito 2",
+      "type": "enum",
+      "values": [
+        "250x250x200",
+        "340x340x200",
+        "400x400x250",
+        "400x500x250",
+        "500x500x250",
+        "500x500x300",
+        "600x500x300",
+        "800x500x375"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "May be absent for products/parts that do not use K2.",
+        "If absent, related K2 keys may also be absent."
+      ]
+    },
+    "orijentacija_k2": {
+      "key": "orijentacija_k2",
+      "code": "K6",
+      "label": "Orijentacija K2",
+      "type": "enum",
+      "values": [
+        "Lijevo",
+        "Desno"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Meaningful only when korito_2 exists."
+      ]
+    },
+    "slavina_k2": {
+      "key": "slavina_k2",
+      "code": "K7",
+      "label": "Slavina K2",
+      "type": "enum",
+      "values": [
+        "Bez S",
+        "Lijevo",
+        "Centar",
+        "Desno"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Meaningful only when korito_2 exists."
+      ]
+    },
+    "offset_k2": {
+      "key": "offset_k2",
+      "code": "K8",
+      "label": "Offset K2",
+      "type": "number",
+      "unit": "mm",
+      "min": -50,
+      "max": 50,
+      "step": 1,
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": 0,
+      "compatibility": [
+        "Meaningful only when korito_2 exists.",
+        "Range legality only; exact placement feasibility is decided upstream in KV6."
+      ]
+    },
+    "skaca_prednja": {
+      "key": "skaca_prednja",
+      "code": "S1",
+      "label": "Skaca Prednja",
+      "type": "number_or_custom",
+      "unit": "mm",
+      "min": null,
+      "max": null,
+      "step": 1,
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Upstream KV6 may offer dropdown presets or custom numeric override.",
+        "Custom values are globally legal here but may fail local child-geometry rules."
+      ]
+    },
+    "skaca_lijeva": {
+      "key": "skaca_lijeva",
+      "code": "S2",
+      "label": "Skaca Lijeva",
+      "type": "number_or_custom",
+      "unit": "mm",
+      "min": null,
+      "max": null,
+      "step": 1,
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Upstream KV6 may offer dropdown presets or custom numeric override.",
+        "Custom values are globally legal here but may fail local child-geometry rules."
+      ]
+    },
+    "skaca_desna": {
+      "key": "skaca_desna",
+      "code": "S3",
+      "label": "Skaca Desna",
+      "type": "number_or_custom",
+      "unit": "mm",
+      "min": null,
+      "max": null,
+      "step": 1,
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Upstream KV6 may offer dropdown presets or custom numeric override.",
+        "Custom values are globally legal here but may fail local child-geometry rules."
+      ]
+    },
+    "dno": {
+      "key": "dno",
+      "code": "S4",
+      "label": "Dno",
+      "type": "number",
+      "unit": "mm",
+      "min": null,
+      "max": null,
+      "step": 1,
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Optional and model-dependent."
+      ]
+    },
+    "polica": {
+      "key": "polica",
+      "code": "F1",
+      "label": "Polica",
+      "type": "enum",
+      "values": [
+        "Bez P",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Optional furniture/accessory selector."
+      ]
+    },
+    "polica_tehnologija": {
+      "key": "polica_tehnologija",
+      "code": "F2",
+      "label": "Polica Tehnologija",
+      "type": "enum",
+      "values": [
+        "Vijak",
+        "Zavar"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Usually relevant only when polica is not omitted."
+      ]
+    },
+    "vrata": {
+      "key": "vrata",
+      "code": "F3",
+      "label": "Vrata",
+      "type": "enum",
+      "values": [
+        "1 krilna",
+        "2 krilna",
+        "Klizna"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Optional; only meaningful for products that support doors."
+      ]
+    },
+    "ladice": {
+      "key": "ladice",
+      "code": "F4",
+      "label": "Ladice",
+      "type": "enum_number",
+      "values": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Optional; only meaningful for products that support drawers."
+      ]
+    },
+    "vodilica": {
+      "key": "vodilica",
+      "code": "F5",
+      "label": "Vodilica",
+      "type": "enum",
+      "values": [
+        "450",
+        "500",
+        "550",
+        "600"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Acts as hardware variant identifier, not direct cutout dimension."
+      ]
+    },
+    "grijac": {
+      "key": "grijac",
+      "code": "F6",
+      "label": "Grijac",
+      "type": "enum",
+      "values": [
+        "Lijevo",
+        "Desno",
+        "Oba"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Optional and only meaningful for products that support heating."
+      ]
+    },
+    "filter": {
+      "key": "filter",
+      "code": "F7",
+      "label": "Filter",
+      "type": "enum",
+      "values": [
+        "400x400",
+        "400x500",
+        "500x400",
+        "500x500"
+      ],
+      "nullable": true,
+      "required": false,
+      "scope": {
+        "family": "INOX",
+        "products": [
+          "*"
+        ],
+        "parts": [
+          "*"
+        ]
+      },
+      "default": null,
+      "compatibility": [
+        "Optional accessory / hardware selection."
+      ]
+    }
+  }
+}

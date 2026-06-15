@@ -11,6 +11,7 @@ const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
 const { writeJsonAtomic } = require("./index");
+const { resolveSessionStorageKey } = require("../io/mother_dxf/session/session_locator");
 
 function ensureDir(dirPath) {
   return fsp.mkdir(dirPath, { recursive: true });
@@ -47,8 +48,9 @@ async function writeJsonFile(filePath, payload) {
 
 async function saveExport({ rootDir, sessionId, dxfText }) {
   const base = rootDir || defaultRoot();
-  const filePath = path.join(base, "exports", `${sessionId}_mother.dxf`);
-  const artifactPath = path.join(base, "artifacts", "mother", `${sessionId}_mother.dxf`);
+  const storageKey = await resolveSessionStorageKey(sessionId, rootDir);
+  const filePath = path.join(base, "exports", `${storageKey}_mother.dxf`);
+  const artifactPath = path.join(base, "artifacts", "mother", `${storageKey}_mother.dxf`);
   await ensureDir(path.dirname(filePath));
   await ensureDir(path.dirname(artifactPath));
   await fsp.writeFile(filePath, String(dxfText || ""), "utf8");
@@ -58,8 +60,9 @@ async function saveExport({ rootDir, sessionId, dxfText }) {
 
 async function saveChildExport({ rootDir, sessionId, dxfText, suffix }) {
   const base = rootDir || defaultRoot();
+  const storageKey = await resolveSessionStorageKey(sessionId, rootDir);
   const safeSuffix = String(suffix || "child").replace(/[^a-zA-Z0-9_-]/g, "_");
-  const filePath = path.join(base, "children", `${sessionId}_${safeSuffix}.dxf`);
+  const filePath = path.join(base, "children", `${storageKey}_${safeSuffix}.dxf`);
   await ensureDir(path.dirname(filePath));
   await fsp.writeFile(filePath, String(dxfText || ""), "utf8");
   return { filePath };
@@ -67,8 +70,9 @@ async function saveChildExport({ rootDir, sessionId, dxfText, suffix }) {
 
 async function saveRawDxf(sessionId, dxfText, rootDir) {
   const base = rootDir || defaultRoot();
+  const storageKey = await resolveSessionStorageKey(sessionId, rootDir);
   await ensurePhaseArtifactDirs(base);
-  const filePath = path.join(base, "artifacts", "raw", `${sessionId}_raw.dxf`);
+  const filePath = path.join(base, "artifacts", "raw", `${storageKey}_raw.dxf`);
   await fsp.writeFile(filePath, String(dxfText || ""), "utf8");
   return { filePath };
 }
@@ -79,15 +83,17 @@ async function saveRawDxf(sessionId, dxfText, rootDir) {
 
 async function saveRuleCatalogSnapshot(sessionId, ruleCatalog, rootDir) {
   const base = rootDir || defaultRoot();
-  const filePath = path.join(base, "sessions", String(sessionId), "rule_catalog.json");
+  const storageKey = await resolveSessionStorageKey(sessionId, rootDir);
+  const filePath = path.join(base, "sessions", storageKey, "rule_catalog.json");
   await ensureDir(path.dirname(filePath));
   return writeJsonFile(filePath, ruleCatalog);
 }
 
 async function saveChildDxf(sessionId, suffix, dxfText, rootDir) {
   const base = rootDir || defaultRoot();
+  const storageKey = await resolveSessionStorageKey(sessionId, rootDir);
   const safeSuffix = String(suffix || "child").replace(/[^a-zA-Z0-9_-]/g, "_");
-  const dirPath = path.join(base, "children", `${sessionId}_${safeSuffix}`);
+  const dirPath = path.join(base, "children", `${storageKey}_${safeSuffix}`);
   const filePath = path.join(dirPath, "child.dxf");
   await ensureDir(dirPath);
   await fsp.writeFile(filePath, String(dxfText || ""), "utf8");

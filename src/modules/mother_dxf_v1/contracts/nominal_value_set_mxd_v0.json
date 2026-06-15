@@ -1,0 +1,26 @@
+{
+  "nominal_value_set_id": "nominal_value_set_mxd_v0",
+  "schema_version": "nominal_value_set.v0",
+  "program": "MXD",
+  "families": [
+    "VRATA"
+  ],
+  "scope": {
+    "products": [
+      "PPV"
+    ],
+    "parts": [
+      "LBRA"
+    ]
+  },
+  "defaults": {
+    "technology_profile": "OPS_S4P4",
+    "parameters": {
+      "SIRINA_VRATA": 900,
+      "VISINA_VRATA": 2100,
+      "MODEL_VRATA": "Europa",
+      "STRANA_OTVARANJA": "Lijeva (SX)",
+      "SKRACENJE": 0
+    }
+  }
+}
